@@ -33,44 +33,72 @@ class Capability:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class CapabilityEntry:
+    """Registered capability metadata plus its executable implementation."""
+
+    capability: Capability
+    implementation: object | None = None
+
+
 class CapabilityRegistry:
     """Store and discover Nayeon's available capabilities."""
 
     def __init__(self) -> None:
-        self._capabilities: dict[str, Capability] = {}
+        self._entries: dict[str, CapabilityEntry] = {}
 
-    def register(self, capability: Capability) -> None:
-        """Register a capability."""
+    def register(
+        self,
+        capability: Capability,
+        implementation: object | None = None,
+    ) -> None:
+        """Register capability metadata and its implementation."""
 
-        if capability.name in self._capabilities:
+        if capability.name in self._entries:
             raise ValueError(
                 f"Capability already registered: {capability.name}"
             )
 
-        self._capabilities[capability.name] = capability
+        self._entries[capability.name] = CapabilityEntry(
+            capability=capability,
+            implementation=implementation,
+        )
 
     def unregister(self, name: str) -> None:
         """Remove a capability."""
 
-        self._capabilities.pop(name, None)
+        self._entries.pop(name, None)
 
     def get(self, name: str) -> Capability | None:
-        """Return a capability by name."""
+        """Return capability metadata by name."""
 
-        return self._capabilities.get(name)
+        entry = self._entries.get(name)
+        return entry.capability if entry else None
+
+    def get_implementation(self, name: str) -> object | None:
+        """Return the executable implementation for a capability."""
+
+        entry = self._entries.get(name)
+        return entry.implementation if entry else None
 
     def all(self) -> tuple[Capability, ...]:
         """Return all registered capabilities."""
 
-        return tuple(self._capabilities.values())
+        return tuple(
+            entry.capability
+            for entry in self._entries.values()
+        )
 
-    def find_by_service(self, service: str) -> tuple[Capability, ...]:
+    def find_by_service(
+        self,
+        service: str,
+    ) -> tuple[Capability, ...]:
         """Return capabilities belonging to a service."""
 
         return tuple(
-            capability
-            for capability in self._capabilities.values()
-            if capability.service == service
+            entry.capability
+            for entry in self._entries.values()
+            if entry.capability.service == service
         )
 
     def find_by_mode(
@@ -80,7 +108,7 @@ class CapabilityRegistry:
         """Return capabilities matching an execution mode."""
 
         return tuple(
-            capability
-            for capability in self._capabilities.values()
-            if capability.execution_mode == execution_mode
+            entry.capability
+            for entry in self._entries.values()
+            if entry.capability.execution_mode == execution_mode
         )

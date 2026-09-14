@@ -30,7 +30,6 @@ class CapabilityLoader:
         for module_info in pkgutil.iter_modules(package.__path__):
             module_name = module_info.name
 
-            # Internal framework modules are not capabilities.
             if module_name.startswith("_") or module_name in {
                 "base",
                 "loader",
@@ -73,9 +72,11 @@ class CapabilityLoader:
                 continue
 
             try:
-                self._registry.register(capability)
+                self._registry.register(
+                    capability,
+                    implementation=instance,
+                )
             except ValueError:
-                # Duplicate registrations are ignored during discovery.
                 continue
 
             count += 1
