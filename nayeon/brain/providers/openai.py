@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from openai import OpenAI
 
 from nayeon.brain.service import AIMessage, AIResponse
@@ -46,7 +48,10 @@ class OpenAIProvider:
     ) -> AIResponse:
         """Generate a response using the OpenAI Responses API."""
 
-        input_messages: list[dict[str, str]] = []
+        if not messages:
+            raise ValueError("At least one message is required.")
+
+        input_messages: list[dict[str, Any]] = []
 
         for message in messages:
             input_messages.append(
@@ -56,18 +61,16 @@ class OpenAIProvider:
                 }
             )
 
+        request_args: dict[str, Any] = {
+            "model": self._model,
+            "input": input_messages,
+        }
+
         if system_prompt:
-            input_messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-            )
+            request_args["instructions"] = system_prompt
 
         response = self._get_client().responses.create(
-            model=self._model,
-            input=input_messages,
+            **request_args,
         )
 
         usage: dict[str, object] = {}
