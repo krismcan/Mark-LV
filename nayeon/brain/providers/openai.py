@@ -1,0 +1,87 @@
+"""OpenAI provider for Nayeon's AI service."""
+
+from __future__ import annotations
+
+from openai import OpenAI
+
+from nayeon.brain.service import AIMessage, AIResponse
+from nayeon.secrets.store import SecretStore
+
+
+class OpenAIProvider:
+    """OpenAI-backed provider for Nayeon's reasoning model."""
+
+    name = "openai"
+
+    def __init__(
+        self,
+        secrets: SecretStore,
+        *,
+        model: str = "gpt-5.6",
+    ) -> None:
+        self._secrets = secrets
+        self._model = model
+        self._client: OpenAI | None = None
+
+    @property
+    def model(self) -> str:
+        """Return the configured OpenAI model."""
+
+        return self._model
+
+    def _get_client(self) -> OpenAI:
+        """Create the OpenAI client when it is first needed."""
+
+        if self._client is None:
+            api_key = self._secrets.require("OPENAI_API_KEY")
+            self._client = OpenAI(api_key=api_key)
+
+        return self._client
+
+    def generate(
+        self,
+        messages: list[AIMessage],
+        *,
+        system_prompt: str | None = None,
+    ) -> AIResponse:
+        """Generate a response using the OpenAI Responses API."""
+
+        input_messages: list[dict[str, str]] = []
+
+        for message in messages:
+            input_messages.append(
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+            )
+
+        if system_prompt:
+            input_messages.insert(
+                0,
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+            )
+
+        response = self._get_client().responses.create(
+            model=self._model,
+            input=input_messages,
+        )
+
+        usage: dict[str, object] = {}
+
+        if response.usage is not None:
+            usage = {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+
+        return AIResponse(
+            text=response.output_text,
+            provider=self.name,
+            model=self._model,
+            usage=usage,
+        )
