@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nayeon.registry import CapabilityRegistry, Capability
+
 from .task import TaskKind, TaskRequest
 
 
@@ -14,10 +16,14 @@ class RoutingDecision:
     task: TaskRequest
     use_llm: bool
     reason: str
+    capability: Capability | None = None
 
 
 class TaskRouter:
     """Classify tasks and decide whether an LLM is required."""
+
+    def __init__(self, registry: CapabilityRegistry) -> None:
+        self._registry = registry
 
     def route(self, request: str) -> RoutingDecision:
         """Return a routing decision for a user request."""
@@ -27,7 +33,29 @@ class TaskRouter:
         if not normalized:
             raise ValueError("Task request cannot be empty.")
 
-        kind = self._classify(normalized)
+        capability = self._find_capability(normalized)
+
+        if capability is not None:
+            task = TaskRequest(
+                request=request,
+                kind=TaskKind(capability.execution_mode.value),
+                metadata={
+                    "capability": capability.name,
+                    "service": capability.service,
+                },
+            )
+
+            return RoutingDecision(
+                task=task,
+                use_llm=capability.requires_llm,
+                reason=(
+                    f"Matched capability '{capability.name}' "
+                    f"for service '{capability.service}'."
+                ),
+                capability=capability,
+            )
+
+        kind = self._classify_fallback(normalized)
 
         task = TaskRequest(
             request=request,
@@ -38,44 +66,46 @@ class TaskRouter:
             return RoutingDecision(
                 task=task,
                 use_llm=False,
-                reason="Task can be handled by a deterministic local capability.",
+                reason=(
+                    "Task can be handled by a deterministic "
+                    "local capability."
+                ),
             )
 
         if kind == TaskKind.LLM_ASSISTED:
             return RoutingDecision(
                 task=task,
                 use_llm=True,
-                reason="Task requires interpretation or summarisation.",
+                reason=(
+                    "No known local capability matched; "
+                    "interpretation or summarisation may be required."
+                ),
             )
 
         return RoutingDecision(
             task=task,
             use_llm=True,
-            reason="Task requires planning or multi-step reasoning.",
+            reason=(
+                "No known capability matched; "
+                "planning or multi-step reasoning may be required."
+            ),
         )
 
-    def _classify(self, request: str) -> TaskKind:
-        """Classify obvious deterministic tasks without calling an LLM."""
+    def _find_capability(
+        self,
+        request: str,
+    ) -> Capability | None:
+        """Return the first capability matching the request."""
 
-        local_prefixes = (
-            "open ",
-            "launch ",
-            "start ",
-            "close ",
-            "rename ",
-            "move ",
-            "copy ",
-            "delete ",
-            "create ",
-            "turn the volume",
-            "increase the volume",
-            "decrease the volume",
-            "turn on ",
-            "turn off ",
-        )
+        for capability in self._registry.all():
+            for pattern in capability.intent_patterns:
+                if request.startswith(pattern.lower()):
+                    return capability
 
-        if request.startswith(local_prefixes):
-            return TaskKind.LOCAL
+        return None
+
+    def _classify_fallback(self, request: str) -> TaskKind:
+        """Classify requests that do not match a known capability."""
 
         llm_assisted_phrases = (
             "summarise ",
@@ -104,6 +134,6 @@ class TaskRouter:
         if request.startswith(agentic_phrases):
             return TaskKind.AGENTIC
 
-        # Until richer intent detection exists, ambiguous requests are
-        # treated as LLM-assisted rather than pretending we know their intent.
+        # Ambiguous requests are treated as LLM-assisted until
+        # richer intent matching exists.
         return TaskKind.LLM_ASSISTED
