@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from nayeon.policy.permissions import PermissionService
 from nayeon.registry import Capability
 
 
@@ -35,10 +36,23 @@ class PolicyDecision:
 class PolicyService:
     """Decides whether a capability may execute."""
 
-    def __init__(self, blocked_capabilities: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        permissions: PermissionService | None = None,
+        blocked_capabilities: set[str] | None = None,
+    ) -> None:
+        self._permissions = permissions or PermissionService(default_allowed=True)
         self._blocked_capabilities = blocked_capabilities or set()
 
     def evaluate(self, capability: Capability) -> PolicyDecision:
+        permission = self._permissions.check(capability.name)
+
+        if not permission.allowed:
+            return PolicyDecision(
+                action=PolicyAction.DENY,
+                reason=permission.reason,
+            )
+
         if capability.name in self._blocked_capabilities:
             return PolicyDecision(
                 action=PolicyAction.DENY,
