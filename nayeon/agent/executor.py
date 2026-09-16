@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from nayeon.audit.service import AuditEventType, AuditService
 from nayeon.policy.confirmation import (
     ConfirmationRequest,
     ConfirmationService,
@@ -43,10 +44,12 @@ class ActionExecutor:
         registry: CapabilityRegistry,
         policy: PolicyService,
         confirmation: ConfirmationService,
+        audit: AuditService,
     ) -> None:
         self._registry = registry
         self._policy = policy
         self._confirmation = confirmation
+        self._audit = audit
 
     def execute(
         self,
@@ -54,6 +57,13 @@ class ActionExecutor:
         request: str,
     ) -> ExecutionResult:
         policy_decision = self._policy.evaluate(capability)
+
+        self._audit.record(
+            AuditEventType.POLICY_DECISION,
+            capability=capability.name,
+            outcome=policy_decision.action.value,
+            message=policy_decision.reason,
+        )
 
         if policy_decision.action is PolicyAction.DENY:
             return ExecutionResult(
@@ -67,6 +77,13 @@ class ActionExecutor:
             confirmation_request = self._confirmation.create(
                 capability=capability.name,
                 request=request,
+            )
+
+            self._audit.record(
+                AuditEventType.CONFIRMATION_CREATED,
+                capability=capability.name,
+                outcome="pending",
+                message="Confirmation required before execution.",
             )
 
             return ExecutionResult(
@@ -97,13 +114,34 @@ class ActionExecutor:
         )
 
         if not confirmation_result.approved:
+            self._audit.record(
+                AuditEventType.CONFIRMATION_REJECTED,
+                capability=capability.name,
+                outcome="denied",
+                message=confirmation_result.reason,
+            )
+
             return ExecutionResult(
                 status=ExecutionStatus.DENIED,
                 capability=capability.name,
                 message=confirmation_result.reason,
             )
 
+        self._audit.record(
+            AuditEventType.CONFIRMATION_APPROVED,
+            capability=capability.name,
+            outcome="approved",
+            message=confirmation_result.reason,
+        )
+
         policy_decision = self._policy.evaluate(capability)
+
+        self._audit.record(
+            AuditEventType.POLICY_DECISION,
+            capability=capability.name,
+            outcome=policy_decision.action.value,
+            message=policy_decision.reason,
+        )
 
         if policy_decision.action is PolicyAction.DENY:
             return ExecutionResult(
@@ -127,6 +165,13 @@ class ActionExecutor:
     ) -> ExecutionResult:
         confirmation_result = self._confirmation.reject(token)
 
+        self._audit.record(
+            AuditEventType.CONFIRMATION_REJECTED,
+            capability=capability.name,
+            outcome="denied",
+            message=confirmation_result.reason,
+        )
+
         return ExecutionResult(
             status=ExecutionStatus.DENIED,
             capability=capability.name,
@@ -143,22 +188,54 @@ class ActionExecutor:
         implementation = self._registry.get_implementation(capability.name)
 
         if implementation is None:
+            message = f"No implementation registered for '{capability.name}'."
+
+            self._audit.record(
+                AuditEventType.EXECUTION_FAILED,
+                capability=capability.name,
+                outcome="failed",
+                message=message,
+            )
+
             return ExecutionResult(
                 status=ExecutionStatus.FAILED,
                 capability=capability.name,
-                message=f"No implementation registered for '{capability.name}'.",
+                message=message,
                 policy_decision=policy_decision,
             )
+
+        self._audit.record(
+            AuditEventType.EXECUTION_STARTED,
+            capability=capability.name,
+            outcome="started",
+            message=f"Capability '{capability.name}' execution started.",
+        )
 
         try:
             output = implementation.execute(request)
         except Exception as exc:
+            message = f"Capability '{capability.name}' failed: {exc}"
+
+            self._audit.record(
+                AuditEventType.EXECUTION_FAILED,
+                capability=capability.name,
+                outcome="failed",
+                message=message,
+            )
+
             return ExecutionResult(
                 status=ExecutionStatus.FAILED,
                 capability=capability.name,
-                message=f"Capability '{capability.name}' failed: {exc}",
+                message=message,
                 policy_decision=policy_decision,
             )
+
+        self._audit.record(
+            AuditEventType.EXECUTION_SUCCEEDED,
+            capability=capability.name,
+            outcome="success",
+            message=f"Capability '{capability.name}' executed successfully.",
+        )
 
         return ExecutionResult(
             status=ExecutionStatus.EXECUTED,
