@@ -13,6 +13,8 @@ from nayeon.policy.confirmation import (
 )
 from nayeon.policy.service import PolicyAction, PolicyDecision, PolicyService
 from nayeon.registry import Capability, CapabilityRegistry
+from nayeon.undo.contract import UndoProvider
+from nayeon.undo.service import UndoService
 
 
 class ExecutionStatus(str, Enum):
@@ -45,11 +47,13 @@ class ActionExecutor:
         policy: PolicyService,
         confirmation: ConfirmationService,
         audit: AuditService,
+        undo: UndoService,
     ) -> None:
         self._registry = registry
         self._policy = policy
         self._confirmation = confirmation
         self._audit = audit
+        self._undo = undo
 
     def execute(
         self,
@@ -204,6 +208,28 @@ class ActionExecutor:
                 policy_decision=policy_decision,
             )
 
+        # A capability must never claim to be reversible unless it can
+        # actually provide a concrete undo operation.
+        if capability.reversible and not isinstance(implementation, UndoProvider):
+            message = (
+                f"Capability '{capability.name}' is marked reversible "
+                "but does not provide an undo operation."
+            )
+
+            self._audit.record(
+                AuditEventType.EXECUTION_FAILED,
+                capability=capability.name,
+                outcome="configuration_error",
+                message=message,
+            )
+
+            return ExecutionResult(
+                status=ExecutionStatus.FAILED,
+                capability=capability.name,
+                message=message,
+                policy_decision=policy_decision,
+            )
+
         self._audit.record(
             AuditEventType.EXECUTION_STARTED,
             capability=capability.name,
@@ -236,6 +262,66 @@ class ActionExecutor:
             outcome="success",
             message=f"Capability '{capability.name}' executed successfully.",
         )
+
+        if capability.reversible:
+            assert isinstance(implementation, UndoProvider)
+
+            try:
+                registration = implementation.build_undo(
+                    request=request,
+                    output=output,
+                )
+
+                undo_operation = self._undo.register(
+                    capability=capability.name,
+                    description=registration.description,
+                    callback=registration.callback,
+                )
+            except Exception as exc:
+                self._audit.record(
+                    AuditEventType.UNDO_REGISTRATION_FAILED,
+                    capability=capability.name,
+                    outcome="failed",
+                    message=(
+                        f"Capability '{capability.name}' executed, "
+                        "but undo could not be registered."
+                    ),
+                    details={
+                        "error_type": type(exc).__name__,
+                    },
+                )
+
+                return ExecutionResult(
+                    status=ExecutionStatus.EXECUTED,
+                    capability=capability.name,
+                    message=(
+                        f"Capability '{capability.name}' executed, "
+                        "but undo could not be registered."
+                    ),
+                    output=output,
+                    policy_decision=policy_decision,
+                )
+
+            self._audit.record(
+                AuditEventType.UNDO_REGISTERED,
+                capability=capability.name,
+                outcome="registered",
+                message=f"Undo registered for '{capability.name}'.",
+                details={
+                    "operation_id": undo_operation.operation_id,
+                },
+            )
+
+            return ExecutionResult(
+                status=ExecutionStatus.EXECUTED,
+                capability=capability.name,
+                message=(
+                    f"Capability '{capability.name}' executed. "
+                    "Undo is available."
+                ),
+                output=output,
+                policy_decision=policy_decision,
+            )
 
         return ExecutionResult(
             status=ExecutionStatus.EXECUTED,

@@ -19,7 +19,8 @@ class AuditEventType(str, Enum):
     EXECUTION_STARTED = "execution_started"
     EXECUTION_SUCCEEDED = "execution_succeeded"
     EXECUTION_FAILED = "execution_failed"
-
+    UNDO_REGISTERED = "undo_registered"
+    UNDO_REGISTRATION_FAILED = "undo_registration_failed"
 
 @dataclass(frozen=True)
 class AuditEvent:
