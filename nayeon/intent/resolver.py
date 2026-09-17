@@ -30,6 +30,9 @@ class IntentResolver:
     Local deterministic understanding is preferred when confidence is high.
     Semantic reasoning is used only when the local result is missing or
     insufficiently confident.
+
+    Neither local nor semantic interpretations are allowed through unless
+    they meet their configured confidence threshold.
     """
 
     def __init__(
@@ -38,15 +41,22 @@ class IntentResolver:
         local: IntentInterpreter,
         semantic: IntentInterpreter | None = None,
         local_confidence_threshold: float = 0.90,
+        semantic_confidence_threshold: float = 0.85,
     ) -> None:
-        if not 0.0 <= local_confidence_threshold <= 1.0:
-            raise ValueError(
-                "Local confidence threshold must be between 0.0 and 1.0."
-            )
+        self._validate_threshold(
+            local_confidence_threshold,
+            name="Local",
+        )
+
+        self._validate_threshold(
+            semantic_confidence_threshold,
+            name="Semantic",
+        )
 
         self._local = local
         self._semantic = semantic
         self._local_confidence_threshold = local_confidence_threshold
+        self._semantic_confidence_threshold = semantic_confidence_threshold
 
     def resolve(
         self,
@@ -71,8 +81,23 @@ class IntentResolver:
                 context=context,
             )
 
-            if semantic_result.understood:
+            if (
+                semantic_result.understood
+                and semantic_result.confidence
+                >= self._semantic_confidence_threshold
+            ):
                 return semantic_result
+
+            if semantic_result.understood:
+                return IntentResolution(
+                    intent=None,
+                    source=IntentSource.NONE,
+                    confidence=0.0,
+                    reason=(
+                        "Semantic interpretation was below the configured "
+                        "confidence threshold and was not accepted."
+                    ),
+                )
 
             return IntentResolution(
                 intent=None,
@@ -93,3 +118,14 @@ class IntentResolver:
                 "no semantic interpreter is available."
             ),
         )
+
+    @staticmethod
+    def _validate_threshold(
+        value: float,
+        *,
+        name: str,
+    ) -> None:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"{name} confidence threshold must be between 0.0 and 1.0."
+            )
