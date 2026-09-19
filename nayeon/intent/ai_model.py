@@ -128,7 +128,9 @@ class AISemanticModel:
         arguments = payload.get("arguments")
         reason = payload.get("reason")
 
-        if intent is not None and not isinstance(intent, str):
+        if intent is not None and (
+            not isinstance(intent, str) or not intent.strip()
+        ):
             return AISemanticModel._invalid_result(
                 "Semantic model returned an invalid intent value."
             )
