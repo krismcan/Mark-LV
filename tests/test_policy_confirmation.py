@@ -101,6 +101,17 @@ class ConfirmationTests(unittest.TestCase):
     def test_unknown_token_is_rejected(self):
         self.assertFalse(self.approve("not-issued").approved)
 
+    def test_opaque_binding_requires_the_same_identity(self):
+        binding = object()
+        pending = self.service.create("example", "do example", binding=binding)
+        self.assertTrue(self.service.approve(
+            pending.token, capability="example", request="do example", binding=binding
+        ).approved)
+
+    def test_missing_binding_cannot_approve_bound_token(self):
+        pending = self.service.create("example", "do example", binding=object())
+        self.assertFalse(self.approve(pending.token).approved)
+
     def test_capability_mismatch_rejects_and_consumes_token(self):
         token = self.create().token
         self.assertFalse(self.approve(token, capability="other").approved)

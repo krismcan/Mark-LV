@@ -59,3 +59,27 @@ Validation on the repository virtual environment (Python 3.12.10, Windows 11 AMD
 Python validation used approved execution outside the sandbox after the repository interpreter was blocked. No alternative interpreter or live provider was used. Full added-file diffs were reviewed before committing. No new production defect was exposed. These tests establish deterministic foundation coverage, not OS-effect verification or complete application coverage.
 
 The next product milestone is recorded in [current_state.md](current_state.md): structured execution integration for OpenAppCapability while preserving `execute(str)`, followed by integration through the existing ActionExecutor trust boundary. It is not part of this regression-baseline change.
+
+## 2026-09-20: structured capability execution
+
+Milestone: `nayeon-v1-structured-execution-01` (annotated). Commit message: `feat: integrate structured capability execution`. Resolve the milestone commit with `git rev-parse 'nayeon-v1-structured-execution-01^{}'`.
+
+Started from clean branch `nayeon-v1`, commit `60bf9bdb8c3ef4339e8a0f445bcfbbb900b9a7e6`, confirmed against the regression-baseline tag. The requested `services/application.py` path was found as `services/applications.py`.
+
+OpenApp now validates exactly one `application` argument, rejects missing/unknown keys and non-string/blank targets, trims surrounding whitespace, and revalidates before calling the existing service. Its legacy `execute(str)` path is retained.
+
+ActionExecutor adds explicit structured execute and approval entry points while sharing the existing permission/policy, execution, audit, and undo flow. Validation precedes policy. Isolated normalized snapshots bind pending actions to the original request, registered metadata, and implementation. Matching approval rechecks permission/policy; changed arguments, invalid input, changed registration, replay, expiry, and cross-path token use fail closed. ConfirmationService adds an optional opaque identity binding so legacy approval cannot redeem a structured action token, even through a different executor sharing the service. No structured arguments are serialized into confirmation bindings or audit records; structured validator/execution exception text is suppressed.
+
+Added 7 mocked OpenApp tests, 23 structured executor tests, and 2 confirmation binding tests. The original 89-test baseline remains green. Focused validation ran 63 tests successfully, then the complete suite discovered and passed **121 tests, 0 failures, 0 errors, 0 skipped**. Tests use fakes/mocks and temporary audit paths; no real applications, providers, credentials, or network calls were used.
+
+Validation on Python 3.12.10 / Windows 11 AMD64 using the repository `.venv`:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_open_app_structured tests.test_structured_executor tests.test_executor tests.test_policy_confirmation` | 63 passed after approved execution outside the sandbox; initial sandbox interpreter launch was blocked. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 121 passed. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Platform and Python diagnostics passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit. |
+
+Full diff reviewed before commit. No broader architecture change was required. Remaining limits: explicit structured API rather than automatic intent orchestration, process-local sequential confirmation state, legacy undo contract, and no independent verification of OS outcomes or new memory layer. See [current_state.md](current_state.md) for the API and trust-boundary details.

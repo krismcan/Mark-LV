@@ -31,12 +31,16 @@ class ConfirmationService:
 
         self._ttl = timedelta(seconds=ttl_seconds)
         self._pending: dict[str, ConfirmationRequest] = {}
+        self._bindings: dict[str, object] = {}
 
     def create(
         self,
         capability: str,
         request: str,
+        *,
+        binding: object | None = None,
     ) -> ConfirmationRequest:
+        """Optionally bind approval to an opaque, in-memory action identity."""
         capability = capability.strip()
         request = request.strip()
 
@@ -58,6 +62,8 @@ class ConfirmationService:
         )
 
         self._pending[token] = confirmation
+        if binding is not None:
+            self._bindings[token] = binding
         return confirmation
 
     def approve(
@@ -66,8 +72,10 @@ class ConfirmationService:
         *,
         capability: str,
         request: str,
+        binding: object | None = None,
     ) -> ConfirmationResult:
         confirmation = self._pending.pop(token, None)
+        expected_binding = self._bindings.pop(token, None)
 
         if confirmation is None:
             return ConfirmationResult(
@@ -95,6 +103,12 @@ class ConfirmationService:
                 reason="Confirmation does not match the requested action.",
             )
 
+        if expected_binding is not binding:
+            return ConfirmationResult(
+                approved=False,
+                reason="Confirmation does not match the action binding.",
+            )
+
         return ConfirmationResult(
             approved=True,
             reason="Action confirmed.",
@@ -102,6 +116,7 @@ class ConfirmationService:
 
     def reject(self, token: str) -> ConfirmationResult:
         confirmation = self._pending.pop(token, None)
+        self._bindings.pop(token, None)
 
         if confirmation is None:
             return ConfirmationResult(

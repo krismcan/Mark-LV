@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
 from nayeon.audit.service import AuditEventType, AuditService
+from nayeon.capabilities.structured import StructuredCapability, StructuredCapabilityRequest
 from nayeon.policy.confirmation import (
     ConfirmationRequest,
     ConfirmationService,
@@ -38,6 +41,15 @@ class ExecutionResult:
         return self.status is ExecutionStatus.EXECUTED
 
 
+@dataclass(frozen=True, repr=False)
+class _StructuredAction:
+    capability: Capability
+    implementation: StructuredCapability
+    request: str
+    arguments: dict[str, Any]
+    binding: object = field(default_factory=object)
+
+
 class ActionExecutor:
     """Executes registered capabilities only after policy approval."""
 
@@ -54,11 +66,88 @@ class ActionExecutor:
         self._confirmation = confirmation
         self._audit = audit
         self._undo = undo
+        self._structured_pending: dict[str, tuple[ConfirmationRequest, _StructuredAction]] = {}
+
+    def _prepare_structured(
+        self, capability: Capability, request: StructuredCapabilityRequest,
+    ) -> _StructuredAction:
+        # Resolve authoritative metadata, not caller-supplied policy flags.
+        registered = self._registry.get(capability.name)
+        implementation = self._registry.get_implementation(capability.name)
+        if registered is None or not isinstance(implementation, StructuredCapability):
+            raise ValueError("Registered structured implementation required.")
+        arguments = implementation.validate_arguments(deepcopy(request.arguments))
+        if not isinstance(arguments, dict):
+            raise TypeError("Validation must return a dictionary.")
+        return _StructuredAction(
+            deepcopy(registered), implementation, request.original_request,
+            deepcopy(arguments),
+        )
+
+    def _structured_failure(self, capability: Capability) -> ExecutionResult:
+        # Validator exceptions may contain arguments or credentials. Never echo them.
+        message = "Structured capability validation failed."
+        self._audit.record(
+            AuditEventType.EXECUTION_FAILED, capability=capability.name,
+            outcome="validation_failed", message=message,
+        )
+        return ExecutionResult(ExecutionStatus.FAILED, capability.name, message)
+
+    def _prune_structured_pending(self) -> None:
+        now = datetime.now(timezone.utc)
+        for token, (confirmation, _) in tuple(self._structured_pending.items()):
+            if now > confirmation.expires_at:
+                self._structured_pending.pop(token)
+                self._confirmation.reject(token)
+
+    def execute_structured(
+        self, capability: Capability, request: StructuredCapabilityRequest,
+    ) -> ExecutionResult:
+        """Validate untrusted arguments before entering the shared trust boundary."""
+        self._prune_structured_pending()
+        try:
+            action = self._prepare_structured(capability, request)
+        except Exception:
+            return self._structured_failure(capability)
+        return self._begin_execution(action.capability, action.request, action)
+
+    def approve_and_execute_structured(
+        self, token: str, *, capability: Capability,
+        request: StructuredCapabilityRequest,
+    ) -> ExecutionResult:
+        """Approve only the same validated action; consume mismatches as rejections."""
+        self._prune_structured_pending()
+        pending = self._structured_pending.pop(token, None)
+        if pending is None:
+            return self.reject(token, capability=capability)
+        _, action = pending
+        try:
+            candidate = self._prepare_structured(capability, request)
+            matches = (
+                candidate.capability == action.capability
+                and candidate.implementation is action.implementation
+                and candidate.request == action.request
+                and candidate.arguments == action.arguments
+            )
+        except Exception:
+            matches = False
+        if not matches:
+            return self.reject(token, capability=capability)
+        return self._approve_execution(
+            token, capability=action.capability, request=action.request,
+            structured=action,
+        )
 
     def execute(
         self,
         capability: Capability,
         request: str,
+    ) -> ExecutionResult:
+        return self._begin_execution(capability, request)
+
+    def _begin_execution(
+        self, capability: Capability, request: str,
+        structured: _StructuredAction | None = None,
     ) -> ExecutionResult:
         policy_decision = self._policy.evaluate(capability)
 
@@ -81,7 +170,13 @@ class ActionExecutor:
             confirmation_request = self._confirmation.create(
                 capability=capability.name,
                 request=request,
+                binding=structured.binding if structured else None,
             )
+
+            if structured is not None:
+                self._structured_pending[confirmation_request.token] = (
+                    confirmation_request, structured,
+                )
 
             self._audit.record(
                 AuditEventType.CONFIRMATION_CREATED,
@@ -102,6 +197,7 @@ class ActionExecutor:
             capability=capability,
             request=request,
             policy_decision=policy_decision,
+            structured=structured,
         )
 
     def approve_and_execute(
@@ -111,10 +207,18 @@ class ActionExecutor:
         capability: Capability,
         request: str,
     ) -> ExecutionResult:
+        self._structured_pending.pop(token, None)
+        return self._approve_execution(token, capability=capability, request=request)
+
+    def _approve_execution(
+        self, token: str, *, capability: Capability, request: str,
+        structured: _StructuredAction | None = None,
+    ) -> ExecutionResult:
         confirmation_result = self._confirmation.approve(
             token,
             capability=capability.name,
             request=request,
+            binding=structured.binding if structured else None,
         )
 
         if not confirmation_result.approved:
@@ -159,6 +263,7 @@ class ActionExecutor:
             capability=capability,
             request=request,
             policy_decision=policy_decision,
+            structured=structured,
         )
 
     def reject(
@@ -167,6 +272,7 @@ class ActionExecutor:
         *,
         capability: Capability,
     ) -> ExecutionResult:
+        self._structured_pending.pop(token, None)
         confirmation_result = self._confirmation.reject(token)
 
         self._audit.record(
@@ -188,6 +294,7 @@ class ActionExecutor:
         capability: Capability,
         request: str,
         policy_decision: PolicyDecision,
+        structured: _StructuredAction | None = None,
     ) -> ExecutionResult:
         implementation = self._registry.get_implementation(capability.name)
 
@@ -238,9 +345,21 @@ class ActionExecutor:
         )
 
         try:
-            output = implementation.execute(request)
+            if structured is None:
+                output = implementation.execute(request)
+            else:
+                if (implementation is not structured.implementation
+                        or self._registry.get(capability.name) != structured.capability):
+                    raise ValueError("Structured capability registration changed.")
+                output = structured.implementation.execute_structured(
+                    deepcopy(structured.arguments)
+                )
         except Exception as exc:
-            message = f"Capability '{capability.name}' failed: {exc}"
+            message = (
+                f"Capability '{capability.name}' failed."
+                if structured is not None
+                else f"Capability '{capability.name}' failed: {exc}"
+            )
 
             self._audit.record(
                 AuditEventType.EXECUTION_FAILED,

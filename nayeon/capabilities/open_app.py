@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from nayeon.capabilities.base import CapabilityModule
 from nayeon.registry import Capability, ExecutionMode
 from nayeon.services.applications import ApplicationService
@@ -36,6 +39,24 @@ class OpenAppCapability(CapabilityModule):
         target = self._extract_target(request)
 
         return self._service.launch(target)
+
+    def validate_arguments(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Validate an application target without performing any OS action."""
+        if not isinstance(arguments, Mapping):
+            raise TypeError("Application arguments must be a mapping.")
+        if set(arguments) != {"application"}:
+            raise ValueError("Exactly the application argument is required.")
+        application = arguments["application"]
+        if not isinstance(application, str):
+            raise TypeError("Application must be a string.")
+        if not application.strip():
+            raise ValueError("Application must not be blank.")
+        return {"application": application.strip()}
+
+    def execute_structured(self, arguments: Mapping[str, Any]) -> object:
+        """Revalidate before delegating to the existing application service."""
+        validated = self.validate_arguments(arguments)
+        return self._service.launch(validated["application"])
 
     @staticmethod
     def _extract_target(request: str) -> str:
