@@ -3,9 +3,9 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Verified checkpoint entering this milestone: `60bf9bdb8c3ef4339e8a0f445bcfbbb900b9a7e6`, `test: establish Nayeon regression baseline`.
-- Previous annotated milestone: `nayeon-v1-regression-baseline-01` (points to that commit).
-- Current milestone: `nayeon-v1-structured-execution-01`, commit message `feat: integrate structured capability execution`. Resolve its exact commit with `git rev-parse 'nayeon-v1-structured-execution-01^{}'` rather than embedding a self-referential hash.
+- Current verified product commit: `036b006779bb229f3435182c841c95a311b1776d`, `feat: integrate structured capability execution`.
+- Current annotated product milestone: `nayeon-v1-structured-execution-01` (points to that commit).
+- Previous milestone: `nayeon-v1-regression-baseline-01`. Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
 - Structured execution is now supported; legacy string execution and the existing semantic parser behavior remain supported unchanged.
 
 ## Architecture stage
@@ -67,17 +67,19 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## Known gaps and limits
 
-- Structured execution is an explicit executor API, not a new automatic conversational runtime. Local intent still emits its legacy `request` argument; no automatic schema translation or dispatch execution is added. Callers must supply capability-specific arguments and use the executor.
+- Structured execution exists as an explicit ActionExecutor API, but automatic conversational orchestration from IntentResolution / DispatchPlan into the executor is not yet implemented. Local OpenApp intent still emits its legacy `request` argument; deterministic mapping to `application` must be determined before implementing the bridge. Callers currently supply capability-specific arguments and use the executor.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
 - No dedicated Nayeon result-verification or memory layer exists. Executor completion status is not independent proof of an OS outcome. Undo registration failure is a separately reported partial outcome after execution; undo callbacks that fail are removed from the stack rather than retried automatically.
 - Structured undo retains `UndoProvider.build_undo(request: str, output)`. Reversible implementations must derive concrete undo from execution output/state; no structured undo contract was invented. OpenApp remains non-reversible.
 - Pending approvals and their snapshots are process-local, and there is no new concurrency or persistence guarantee. The structured executor is intended for the existing sequential runtime, not concurrent registry mutation.
-- This is a deterministic foundation baseline, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No new production defect was exposed by this suite.
-- The requested service path `nayeon/services/application.py` is actually `nayeon/services/applications.py`. The starting branch, tag, and clean tree matched.
+- Current validation is deterministic regression coverage, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No live OS, provider, or network behavior was exercised by this milestone.
 
-## Milestone completion and next work
+## Next intended architectural milestone
 
-The planned structured OpenApp migration and ActionExecutor integration are complete. Further product scope awaits review; automatic conversational orchestration and independent result verification are not implemented here.
+Structured orchestration bridge:
+connect DispatchPlan / resolved intent output to ActionExecutor without allowing dispatch or the model to execute actions directly. Preserve capability-specific validation and the complete Permission -> Policy -> Confirmation -> Execution trust boundary. Determine the correct deterministic argument mapping for local OpenApp intent before implementation.
+
+This is planning/state documentation only; the bridge is not implemented in the current milestone.
 
 Keep Permission -> Policy -> Confirmation -> Execution, audit, undo, and backward compatibility intact. Read [AGENTS.md](../AGENTS.md) before further implementation.
