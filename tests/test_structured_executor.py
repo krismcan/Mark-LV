@@ -82,7 +82,8 @@ class StructuredExecutorTests(unittest.TestCase):
         self.fake.execute_structured.assert_called_once_with({"application": "app"})
         self.fake.execute.assert_not_called()
         self.assertEqual(self.events(), [AuditEventType.POLICY_DECISION,
-                         AuditEventType.EXECUTION_STARTED, AuditEventType.EXECUTION_SUCCEEDED])
+                         AuditEventType.EXECUTION_STARTED, AuditEventType.EXECUTION_SUCCEEDED,
+                         AuditEventType.VERIFICATION_OUTCOME])
 
     def test_validation_precedes_permission_policy(self):
         calls = []
@@ -248,7 +249,8 @@ class StructuredExecutorTests(unittest.TestCase):
         self.fake.build_undo.assert_called_once_with(
             request=self.request.original_request, output=result.output
         )
-        self.assertEqual(self.events()[-1], AuditEventType.UNDO_REGISTERED)
+        self.assertEqual(self.events()[-2:], [AuditEventType.UNDO_REGISTERED,
+                                            AuditEventType.VERIFICATION_OUTCOME])
         self.assertTrue(self.undo.undo_last().success)
         self.fake.restore.assert_called_once_with()
 
@@ -258,5 +260,6 @@ class StructuredExecutorTests(unittest.TestCase):
         result = self.execute()
         self.assertTrue(result.succeeded)
         self.assertIn("undo could not be registered", result.message)
-        self.assertEqual(self.events()[-1], AuditEventType.UNDO_REGISTRATION_FAILED)
+        self.assertEqual(self.events()[-2:], [AuditEventType.UNDO_REGISTRATION_FAILED,
+                                            AuditEventType.VERIFICATION_OUTCOME])
         self.assertNotIn("fake-sensitive-value", repr(self.audit.all()))

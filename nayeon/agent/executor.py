@@ -18,6 +18,8 @@ from nayeon.policy.service import PolicyAction, PolicyDecision, PolicyService
 from nayeon.registry import Capability, CapabilityRegistry
 from nayeon.undo.contract import UndoProvider
 from nayeon.undo.service import UndoService
+from nayeon.verification.contract import VerificationResult
+from nayeon.verification.service import VerificationService
 
 
 class ExecutionStatus(str, Enum):
@@ -35,9 +37,11 @@ class ExecutionResult:
     output: Any = None
     policy_decision: PolicyDecision | None = None
     confirmation_request: ConfirmationRequest | None = None
+    verification: VerificationResult = field(default_factory=VerificationResult)
 
     @property
     def succeeded(self) -> bool:
+        """Execution returned successfully; this does not assert a verified outcome."""
         return self.status is ExecutionStatus.EXECUTED
 
 
@@ -66,6 +70,7 @@ class ActionExecutor:
         self._confirmation = confirmation
         self._audit = audit
         self._undo = undo
+        self._verification = VerificationService()
         self._structured_pending: dict[str, tuple[ConfirmationRequest, _StructuredAction]] = {}
 
     def _prepare_structured(
@@ -382,6 +387,7 @@ class ActionExecutor:
             message=f"Capability '{capability.name}' executed successfully.",
         )
 
+        message = f"Capability '{capability.name}' executed."
         if capability.reversible:
             assert isinstance(implementation, UndoProvider)
 
@@ -410,42 +416,43 @@ class ActionExecutor:
                     },
                 )
 
-                return ExecutionResult(
-                    status=ExecutionStatus.EXECUTED,
-                    capability=capability.name,
-                    message=(
-                        f"Capability '{capability.name}' executed, "
-                        "but undo could not be registered."
-                    ),
-                    output=output,
-                    policy_decision=policy_decision,
+                message = (
+                    f"Capability '{capability.name}' executed, "
+                    "but undo could not be registered."
                 )
+            else:
+                self._audit.record(
+                    AuditEventType.UNDO_REGISTERED,
+                    capability=capability.name,
+                    outcome="registered",
+                    message=f"Undo registered for '{capability.name}'.",
+                    details={
+                        "operation_id": undo_operation.operation_id,
+                    },
+                )
+                message = f"Capability '{capability.name}' executed. Undo is available."
 
-            self._audit.record(
-                AuditEventType.UNDO_REGISTERED,
-                capability=capability.name,
-                outcome="registered",
-                message=f"Undo registered for '{capability.name}'.",
-                details={
-                    "operation_id": undo_operation.operation_id,
-                },
-            )
-
-            return ExecutionResult(
-                status=ExecutionStatus.EXECUTED,
-                capability=capability.name,
-                message=(
-                    f"Capability '{capability.name}' executed. "
-                    "Undo is available."
-                ),
-                output=output,
-                policy_decision=policy_decision,
-            )
-
+        # Use the implementation that executed, never a fresh registry lookup.
+        # Structured arguments come from the bound normalized snapshot, not from
+        # caller input, approval reinterpretation, or the capability's mutable copy.
+        verification_request = (
+            StructuredCapabilityRequest(structured.request, structured.arguments)
+            if structured is not None else request
+        )
+        verification = self._verification.verify(
+            implementation, request=verification_request, output=output,
+        )
+        self._audit.record(
+            AuditEventType.VERIFICATION_OUTCOME,
+            capability=capability.name,
+            outcome=verification.status.value,
+            message="Post-execution verification completed.",
+        )
         return ExecutionResult(
             status=ExecutionStatus.EXECUTED,
             capability=capability.name,
-            message=f"Capability '{capability.name}' executed.",
+            message=message,
             output=output,
             policy_decision=policy_decision,
+            verification=verification,
         )

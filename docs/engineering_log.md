@@ -135,3 +135,29 @@ Validation using the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
 | `git diff --check` and `git diff --cached --check` | Passed before commit. |
 
 Complete diff reviewed before commit. No pre-existing production defect or checkpoint discrepancy was found. The session is a process-local, sequential API with no persistence or UI integration; trusted host code owns its lifetime and approval entry points. Broader capability orchestration, session undo, existing string-based structured undo, and host exception handling remain limitations. The next architectural gap is independent result verification; memory remains later. No verification or memory layer was implemented, and historical entries above are preserved.
+
+## 2026-09-24: result verification foundation
+
+Milestone: `nayeon-v1-result-verification-01` (annotated). Commit message: `feat: add result verification foundation`. Resolve the feature commit with `git rev-parse 'nayeon-v1-result-verification-01^{}'`.
+
+Started from clean branch `nayeon-v1`, HEAD `a564c4747a20727e90261b26bf370e65b99f4e88`. Confirmed the session milestone tag targets `49c275d388d0a56d9c1a686d15ed9d6ca200864d`. The existing 175-test baseline was retained; prior tags and historical entries were not changed.
+
+Inspection found a single ExecutionResult shared by legacy/structured execution and session passthrough, optional UndoProvider detection, isolated normalized structured snapshots, and audit events already ordered through execution and undo registration. The smallest integration was an appended verification field and optional capability-owned verification protocol, coordinated by the existing executor after execution. No session redesign, competing executor, changed token identity, or relocated OS side effect was needed.
+
+Added VerificationStatus (VERIFIED, NOT_VERIFIED, INDETERMINATE), VerificationResult, VerificationProvider, and VerificationService. Execution status/succeeded remain execution-only; absent observers never imply a verified real-world outcome. The same implementation that executed receives isolated normalized structured request/output, or the original legacy string. Provider results are copied and revalidated; evidence must be plain JSON data. Missing providers, exceptions, invalid results, or isolation failure safely yield INDETERMINATE without changing execution history. Provider reasons/evidence must be non-secret; structural validation cannot certify their privacy or truth.
+
+Consolidated only the executor's successful return paths to preserve existing undo messages and registration outcomes before verification. Verification cannot run on failed, denied, rejected, cancelled, expired, or still-pending actions. The new VERIFICATION_OUTCOME event is appended after existing execution/undo events and records status only, never provider text, arguments, output, or evidence. Existing audit persistence failure propagation remains unchanged. OpenApp itself is unchanged and has no verifier: a launch return is not proof of an observed application state.
+
+Added 32 deterministic tests for all result states, safe defaults, invalid data, provider errors, copy isolation, normalized inputs, approval/replay/expiry/registration checks, unchanged undo, legacy execution, session approval without reinterpretation, cancellation, and safe audit content. Existing executor tests were adjusted only to expect the appended audit event, preserving their prior sequence assertions. No live model, credentials, network, or desktop actions were used.
+
+Validation with the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_verification tests.test_executor tests.test_structured_executor tests.test_session` | 101 passed. Sandbox interpreter launch was blocked; approved execution outside the sandbox succeeded. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 207 discovered, 207 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Platform and Python diagnostics passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit. |
+
+Full diff reviewed for trust-boundary changes. No checkpoint discrepancy or broader redesign was required. Deferred: the first production observation provider, observation deadlines/permissions, asynchronous checks, persistence, broader orchestration, session undo, and memory. Recommended smallest next milestone: define an OpenApp observation contract for a narrow supported outcome, then implement service-owned read-only checking with deterministic fake evidence; ambiguous identities remain INDETERMINATE. No further milestone was implemented here and nothing was pushed.

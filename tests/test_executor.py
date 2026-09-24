@@ -90,6 +90,7 @@ class ActionExecutorTests(unittest.TestCase):
         self.assertEqual(self.events(), [
             AuditEventType.POLICY_DECISION, AuditEventType.EXECUTION_STARTED,
             AuditEventType.EXECUTION_SUCCEEDED,
+            AuditEventType.VERIFICATION_OUTCOME,
         ])
 
     def test_confirmation_defers_execution_until_matching_approval(self):
@@ -103,6 +104,7 @@ class ActionExecutorTests(unittest.TestCase):
         self.assertEqual(self.events()[2:], [
             AuditEventType.CONFIRMATION_APPROVED, AuditEventType.POLICY_DECISION,
             AuditEventType.EXECUTION_STARTED, AuditEventType.EXECUTION_SUCCEEDED,
+            AuditEventType.VERIFICATION_OUTCOME,
         ])
 
     def test_approval_cannot_replay_execution(self):
@@ -181,8 +183,9 @@ class ActionExecutorTests(unittest.TestCase):
         fake.build_undo.assert_called_once_with(request="do example", output="test output")
         fake.restore.assert_not_called()
         self.assertEqual(self.undo.count(), 1)
-        self.assertEqual(self.events()[-1], AuditEventType.UNDO_REGISTERED)
-        self.assertEqual(self.audit.all()[-1].details["operation_id"], self.undo.peek().operation_id)
+        self.assertEqual(self.events()[-2:], [AuditEventType.UNDO_REGISTERED,
+                                            AuditEventType.VERIFICATION_OUTCOME])
+        self.assertEqual(self.audit.all()[-2].details["operation_id"], self.undo.peek().operation_id)
         self.assertTrue(self.undo.undo_last().success)
         fake.restore.assert_called_once_with()
 
@@ -195,8 +198,9 @@ class ActionExecutorTests(unittest.TestCase):
         self.assertEqual(result.output, "test output")
         self.assertIn("undo could not be registered", result.message)
         self.assertEqual(self.undo.count(), 0)
-        self.assertEqual(self.events()[-1], AuditEventType.UNDO_REGISTRATION_FAILED)
-        self.assertEqual(self.audit.all()[-1].details, {"error_type": "RuntimeError"})
+        self.assertEqual(self.events()[-2:], [AuditEventType.UNDO_REGISTRATION_FAILED,
+                                            AuditEventType.VERIFICATION_OUTCOME])
+        self.assertEqual(self.audit.all()[-2].details, {"error_type": "RuntimeError"})
 
     def test_audit_failure_before_execution_prevents_side_effect(self):
         capability = self.register()

@@ -3,11 +3,11 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current verified product commit: `49c275d388d0a56d9c1a686d15ed9d6ca200864d`, `feat: add session orchestration foundation`.
-- Current annotated product milestone: `nayeon-v1-session-orchestration-01` (points to that commit).
-- Previous product milestone: `nayeon-v1-structured-orchestration-01` at `e1945b494752b3a4ed87b42130e4e3636345357d`.
+- Current product milestone: `nayeon-v1-result-verification-01` (annotated), `feat: add result verification foundation`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-result-verification-01^{}'`.
+- Previous product milestone: `nayeon-v1-session-orchestration-01` at `49c275d388d0a56d9c1a686d15ed9d6ca200864d`.
 - Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
 - `ConversationSession` owns the sequential request and pending-confirmation lifecycle for `open_app`, the first bridged structured capability. ActionExecutor remains the trust boundary; legacy string execution and the existing semantic parser behavior remain supported unchanged.
+- Execution completion and outcome verification are now separate result fields. The optional verification foundation is implemented; OpenApp has no observation provider and remains explicitly unverified.
 
 ## Architecture stage
 
@@ -31,11 +31,12 @@ MEMORY retains appropriate context
 | Orchestration | `StructuredOrchestrationBridge` maps an `open_app` DispatchPlan into a StructuredCapabilityRequest and calls ActionExecutor exactly once. It calls no model, capability execution method, or OS service itself. Other capabilities and system controls are explicitly unsupported. |
 | Session | `ConversationSession` coordinates resolver, dispatcher, bridge, and executor; retains at most one isolated pending action; exposes explicit approval/rejection; and routes `cancel_pending` through executor rejection. `undo_last` is explicitly unsupported by this session. |
 | Structured capability | `OpenAppCapability` implements the optional `StructuredCapability` contract. It accepts only `application`, requires a non-blank string, trims surrounding whitespace, and revalidates before delegating to the existing application service. The executor validates before policy and runs structured actions through its shared trust boundary. |
+| Verification | After execution and undo registration, ActionExecutor calls VerificationService with the implementation that executed. Optional `VerificationProvider.verify_result` owns domain observation; `ExecutionResult.verification` carries a separate status, reason, and copied JSON evidence. No provider means INDETERMINATE. A status-only audit event follows existing events. |
 | Services and support | Platform-aware application service, capability registry/discovery, environment diagnostics, non-secret configuration, environment-backed secrets, audit service, and bounded in-memory undo service exist. |
 
 ## Regression status
 
-Validated on 2026-09-24 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **175 discovered, 175 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 175 test methods.
+Validated on 2026-09-24 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **207 discovered, 207 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 207 test methods.
 
 | Test module | Tests | Coverage |
 | --- | ---: | --- |
@@ -49,6 +50,7 @@ Validated on 2026-09-24 with the repository `.venv`, Python 3.12.10 on Windows 1
 | `tests/test_structured_executor.py` | 23 | Structured validation/policy/confirmation/execution, snapshot isolation, legacy-token separation, replay, expiry, audit redaction, undo, mocked OpenApp integration |
 | `tests/test_orchestration.py` | 24 | Bridge mapping, rejected plans, unchanged executor results, isolated pending snapshots, local resolver-to-executor flow, and real validation/policy/confirmation with mocked launch service |
 | `tests/test_session.py` | 30 | Local/semantic request lifecycle, exact stored approval, rejection/cancellation, mutation isolation, registration/permission changes, expiry, replay, and unsupported undo with no side effects |
+| `tests/test_verification.py` | 32 | Result/protocol validation, three outcome states, unavailable/failed observers, normalized-request and evidence isolation, confirmation timing, undo, legacy execution, unchanged session approval/cancellation, and status-only audit |
 
 Validation commands (run from the repository root):
 
@@ -88,22 +90,32 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 - Permission/policy are reevaluated after approval. Both paths share execution audit and undo registration. Structured validation/execution exceptions are reported without their potentially sensitive text. Pending snapshots are removed on approval/rejection; expired snapshots are pruned on subsequent structured calls.
 - `execute(capability, request: str)`, `approve_and_execute(...)`, and `OpenAppCapability.execute(str)` remain supported. OS launch logic stays in `ApplicationService`; no model, dispatch, or policy code performs an OS action.
 
+## Result verification semantics
+
+- `ExecutionResult.status` and `succeeded` retain their execution-only meanings. EXECUTED means the capability returned without an execution exception, not that its domain outcome occurred. Output-specific flags such as `LaunchResult.success` remain capability/service data; the executor does not reinterpret arbitrary return objects as proof.
+- The appended `verification` field defaults to `VerificationResult(INDETERMINATE, "Outcome has not been verified.")`, preserving existing constructor arguments. FAILED, DENIED, and REQUIRES_CONFIRMATION results do not run verification. Approved actions verify only after their exact stored action executes; replay, cancellation, expiry, and denied approvals do not invoke a verifier.
+- VERIFIED means a capability-owned check reports the requested outcome established. NOT_VERIFIED means a check reports the requested outcome was not established. INDETERMINATE means observation is unavailable or inconclusive, including missing providers, verifier exceptions, invalid results, or input/output isolation failure. None of these states changes execution history, output, undo registration, or execution status.
+- `VerificationProvider` is an optional runtime-checkable protocol, following the UndoProvider pattern. Its keyword-only `verify_result(request=..., output=...)` receives a deep copy of the normalized StructuredCapabilityRequest associated with the executed action, or the unchanged legacy string, plus a deep copy of output. It may inspect evidence or use service-owned observation; it must not repeat the original action, perform another action, or call a model. Session, dispatch, policy, and planning acquire no verification authority.
+- `VerificationService` copies and revalidates provider results. Evidence is limited to recursively copied plain JSON data with finite numbers and string dictionary keys. Providers must supply concise non-secret reasons and safe evidence; JSON validation cannot prove confidentiality or the truth of a provider's claim. Exception text is suppressed. Python protocol detection is not a sandbox for untrusted plugins.
+- Verification runs synchronously after successful execution and any undo-registration outcome, using the same implementation object that executed. It is observational and does not automatically retry, undo, or compensate. The appended `VERIFICATION_OUTCOME` audit event records the status only, including unavailable verification; arguments, output, provider reason, and evidence are not logged. Existing execution/undo event order is preserved. Audit persistence errors retain the existing propagation behavior.
+
 ## Known gaps and limits
 
 - `ConversationSession` exists as an explicit process-local agent API but is not yet wired into the legacy UI or a persistent host runtime. Trusted host code owns session lifetime and invokes approval/rejection entry points. Model output is never approval; executor exceptions remain the host's responsibility.
 - Broader capability orchestration and session-level undo integration remain deferred. System controls stay outside the bridge's capability execution path; the session handles cancellation only.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
-- No dedicated Nayeon result-verification or memory layer exists. Executor completion status is not independent proof of an OS outcome. Undo registration failure is a separately reported partial outcome after execution; undo callbacks that fail are removed from the stack rather than retried automatically.
+- The verification foundation exists, but no production capability yet implements an independent observation check. OpenApp therefore returns INDETERMINATE verification even when its launch method returns. OS outcome criteria and attributable observation evidence remain future work. No Nayeon memory layer exists. Undo registration failure remains a separately reported partial outcome after execution; undo callbacks that fail are removed from the stack rather than retried automatically.
+- Verifiers are trusted synchronous capability code: this foundation adds no observation timeout, retry scheduler, asynchronous verification, or persisted evidence store. Provider-specific truth, privacy, observation permissions, and bounded observation behavior require review when a real provider is introduced.
 - Structured undo retains `UndoProvider.build_undo(request: str, output)`. Reversible implementations must derive concrete undo from execution output/state; no structured undo contract was invented. OpenApp remains non-reversible.
 - Pending approvals and their snapshots are process-local. The session owns at most one pending action and is explicitly sequential: no concurrency, persistence, database, cross-process recovery, or multi-session coordination guarantee. Executor binding checks still reject changed registrations. Session and bridge snapshots use deep copies; their Python objects are not a security boundary against code modifying private state.
 - Current validation is deterministic regression coverage, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No live OS, provider, or network behavior was exercised by this milestone.
 
 ## Next intended architectural milestone
 
-Result verification foundation:
-introduce an independent verification layer that can distinguish "execution returned successfully" from "the requested real-world outcome actually occurred", without moving OS side effects into the model, agent planner, session coordinator, or policy layers.
+OpenApp observation contract:
+define a narrowly supported application-outcome criterion and service-owned read-only observation evidence, then implement the first VerificationProvider against that contract with deterministic fake observations. Return INDETERMINATE where identity or evidence is insufficient; never equate a launch receipt with a verified application outcome or repeat the launch during verification.
 
-This is planning/state documentation only; verification is not implemented in this milestone. Independent memory remains a later milestone.
+This is planning/state documentation only; no live OpenApp observation is implemented in this milestone. Independent memory remains a later milestone.
 
 Keep Permission -> Policy -> Confirmation -> Execution, audit, undo, and backward compatibility intact. Read [AGENTS.md](../AGENTS.md) before further implementation.
