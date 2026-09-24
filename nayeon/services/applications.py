@@ -10,8 +10,10 @@ import subprocess
 
 from nayeon.services.application_observation import (
     ApplicationDefinition, ApplicationObservation, ApplicationState,
-    DEFAULT_APPLICATIONS, windows_process_names,
+    ApplicationIdentity, ProcessIdentity, normalize_executable_path,
+    DEFAULT_APPLICATIONS, windows_process_identities,
 )
+import ntpath
 
 
 @dataclass(frozen=True)
@@ -40,17 +42,34 @@ class ApplicationService:
         if not isinstance(target, str) or platform.system() != "Windows":
             return unknown
         definition = self._applications.get(target.casefold())
-        if definition is None or not definition.expected_process_names:
+        if (definition is None or not definition.expected_process_names
+                or not definition.accepted_executable_paths):
             return unknown
         try:
-            names = windows_process_names()
-            if (not isinstance(names, frozenset) or not names
-                    or any(not isinstance(name, str) or not name for name in names)):
+            candidates = windows_process_identities(definition.expected_process_names)
+            if not isinstance(candidates, tuple):
                 return unknown
-            observed = bool(set(definition.expected_process_names) & {name.casefold() for name in names})
-            state = ApplicationState.OBSERVED_OPEN if observed else ApplicationState.OBSERVED_CLOSED
+            matched, unavailable = False, False
+            for candidate in candidates:
+                if (not isinstance(candidate, ProcessIdentity)
+                        or candidate.name not in definition.expected_process_names):
+                    return unknown
+                try:
+                    path = normalize_executable_path(candidate.executable_path)
+                    if ntpath.basename(path).casefold() != candidate.name:
+                        # A changed/inconsistent process identity is not a trustworthy mismatch.
+                        unavailable = True
+                        continue
+                except ValueError:
+                    unavailable = True
+                    continue
+                matched |= path in definition.accepted_executable_paths
+            state = ApplicationState.OBSERVED_OPEN if candidates else ApplicationState.OBSERVED_CLOSED
+            identity = (ApplicationIdentity.MATCHED if matched else
+                        ApplicationIdentity.MISMATCHED if candidates and not unavailable else
+                        ApplicationIdentity.UNKNOWN)
             return ApplicationObservation(target, state, definition.application_id,
-                                          definition.expected_process_names)
+                                          definition.expected_process_names, identity)
         except Exception:
             return unknown
 

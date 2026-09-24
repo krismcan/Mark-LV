@@ -18,7 +18,9 @@ from nayeon.policy.confirmation import ConfirmationService
 from nayeon.policy.permissions import PermissionService
 from nayeon.policy.service import PolicyService
 from nayeon.registry import CapabilityRegistry
-from nayeon.services.application_observation import ApplicationObservation, ApplicationState
+from nayeon.services.application_observation import (
+    ApplicationDefinition, ApplicationObservation, ApplicationState, ProcessIdentity,
+)
 from nayeon.services.applications import ApplicationService, LaunchResult
 from nayeon.undo.service import UndoService
 from nayeon.verification.contract import VerificationStatus
@@ -27,9 +29,10 @@ from nayeon.verification.contract import VerificationStatus
 class OpenAppObservationTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch("nayeon.services.applications.platform.system", return_value="Windows"))
-        self.snapshot = self.enterContext(patch("nayeon.services.applications.windows_process_names",
-                                               return_value=frozenset({"notepad.exe", "unrelated.exe"})))
-        self.service = ApplicationService()
+        self.snapshot = self.enterContext(patch("nayeon.services.applications.windows_process_identities",
+            return_value=(ProcessIdentity("notepad.exe", r"C:\Trusted\notepad.exe"),)))
+        self.service = ApplicationService(applications=(ApplicationDefinition(
+            "notepad", ("notepad", "notepad.exe"), ("notepad.exe",), (r"C:\Trusted\notepad.exe",)),))
         self.launch = self.enterContext(patch.object(self.service, "launch",
             side_effect=lambda target: LaunchResult(True, target, "Fake launch receipt")))
         self.observe = self.enterContext(patch.object(self.service, "observe", wraps=self.service.observe))
@@ -71,16 +74,16 @@ class OpenAppObservationTests(unittest.TestCase):
         self.assertTrue(result.succeeded)
         self.assertEqual(result.verification.status, VerificationStatus.VERIFIED)
         self.assertEqual(result.verification.evidence, {"application_id": "notepad",
-            "state": "observed_open", "expected_process_names": ["notepad.exe"]})
+            "state": "observed_open", "identity": "matched"})
         self.launch.assert_called_once_with("Notepad.EXE")
-        self.snapshot.assert_called_once_with()
+        self.snapshot.assert_called_once_with(("notepad.exe",))
 
     def test_successful_launch_with_immediate_absence_is_indeterminate(self):
-        self.snapshot.return_value = frozenset({"system", "unrelated.exe"})
+        self.snapshot.return_value = ()
         result = self.execute()
         self.assertTrue(result.succeeded)
         self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
-        self.snapshot.assert_called_once_with()
+        self.snapshot.assert_called_once_with(("notepad.exe",))
         self.assertEqual(self.audit.all()[-1].outcome, "indeterminate")
         self.assertEqual(self.undo.count(), 0)
 
@@ -95,22 +98,22 @@ class OpenAppObservationTests(unittest.TestCase):
         self.assert_unobserved()
 
     def test_legacy_immediate_absence_is_indeterminate(self):
-        self.snapshot.return_value = frozenset({"unrelated.exe"})
+        self.snapshot.return_value = ()
         result = self.executor.execute(self.capability, "open notepad")
         self.assertTrue(result.succeeded)
         self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
-        self.snapshot.assert_called_once_with()
+        self.snapshot.assert_called_once_with(("notepad.exe",))
 
     def test_approved_launch_with_immediate_absence_is_indeterminate(self):
         self.protected()
         pending = self.execute()
         self.assert_unobserved()
-        self.snapshot.return_value = frozenset({"unrelated.exe"})
+        self.snapshot.return_value = ()
         result = self.approve(pending)
         self.assertTrue(result.succeeded)
         self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
         self.launch.assert_called_once()
-        self.snapshot.assert_called_once_with()
+        self.snapshot.assert_called_once_with(("notepad.exe",))
 
     def test_unknown_observation_is_indeterminate(self):
         self.snapshot.return_value = None

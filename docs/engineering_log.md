@@ -203,3 +203,30 @@ Adjusted the immediate-absence regression and added three tests covering typed f
 - `git diff --check` and `git diff --cached --check`: passed before commit; complete diff reviewed.
 
 Current-state documentation was corrected; historical milestone descriptions above are retained as history. No live launch or process enumeration was performed by tests. Nothing was pushed; work stops for review without starting another milestone.
+
+## 2026-09-24: OpenApp identity hardening foundation
+
+Milestone: `nayeon-v1-open-app-identity-01` (annotated). Commit message: `feat: harden open app verification identity`. Resolve the feature commit with `git rev-parse 'nayeon-v1-open-app-identity-01^{}'`.
+
+Confirmed clean `nayeon-v1` at `ddce706e79f0f9434e9ebf424542b574a4617e61`; `git show --stat HEAD` confirmed exactly the two production files, one test file, and two documentation files in the preceding hardening commit. The observation tag remains at `3419166f7f34930dc6772be6ab652f283ae27dbf`. Reran the unchanged baseline: 253 discovered/passed, no failures/errors/skips. Read repository instructions, both state documents, observation/service/capability code, verification contracts, tests, environment abstractions, and audit integration; reported the proposed service-owned design before edits.
+
+Extended ApplicationDefinition with optional copied `accepted_executable_paths`. No real installation path is established in this repository, so the existing Notepad names/aliases remain the sole default entry without a guessed path. Trusted host definitions can provide exact paths; missing metadata is INDETERMINATE without observation. Path normalization accepts absolute local drive-letter paths, converts separators, collapses duplicate separators, and lowercases using ntpath. It rejects ambiguous relative/device/UNC/dot-component/trailing-dot-space forms, streams, wildcards, environment references, controls, and non-executable paths. No filesystem lookup, environment expansion, raw-request inference, or registry catalogue was introduced.
+
+The service-owned Windows adapter traverses one Tool Help snapshot and opens only exact name candidates with PROCESS_QUERY_LIMITED_INFORMATION. QueryFullProcessImageNameW reads each image path once using a fixed buffer; finally blocks close handles. The name-only helper remains for compatibility but cannot establish identity. ProcessIdentity objects and full paths remain internal to services. ApplicationObservation appends an ApplicationIdentity outcome; OpenApp maps it to the unchanged verification contract with canonical ID/state/identity-indicator evidence only. Audit remains status-only.
+
+An exact name plus accepted normalized path yields VERIFIED. Nonempty candidates with readable, valid, consistent paths all outside the accepted set yield NOT_VERIFIED for the observed identities, not proof of permanent launch failure. Without a positive match, any unreadable/malformed/inconsistent identity makes the result INDETERMINATE. Single-snapshot absence remains INDETERMINATE. The typed launch error, successful legacy launch contract, permission/policy/confirmation, audit, undo, session, dispatcher, and generic verification/executor remain unchanged. No model, sleeps, polling, retries, asynchronous tasks, process mutation, or broader capability work was added.
+
+Retained all 253 existing test methods, updating only two observation modules' fixtures to supply trusted paths and fake identity records. Added 32 permanent identity tests for positive/mismatch/inconclusive outcomes, normalization/rejections, multiple candidates, missing metadata, untrusted wording, safe evidence, isolation, query-only rights, buffer failure, and handle cleanup. All process APIs and launches were mocked; no real process enumeration, applications, credentials, model, or network calls occurred in tests.
+
+Validation using repository `.venv`, Python 3.12.10 / Windows 11 AMD64 (approved execution outside the sandbox after interpreter launch was blocked):
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_application_observation tests.test_open_app_observation` | 46 existing focused tests passed with updated fixtures. |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_open_app_identity tests.test_application_observation tests.test_open_app_observation` | 78 passed. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 285 discovered, 285 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
+
+Remaining limits: exact lexical path identity is not signature/content authenticity, alias/reparse equivalence, launch attribution, or window readiness. Snapshot and path queries are not atomic. Recommended next small milestone is designing a bounded synchronous observation budget and temporal outcome criteria; no waiting/polling implementation was started. Window readiness, vision, memory, and other capabilities remain deferred. Existing tags are unchanged; nothing was pushed and work stops for human review.

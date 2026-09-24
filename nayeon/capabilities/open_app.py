@@ -9,7 +9,9 @@ from nayeon.capabilities.base import CapabilityModule
 from nayeon.capabilities.structured import StructuredCapabilityRequest
 from nayeon.registry import Capability, ExecutionMode
 from nayeon.services.applications import ApplicationService, LaunchResult
-from nayeon.services.application_observation import ApplicationDefinition, ApplicationObservation, ApplicationState
+from nayeon.services.application_observation import (
+    ApplicationDefinition, ApplicationIdentity, ApplicationObservation, ApplicationState,
+)
 from nayeon.verification.contract import VerificationResult, VerificationStatus
 
 
@@ -102,15 +104,23 @@ class OpenAppCapability(CapabilityModule):
                                                observation.expected_process_names)
             if not definition.expected_process_names:
                 return unknown
-            status = (VerificationStatus.VERIFIED
-                      if observation.state is ApplicationState.OBSERVED_OPEN
-                      else VerificationStatus.INDETERMINATE)
+            if not isinstance(observation.identity, ApplicationIdentity):
+                return unknown
+            if observation.state is not ApplicationState.OBSERVED_OPEN:
+                return unknown
+            status = {
+                ApplicationIdentity.MATCHED: VerificationStatus.VERIFIED,
+                ApplicationIdentity.MISMATCHED: VerificationStatus.NOT_VERIFIED,
+                ApplicationIdentity.UNKNOWN: VerificationStatus.INDETERMINATE,
+            }[observation.identity]
             return VerificationResult(
-                status, "Configured application process observed." if status is VerificationStatus.VERIFIED
-                # A single snapshot cannot distinguish delayed startup from failure.
-                else "Process not yet observed; launch outcome remains indeterminate.",
+                status, {
+                    ApplicationIdentity.MATCHED: "Configured application executable identity observed.",
+                    ApplicationIdentity.MISMATCHED: "Observed candidates do not match trusted executable identity.",
+                    ApplicationIdentity.UNKNOWN: "Application executable identity is unavailable.",
+                }[observation.identity],
                 {"application_id": definition.application_id, "state": observation.state.value,
-                 "expected_process_names": list(definition.expected_process_names)},
+                 "identity": observation.identity.value},
             )
         except Exception:
             return unknown

@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from nayeon.services.application_observation import (
-    ApplicationDefinition, ApplicationState, windows_process_names,
+    ApplicationDefinition, ApplicationState, ProcessIdentity, windows_process_names,
 )
 from nayeon.services.applications import ApplicationService
 
@@ -13,9 +13,10 @@ from nayeon.services.applications import ApplicationService
 class ApplicationObservationTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch("nayeon.services.applications.platform.system", return_value="Windows"))
-        self.snapshot = self.enterContext(patch("nayeon.services.applications.windows_process_names",
-                                               return_value=frozenset({"notepad.exe", "system"})))
-        self.service = ApplicationService()
+        self.snapshot = self.enterContext(patch("nayeon.services.applications.windows_process_identities",
+            return_value=(ProcessIdentity("notepad.exe", r"C:\Trusted\notepad.exe"),)))
+        self.service = ApplicationService(applications=(ApplicationDefinition(
+            "notepad", ("notepad", "notepad.exe"), ("notepad.exe",), (r"C:\Trusted\notepad.exe",)),))
         self.launch = self.enterContext(patch.object(self.service, "launch",
                                                      side_effect=AssertionError("No launch")))
 
@@ -31,9 +32,9 @@ class ApplicationObservationTests(unittest.TestCase):
         self.launch.assert_not_called()
 
     def test_complete_snapshot_without_exact_process_is_closed(self):
-        self.snapshot.return_value = frozenset({"system", "notepad.exe.backup", "mynotepad.exe"})
+        self.snapshot.return_value = ()
         self.assertEqual(self.service.observe("notepad").state, ApplicationState.OBSERVED_CLOSED)
-        self.snapshot.assert_called_once_with()
+        self.snapshot.assert_called_once_with(("notepad.exe",))
 
     def test_unknown_targets_never_trigger_process_inspection(self):
         for target in ("editor", "notepad app", "open notepad", r"C:\other\notepad.exe", "note", "*"):
@@ -89,8 +90,9 @@ class ApplicationObservationTests(unittest.TestCase):
 
     def test_trusted_custom_metadata_uses_exact_case_insensitive_names(self):
         service = ApplicationService(applications=(ApplicationDefinition(
-            "editor", ("Editor",), ("editor.exe", "editor-helper.exe")),))
-        self.snapshot.return_value = frozenset({"EDITOR-HELPER.EXE"})
+            "editor", ("Editor",), ("editor.exe", "editor-helper.exe"),
+            (r"C:\Trusted\editor-helper.exe",)),))
+        self.snapshot.return_value = (ProcessIdentity("editor-helper.exe", r"C:\Trusted\EDITOR-HELPER.EXE"),)
         result = service.observe("Editor")
         self.assertEqual(result.state, ApplicationState.OBSERVED_OPEN)
         self.assertEqual(result.application_id, "editor")
