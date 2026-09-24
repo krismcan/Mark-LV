@@ -3,10 +3,11 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current product milestone: `nayeon-v1-structured-orchestration-01`, `feat: add structured orchestration bridge`. Resolve its commit with `git rev-parse 'nayeon-v1-structured-orchestration-01^{}'`.
+- Current verified product commit: `e1945b494752b3a4ed87b42130e4e3636345357d`, `feat: add structured orchestration bridge`.
+- Current annotated product milestone: `nayeon-v1-structured-orchestration-01` (points to that commit).
 - Previous product milestone: `nayeon-v1-structured-execution-01` at `036b006779bb229f3435182c841c95a311b1776d`.
-- Starting HEAD for this change: `a16182874fcc1c5595f8e9bb06e5a1567f567fe2` (documentation reconciliation). Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
-- Structured execution is now supported; legacy string execution and the existing semantic parser behavior remain supported unchanged.
+- Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
+- Structured orchestration is implemented for `open_app`, the first bridged structured capability. ActionExecutor remains the trust boundary; legacy string execution and the existing semantic parser behavior remain supported unchanged.
 
 ## Architecture stage
 
@@ -58,13 +59,13 @@ git diff --check
 
 All passed. Python required approved execution outside the Windows sandbox; no alternate interpreter was substituted. Focused runs for each new group also passed. Tests make no real LLM calls, network requests, credential accesses, application launches, or desktop changes. Fakes and mocks remain in memory; audit persistence uses a temporary directory. The real permission and confirmation services remain in the executor tests.
 
-## Structured execution API and trust boundary
+## Structured orchestration and execution trust boundary
 
 - Call `StructuredOrchestrationBridge(registry=registry, executor=executor).execute(plan, original_request=text)` after IntentResolver and IntentDispatcher. The bridge returns the executor's result unchanged, including denial, validation failure, or pending confirmation. It does not approve pending actions.
 - Only current `open_app` capability plans with matching registry metadata and a `StructuredCapability` implementation are accepted. Unresolved, missing/stale capability, legacy-only implementation, unsupported capability, and system-control plans return `DENIED` without invoking the executor. These preparation rejections are not execution events; the bridge does not add a separate audit service.
 - Mapping rule 1: if the plan contains `application`, forward only that field as a candidate, discarding all extras. Blank or non-string candidates still go to the existing capability validation and never trigger a legacy fallback.
 - Mapping rule 2: otherwise, require the plan's `request` value to exactly equal the caller-supplied original request. `OpenAppCapability.arguments_from_request` reuses the legacy prefix parser to derive the same target for `open `, `launch `, or `start ` (case-insensitive after outer trimming). Unrecognized prefixes or missing/mismatched request text are rejected. No aliases such as `target` are guessed and no AI mapping is used.
-- DispatchPlan carries arguments but no source field: local resolution currently emits `{"request": original_text}`, while semantic resolution preserves arbitrary model argument dictionaries. The bridge does not infer provenance from those fields; its legacy fallback requires matching original text and a deterministic launch prefix. Capability validation, permission, policy, and confirmation remain authoritative.
+- DispatchPlan carries arguments but no source field: local resolution currently emits `{"request": original_text}`, while semantic resolution preserves arbitrary model argument dictionaries. The bridge does not infer provenance from those fields; its local argument mapping requires matching original text and a deterministic launch prefix. No legacy execution fallback occurs. Capability validation, permission, policy, and confirmation remain authoritative.
 - Call `ActionExecutor.execute_structured(capability, StructuredCapabilityRequest(original_request, arguments))`. For OpenApp the arguments are `{"application": "Example App"}`. Dispatch remains planning-only; a caller can wrap its arguments in this request without granting them trust.
 - The executor resolves authoritative capability metadata and implementation from the registry, deep-copies input, runs capability validation, and isolates the normalized result before permission/policy evaluation. Invalid input returns a failed result and an audit event without echoing validator exceptions or arguments.
 - Protected actions return the existing `ConfirmationRequest`. Call `approve_and_execute_structured(token, capability=..., request=...)` to approve. Approval revalidates the candidate and compares normalized arguments, original request, registered metadata, and implementation identity against the saved snapshot. Equivalent normalized targets are the same action; changed targets, changed registration, invalid input, replay, or expired tokens cannot execute.
@@ -74,7 +75,7 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## Known gaps and limits
 
-- The explicit open_app bridge is implemented and tested from local IntentResolver through DispatchPlan and ActionExecutor. It is not wired into the legacy UI or a new conversational session runtime. Callers still own resolution, planning, original request context, and the approval lifecycle.
+- The explicit `open_app` orchestration bridge exists, but it is not yet owned by a conversational/session runtime or wired into the legacy UI. The caller still coordinates resolution, dispatch, original request context, pending confirmation state, the approval/rejection lifecycle, and system controls.
 - `cancel_pending` and `undo_last` remain approved dispatcher system controls but are explicitly unsupported by this first bridge. They never enter its capability execution path. Other capabilities are not generalized.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
@@ -83,9 +84,12 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 - Pending approvals and their snapshots are process-local, and there is no new concurrency or persistence guarantee. The structured executor is intended for the existing sequential runtime, not concurrent registry mutation.
 - Current validation is deterministic regression coverage, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No live OS, provider, or network behavior was exercised by this milestone.
 
-## Next architectural gap
+## Next intended architectural milestone
 
-Session-level orchestration remains: decide how a conversational runtime will retain pending structured requests, expose confirmation/rejection, and route system controls through their existing authority boundaries. That scope needs review before implementation. The deterministic local OpenApp argument mapping is now implemented; no intent contract change was required.
+Session orchestration foundation:
+introduce a conversational/session-level coordinator that owns the request lifecycle across IntentResolver, IntentDispatcher, StructuredOrchestrationBridge, pending confirmation/rejection, and approved system controls, without bypassing existing authority boundaries.
+
+This is planning/state documentation only; the session coordinator is not implemented in this milestone.
 
 Independent result verification and Nayeon memory remain unimplemented and are not part of this milestone.
 
