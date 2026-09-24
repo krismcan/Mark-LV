@@ -3,7 +3,8 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current product milestone: `nayeon-v1-session-orchestration-01` (annotated), `feat: add session orchestration foundation`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-session-orchestration-01^{}'`.
+- Current verified product commit: `49c275d388d0a56d9c1a686d15ed9d6ca200864d`, `feat: add session orchestration foundation`.
+- Current annotated product milestone: `nayeon-v1-session-orchestration-01` (points to that commit).
 - Previous product milestone: `nayeon-v1-structured-orchestration-01` at `e1945b494752b3a4ed87b42130e4e3636345357d`.
 - Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
 - `ConversationSession` owns the sequential request and pending-confirmation lifecycle for `open_app`, the first bridged structured capability. ActionExecutor remains the trust boundary; legacy string execution and the existing semantic parser behavior remain supported unchanged.
@@ -62,6 +63,8 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## Session lifecycle
 
+`ConversationSession` owns the request lifecycle across IntentResolver -> IntentDispatcher -> StructuredOrchestrationBridge -> ActionExecutor -> pending confirmation -> trusted approval/rejection.
+
 - Construct `ConversationSession(resolver=resolver, registry=registry, executor=executor)`. It constructs its dispatcher and bridge with that registry and executor. These are trusted application dependencies; the session does not expose approval methods as model tools.
 - `request(text)` validates non-blank text, resolves with session-owned pending context, dispatches, and submits capability plans to the bridge. Only `open_app` is supported. It returns the bridge/executor result unchanged; unresolved and unsupported requests are safely denied.
 - While confirmation is pending, another action is denied without replacing or executing the pending action. Requests can still resolve to `cancel_pending`. Text, including model-produced approval intent names, cannot invoke `approve_pending()`.
@@ -87,7 +90,7 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## Known gaps and limits
 
-- Session ownership exists as an explicit agent API, but is not wired into the legacy UI. A trusted caller must invoke approval/rejection explicitly; model output is never approval. Session lifetime and any executor exceptions remain the host's responsibility.
+- `ConversationSession` exists as an explicit process-local agent API but is not yet wired into the legacy UI or a persistent host runtime. Trusted host code owns session lifetime and invokes approval/rejection entry points. Model output is never approval; executor exceptions remain the host's responsibility.
 - Broader capability orchestration and session-level undo integration remain deferred. System controls stay outside the bridge's capability execution path; the session handles cancellation only.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
@@ -99,10 +102,8 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 ## Next intended architectural milestone
 
 Result verification foundation:
-introduce an independent verification layer that can distinguish "execution returned successfully" from "the requested real-world outcome actually occurred", without moving OS side effects into the model, agent planner, or policy layers.
+introduce an independent verification layer that can distinguish "execution returned successfully" from "the requested real-world outcome actually occurred", without moving OS side effects into the model, agent planner, session coordinator, or policy layers.
 
 This is planning/state documentation only; verification is not implemented in this milestone. Independent memory remains a later milestone.
-
-Independent result verification and Nayeon memory remain unimplemented and are not part of this milestone.
 
 Keep Permission -> Policy -> Confirmation -> Execution, audit, undo, and backward compatibility intact. Read [AGENTS.md](../AGENTS.md) before further implementation.
