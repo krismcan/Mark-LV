@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime
+
 from nayeon.agent.dispatch import DispatchKind, DispatchPlan
 from nayeon.agent.executor import ActionExecutor, ExecutionResult, ExecutionStatus
 from nayeon.capabilities.open_app import OpenAppCapability
 from nayeon.capabilities.structured import StructuredCapability, StructuredCapabilityRequest
-from nayeon.registry import CapabilityRegistry
+from nayeon.registry import Capability, CapabilityRegistry
+
+
+@dataclass(frozen=True, repr=False)
+class PendingStructuredAction:
+    """Isolated approval candidate; the executor still owns the bound authority."""
+
+    token: str
+    capability: Capability
+    request: StructuredCapabilityRequest
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class OrchestrationResult:
+    result: ExecutionResult
+    pending: PendingStructuredAction | None = None
 
 
 class StructuredOrchestrationBridge:
@@ -21,6 +41,17 @@ class StructuredOrchestrationBridge:
         self._executor = executor
 
     def execute(self, plan: DispatchPlan, *, original_request: str) -> ExecutionResult:
+        """Retain the original result-only API for existing callers."""
+        return self.execute_with_pending(plan, original_request=original_request).result
+
+    def execute_with_pending(
+        self, plan: DispatchPlan, *, original_request: str,
+    ) -> OrchestrationResult:
+        """Return an isolated candidate only when execution awaits confirmation.
+
+        Approval must submit this candidate to the same ActionExecutor. It is
+        not authorization, and must never be reconstructed by interpreting text.
+        """
         if plan.kind is DispatchKind.SYSTEM_CONTROL:
             return self._reject(plan, "System controls are not supported by this bridge.")
         if plan.kind is not DispatchKind.CAPABILITY:
@@ -52,12 +83,26 @@ class StructuredOrchestrationBridge:
             return self._reject(plan, "No application argument or matching local request is available.")
 
         request = StructuredCapabilityRequest(original_request, arguments)
-        return self._executor.execute_structured(capability, request)
+        # Capture exactly what is submitted, before execution or caller mutation.
+        # Validation/normalization and the authoritative snapshot stay in executor.
+        try:
+            saved_capability, saved_request = deepcopy(capability), deepcopy(request)
+        except Exception:
+            return self._reject(plan, "A stable structured request snapshot is required.")
+        result = self._executor.execute_structured(capability, request)
+        pending = None
+        if (result.status is ExecutionStatus.REQUIRES_CONFIRMATION
+                and result.confirmation_request is not None):
+            confirmation = result.confirmation_request
+            pending = PendingStructuredAction(
+                confirmation.token, saved_capability, saved_request, confirmation.expires_at,
+            )
+        return OrchestrationResult(result, pending)
 
     @staticmethod
-    def _reject(plan: DispatchPlan, message: str) -> ExecutionResult:
-        return ExecutionResult(
+    def _reject(plan: DispatchPlan, message: str) -> OrchestrationResult:
+        return OrchestrationResult(ExecutionResult(
             status=ExecutionStatus.DENIED,
             capability=plan.intent or "",
             message=message,
-        )
+        ))

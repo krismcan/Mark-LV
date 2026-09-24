@@ -109,3 +109,29 @@ Validation with the repository virtual environment, Python 3.12.10 / Windows 11 
 | `git diff --check` and `git diff --cached --check` | Passed before commit. |
 
 Full diff reviewed before commit. No wider redesign or production defect was exposed. Remaining architectural gap: conversational session ownership of pending structured requests, approval/rejection, and system controls; the bridge is an explicit API, not UI integration. Independent verification and memory remain out of scope. Historical entries above are preserved.
+
+## 2026-09-24: session orchestration foundation
+
+Milestone: `nayeon-v1-session-orchestration-01` (annotated). Commit message: `feat: add session orchestration foundation`. Resolve the milestone commit with `git rev-parse 'nayeon-v1-session-orchestration-01^{}'`.
+
+Started from clean branch `nayeon-v1`, HEAD `77ff6d962dc1531ede1010b1fc674ec06e801b0f`. The preceding structured-orchestration tag targets `e1945b494752b3a4ed87b42130e4e3636345357d`; that milestone and its tag are unchanged.
+
+Inspection found that the bridge returned ExecutionResult containing a ConfirmationRequest (token, capability name, original text, timestamps), but no structured arguments. Structured approval requires token, Capability metadata, and StructuredCapabilityRequest; rebuilding that request from later model output would be unsafe. A small companion bridge API, `execute_with_pending`, now returns the unchanged result plus an isolated mapped candidate only when confirmation is required. Existing `execute` remains result-only. The candidate is captured before submission; it does not replace the executor's normalized snapshot or authority checks. Failure to copy a candidate is denied before submission without disclosing exception details.
+
+Added `ConversationSession` in the agent layer. `request(text)` owns resolution, dispatch, bridge submission, and one pending action. Pending data is limited to token, copied capability metadata, copied original request/application arguments, and expiry. Approval submits that exact candidate to `approve_and_execute_structured` once, with no interpretation, dispatch, or reconstruction. Rejection/cancellation uses executor rejection. Terminal approval outcomes clear local state; replay and missing pending state fail safely. A second action cannot replace a pending action. Expired state is rejected before the next text request, or denied by the executor on approval.
+
+The existing local control resolver maps undo/scratch-that to cancellation when confirmation is pending. The session supplies that context and handles `cancel_pending` outside capability execution. Inspection also found the existing routed undo path through legacy `UndoCapability`, `UndoAction`, and `UndoService`. This milestone leaves session `undo_last` explicitly unsupported rather than introducing a second legacy-confirmation lifecycle or bypassing that path. No system control becomes a structured capability request; the session does not call capabilities, services, or OS actions directly.
+
+Added 30 session tests and 4 bridge companion-API tests, with real permission/confirmation/executor boundaries, fake semantic resolution, mocked application service, mutation attempts, registration changes, permission revocation, expiry, replay, and cancellation. Existing tests remain green. No live LLM, provider, credentials, network, desktop launch, or personal files were accessed.
+
+Validation using the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_session tests.test_orchestration tests.test_structured_executor` | Final focused run: 77 passed. Initial sandbox interpreter launch was blocked; approved external execution succeeded. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 175 discovered, 175 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Platform and Python diagnostics passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit. |
+
+Complete diff reviewed before commit. No pre-existing production defect or checkpoint discrepancy was found. The session is a process-local, sequential API with no persistence or UI integration; trusted host code owns its lifetime and approval entry points. Broader capability orchestration, session undo, existing string-based structured undo, and host exception handling remain limitations. The next architectural gap is independent result verification; memory remains later. No verification or memory layer was implemented, and historical entries above are preserved.

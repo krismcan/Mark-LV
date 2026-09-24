@@ -3,11 +3,10 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current verified product commit: `e1945b494752b3a4ed87b42130e4e3636345357d`, `feat: add structured orchestration bridge`.
-- Current annotated product milestone: `nayeon-v1-structured-orchestration-01` (points to that commit).
-- Previous product milestone: `nayeon-v1-structured-execution-01` at `036b006779bb229f3435182c841c95a311b1776d`.
+- Current product milestone: `nayeon-v1-session-orchestration-01` (annotated), `feat: add session orchestration foundation`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-session-orchestration-01^{}'`.
+- Previous product milestone: `nayeon-v1-structured-orchestration-01` at `e1945b494752b3a4ed87b42130e4e3636345357d`.
 - Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
-- Structured orchestration is implemented for `open_app`, the first bridged structured capability. ActionExecutor remains the trust boundary; legacy string execution and the existing semantic parser behavior remain supported unchanged.
+- `ConversationSession` owns the sequential request and pending-confirmation lifecycle for `open_app`, the first bridged structured capability. ActionExecutor remains the trust boundary; legacy string execution and the existing semantic parser behavior remain supported unchanged.
 
 ## Architecture stage
 
@@ -29,12 +28,13 @@ MEMORY retains appropriate context
 | AI parsing | Provider-independent AI service and semantic response adapter. Malformed response fields, including blank intents, return unresolved results. The result model's non-empty-intent invariant remains enforced. |
 | Dispatch | `IntentDispatcher` maps resolved intents to registered capabilities or approved system controls and leaves unsupported intents unresolved. Planning does not execute actions. |
 | Orchestration | `StructuredOrchestrationBridge` maps an `open_app` DispatchPlan into a StructuredCapabilityRequest and calls ActionExecutor exactly once. It calls no model, capability execution method, or OS service itself. Other capabilities and system controls are explicitly unsupported. |
+| Session | `ConversationSession` coordinates resolver, dispatcher, bridge, and executor; retains at most one isolated pending action; exposes explicit approval/rejection; and routes `cancel_pending` through executor rejection. `undo_last` is explicitly unsupported by this session. |
 | Structured capability | `OpenAppCapability` implements the optional `StructuredCapability` contract. It accepts only `application`, requires a non-blank string, trims surrounding whitespace, and revalidates before delegating to the existing application service. The executor validates before policy and runs structured actions through its shared trust boundary. |
 | Services and support | Platform-aware application service, capability registry/discovery, environment diagnostics, non-secret configuration, environment-backed secrets, audit service, and bounded in-memory undo service exist. |
 
 ## Regression status
 
-Validated on 2026-09-21 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **141 discovered, 141 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 141 test methods.
+Validated on 2026-09-24 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **175 discovered, 175 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 175 test methods.
 
 | Test module | Tests | Coverage |
 | --- | ---: | --- |
@@ -46,7 +46,8 @@ Validated on 2026-09-21 with the repository `.venv`, Python 3.12.10 on Windows 1
 | `tests/test_executor.py` | 16 | Real policy/confirmation boundary with fake implementations, audit outcomes, undo integration, temporary JSONL persistence |
 | `tests/test_open_app_structured.py` | 7 | Strict application arguments, no side effect during validation, mocked service delegation, legacy compatibility |
 | `tests/test_structured_executor.py` | 23 | Structured validation/policy/confirmation/execution, snapshot isolation, legacy-token separation, replay, expiry, audit redaction, undo, mocked OpenApp integration |
-| `tests/test_orchestration.py` | 20 | Bridge mapping, rejected plans, unchanged executor results, local resolver-to-executor flow, and real validation/policy/confirmation with mocked launch service |
+| `tests/test_orchestration.py` | 24 | Bridge mapping, rejected plans, unchanged executor results, isolated pending snapshots, local resolver-to-executor flow, and real validation/policy/confirmation with mocked launch service |
+| `tests/test_session.py` | 30 | Local/semantic request lifecycle, exact stored approval, rejection/cancellation, mutation isolation, registration/permission changes, expiry, replay, and unsupported undo with no side effects |
 
 Validation commands (run from the repository root):
 
@@ -58,6 +59,17 @@ git diff --check
 ```
 
 All passed. Python required approved execution outside the Windows sandbox; no alternate interpreter was substituted. Focused runs for each new group also passed. Tests make no real LLM calls, network requests, credential accesses, application launches, or desktop changes. Fakes and mocks remain in memory; audit persistence uses a temporary directory. The real permission and confirmation services remain in the executor tests.
+
+## Session lifecycle
+
+- Construct `ConversationSession(resolver=resolver, registry=registry, executor=executor)`. It constructs its dispatcher and bridge with that registry and executor. These are trusted application dependencies; the session does not expose approval methods as model tools.
+- `request(text)` validates non-blank text, resolves with session-owned pending context, dispatches, and submits capability plans to the bridge. Only `open_app` is supported. It returns the bridge/executor result unchanged; unresolved and unsupported requests are safely denied.
+- While confirmation is pending, another action is denied without replacing or executing the pending action. Requests can still resolve to `cancel_pending`. Text, including model-produced approval intent names, cannot invoke `approve_pending()`.
+- The bridge's companion `execute_with_pending(...)` returns `OrchestrationResult(result, pending)`. Its existing `execute(...)` result-only API remains supported. The pending candidate contains only the token, copied capability metadata, a copied mapped StructuredCapabilityRequest (original text and application argument), and expiry time. It retains no plan, semantic extras, implementation, or conversational history. This candidate is not authorization: validated normalization, action binding, and the authoritative snapshot remain in ActionExecutor.
+- `approve_pending()` consumes session state and calls `ActionExecutor.approve_and_execute_structured(...)` exactly once with the saved candidate. It does not resolve, dispatch, remap, or accept replacement arguments. Executor revalidation, registration checks, token binding, and permission/policy rechecks remain authoritative. Its result is returned unchanged; denial, mismatch, expiry, execution failure, and success all clear session state. Replay or approval without pending state is denied locally.
+- `reject_pending()` clears session state and calls the executor's existing `reject(...)` with the exact saved token/capability. It returns that result unchanged without executing a capability. Rejection without pending state is safely denied. Expiry is also cleaned through executor rejection before the next text request; there is no background timer. `has_pending` reports retained local state until the next operation.
+- `cancel_pending` uses `reject_pending()`. Existing contextual controls retain precedence: local undo/scratch-that wording cancels a pending action. With no pending action, unresolved cancellation or an explicit cancel control returns a deterministic denial.
+- `undo_last` remains a system-control plan and is denied explicitly by the session; it never becomes a StructuredCapabilityRequest. Existing routed undo is `UndoCapability -> UndoAction -> UndoService` through legacy ActionExecutor execution. Supporting that path, including possible legacy confirmation, is deferred; this session never calls UndoAction or UndoService directly and supplies no undo-availability context. Other capabilities are not generalized.
 
 ## Structured orchestration and execution trust boundary
 
@@ -75,21 +87,21 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## Known gaps and limits
 
-- The explicit `open_app` orchestration bridge exists, but it is not yet owned by a conversational/session runtime or wired into the legacy UI. The caller still coordinates resolution, dispatch, original request context, pending confirmation state, the approval/rejection lifecycle, and system controls.
-- `cancel_pending` and `undo_last` remain approved dispatcher system controls but are explicitly unsupported by this first bridge. They never enter its capability execution path. Other capabilities are not generalized.
+- Session ownership exists as an explicit agent API, but is not wired into the legacy UI. A trusted caller must invoke approval/rejection explicitly; model output is never approval. Session lifetime and any executor exceptions remain the host's responsibility.
+- Broader capability orchestration and session-level undo integration remain deferred. System controls stay outside the bridge's capability execution path; the session handles cancellation only.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
 - No dedicated Nayeon result-verification or memory layer exists. Executor completion status is not independent proof of an OS outcome. Undo registration failure is a separately reported partial outcome after execution; undo callbacks that fail are removed from the stack rather than retried automatically.
 - Structured undo retains `UndoProvider.build_undo(request: str, output)`. Reversible implementations must derive concrete undo from execution output/state; no structured undo contract was invented. OpenApp remains non-reversible.
-- Pending approvals and their snapshots are process-local, and there is no new concurrency or persistence guarantee. The structured executor is intended for the existing sequential runtime, not concurrent registry mutation.
+- Pending approvals and their snapshots are process-local. The session owns at most one pending action and is explicitly sequential: no concurrency, persistence, database, cross-process recovery, or multi-session coordination guarantee. Executor binding checks still reject changed registrations. Session and bridge snapshots use deep copies; their Python objects are not a security boundary against code modifying private state.
 - Current validation is deterministic regression coverage, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No live OS, provider, or network behavior was exercised by this milestone.
 
 ## Next intended architectural milestone
 
-Session orchestration foundation:
-introduce a conversational/session-level coordinator that owns the request lifecycle across IntentResolver, IntentDispatcher, StructuredOrchestrationBridge, pending confirmation/rejection, and approved system controls, without bypassing existing authority boundaries.
+Result verification foundation:
+introduce an independent verification layer that can distinguish "execution returned successfully" from "the requested real-world outcome actually occurred", without moving OS side effects into the model, agent planner, or policy layers.
 
-This is planning/state documentation only; the session coordinator is not implemented in this milestone.
+This is planning/state documentation only; verification is not implemented in this milestone. Independent memory remains a later milestone.
 
 Independent result verification and Nayeon memory remain unimplemented and are not part of this milestone.
 

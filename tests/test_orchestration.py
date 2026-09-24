@@ -198,3 +198,52 @@ class OrchestrationTests(unittest.TestCase):
         result = bridge.execute(plan, original_request=text)
         self.assertTrue(result.succeeded)
         self.launch.assert_called_once_with("Example App")
+
+    def test_companion_api_returns_result_without_pending_for_terminal_results(self):
+        for status in (ExecutionStatus.EXECUTED, ExecutionStatus.DENIED, ExecutionStatus.FAILED):
+            with self.subTest(status=status):
+                self.executor.reset_mock()
+                result = ExecutionResult(status, "open_app", "fake result")
+                self.executor.execute_structured.return_value = result
+                outcome = self.bridge.execute_with_pending(
+                    self.plan({"application": "App"}), original_request="open App",
+                )
+                self.assertIs(outcome.result, result)
+                self.assertIsNone(outcome.pending)
+                self.executor.execute_structured.assert_called_once()
+
+    def test_companion_pending_snapshot_is_isolated_from_plan_and_submission(self):
+        confirmation = ConfirmationService().create("open_app", "please open it")
+        result = ExecutionResult(ExecutionStatus.REQUIRES_CONFIRMATION, "open_app", "pending",
+                                 confirmation_request=confirmation)
+        self.executor.execute_structured.return_value = result
+        plan = self.plan({"application": "App", "discarded": "fake-sensitive"})
+        outcome = self.bridge.execute_with_pending(plan, original_request="please open it")
+        plan.arguments["application"] = "Other"
+        self.executor.execute_structured.call_args.args[1].arguments["application"] = "Changed"
+        self.assertIs(outcome.result, result)
+        self.assertEqual(outcome.pending.request.arguments, {"application": "App"})
+        self.assertEqual(outcome.pending.request.original_request, "please open it")
+        self.assertEqual(outcome.pending.token, confirmation.token)
+        self.assertIsNot(outcome.pending.capability, self.capability)
+        self.launch.assert_not_called()
+
+    def test_companion_rejection_has_no_pending_candidate(self):
+        outcome = self.bridge.execute_with_pending(
+            DispatchPlan(DispatchKind.SYSTEM_CONTROL, "cancel_pending"), original_request="cancel",
+        )
+        self.assertEqual(outcome.result.status, ExecutionStatus.DENIED)
+        self.assertIsNone(outcome.pending)
+        self.executor.execute_structured.assert_not_called()
+
+    def test_unsnapshotable_input_fails_without_execution_or_exception_details(self):
+        class Uncopyable:
+            def __deepcopy__(self, memo):
+                raise ValueError("fake-sensitive-value")
+
+        result = self.bridge.execute(self.plan({"application": Uncopyable()}),
+                                     original_request="open App")
+        self.assertEqual(result.status, ExecutionStatus.DENIED)
+        self.assertNotIn("fake-sensitive-value", result.message)
+        self.executor.execute_structured.assert_not_called()
+        self.launch.assert_not_called()
