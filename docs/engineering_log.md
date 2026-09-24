@@ -161,3 +161,27 @@ Validation with the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
 | `git diff --check` and `git diff --cached --check` | Passed before commit. |
 
 Full diff reviewed for trust-boundary changes. No checkpoint discrepancy or broader redesign was required. Deferred: the first production observation provider, observation deadlines/permissions, asynchronous checks, persistence, broader orchestration, session undo, and memory. Recommended smallest next milestone: define an OpenApp observation contract for a narrow supported outcome, then implement service-owned read-only checking with deterministic fake evidence; ambiguous identities remain INDETERMINATE. No further milestone was implemented here and nothing was pushed.
+
+## 2026-09-24: OpenApp observation foundation
+
+Milestone: `nayeon-v1-open-app-observation-01` (annotated). Commit message: `feat: add open app observation verification`. Resolve the feature commit with `git rev-parse 'nayeon-v1-open-app-observation-01^{}'`.
+
+Started from clean `nayeon-v1`, HEAD `86529b8d4a980b9334c31ceddd14924a08ca0005`, matching the annotated result-verification milestone. Inspection found no Nayeon application catalogue or process abstraction. Platform metadata only identified the OS. A mock diagnostic also confirmed that LaunchResult(success=False) previously produced EXECUTED and entered verification because OpenApp returned it normally. Work stopped for review; the user explicitly approved changing failed OpenApp launches in both structured and legacy paths to controlled execution failures. No suitable existing domain execution exception was found; built-in RuntimeError is sufficient, with a fixed message and no raw service error.
+
+Added service-owned ApplicationDefinition, ApplicationObservation, and ApplicationState. Optional exact process metadata is immutable/copied and explicitly supplied by trusted code; the sole default identity is Notepad (`notepad` / `notepad.exe` -> `notepad.exe`). Unknown targets never infer process identities. ApplicationService.observe uses one read-only Windows Tool Help snapshot behind the service layer, without launching a helper or application. Complete enumeration permits exact positive/negative name evidence; invalid/empty/incomplete snapshots remain UNKNOWN. Handles are released, and process inventory never crosses the service boundary.
+
+OpenApp now implements the existing VerificationProvider method. It uses the normalized structured target bound to a successful launch receipt, or the executed receipt target for legacy calls, and never reparses wording. OBSERVED_OPEN maps to VERIFIED, OBSERVED_CLOSED to NOT_VERIFIED, and unavailable/unsupported/malformed/ambiguous/error evidence to INDETERMINATE. Only canonical ID, configured process names, and state are returned as evidence; audit remains status-only. Reported launch failures now raise before verification. ApplicationService launch behavior, generic executor/coordinator, confirmation identity, undo, and session logic are unchanged.
+
+Added 43 permanent deterministic tests (18 service/native-adapter tests and 25 capability/lifecycle tests), retaining all 207 existing tests unchanged. OS enumeration and launch APIs are mocked; no real application, network, credentials, or process inventory was accessed. The first focused run found case-sensitive validation of `.EXE` in new metadata; this was corrected and all subsequent validation passed.
+
+Validation with the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_application_observation tests.test_open_app_observation tests.test_open_app_structured tests.test_verification` | Final focused run: 82 passed. Sandbox interpreter launch was blocked; approved execution outside the sandbox succeeded. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 250 discovered, 250 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Platform and Python diagnostics passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit. |
+
+Complete diff reviewed for architecture leakage. The observation criterion is configured executable-name presence at a snapshot instant, not window readiness, launch causation, or binary/path authenticity. Same-name processes and startup/exit races remain limitations. Recommended smallest next milestone is optional trusted executable-path identity hardening for the existing observed application. Polling, retries, asynchronous verification, WindowManager, vision/perception, other capability verification, and memory remain deferred. No further milestone was implemented and nothing was pushed.

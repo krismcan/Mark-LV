@@ -8,6 +8,11 @@ import os
 import platform
 import subprocess
 
+from nayeon.services.application_observation import (
+    ApplicationDefinition, ApplicationObservation, ApplicationState,
+    DEFAULT_APPLICATIONS, windows_process_names,
+)
+
 
 @dataclass(frozen=True)
 class LaunchResult:
@@ -20,6 +25,34 @@ class LaunchResult:
 
 class ApplicationService:
     """Launch local applications in a controlled, platform-aware way."""
+
+    def __init__(self, *, applications: tuple[ApplicationDefinition, ...] = DEFAULT_APPLICATIONS) -> None:
+        self._applications: dict[str, ApplicationDefinition] = {}
+        for definition in applications:
+            for target in definition.targets:
+                if target in self._applications:
+                    raise ValueError("Ambiguous application observation target.")
+                self._applications[target] = definition
+
+    def observe(self, target: str) -> ApplicationObservation:
+        """Observe only an explicitly configured identity; never infer from text."""
+        unknown = ApplicationObservation(target, ApplicationState.UNKNOWN)
+        if not isinstance(target, str) or platform.system() != "Windows":
+            return unknown
+        definition = self._applications.get(target.casefold())
+        if definition is None or not definition.expected_process_names:
+            return unknown
+        try:
+            names = windows_process_names()
+            if (not isinstance(names, frozenset) or not names
+                    or any(not isinstance(name, str) or not name for name in names)):
+                return unknown
+            observed = bool(set(definition.expected_process_names) & {name.casefold() for name in names})
+            state = ApplicationState.OBSERVED_OPEN if observed else ApplicationState.OBSERVED_CLOSED
+            return ApplicationObservation(target, state, definition.application_id,
+                                          definition.expected_process_names)
+        except Exception:
+            return unknown
 
     def launch(self, target: str) -> LaunchResult:
         """Launch an application by name or executable path."""
