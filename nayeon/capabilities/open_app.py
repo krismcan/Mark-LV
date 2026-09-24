@@ -13,6 +13,10 @@ from nayeon.services.application_observation import ApplicationDefinition, Appli
 from nayeon.verification.contract import VerificationResult, VerificationStatus
 
 
+class ApplicationLaunchError(RuntimeError):
+    """The application service reported a failed launch attempt."""
+
+
 class OpenAppCapability(CapabilityModule):
     """Launch local applications."""
 
@@ -65,7 +69,7 @@ class OpenAppCapability(CapabilityModule):
         result = self._service.launch(target)
         if isinstance(result, LaunchResult) and result.success is False:
             # Do not echo platform errors, paths, or arbitrary service messages.
-            raise RuntimeError("Application launch failed.")
+            raise ApplicationLaunchError("Application launch failed.")
         return result
 
     def verify_result(
@@ -100,10 +104,11 @@ class OpenAppCapability(CapabilityModule):
                 return unknown
             status = (VerificationStatus.VERIFIED
                       if observation.state is ApplicationState.OBSERVED_OPEN
-                      else VerificationStatus.NOT_VERIFIED)
+                      else VerificationStatus.INDETERMINATE)
             return VerificationResult(
                 status, "Configured application process observed." if status is VerificationStatus.VERIFIED
-                else "Configured application process absent from the completed snapshot.",
+                # A single snapshot cannot distinguish delayed startup from failure.
+                else "Process not yet observed; launch outcome remains indeterminate.",
                 {"application_id": definition.application_id, "state": observation.state.value,
                  "expected_process_names": list(definition.expected_process_names)},
             )

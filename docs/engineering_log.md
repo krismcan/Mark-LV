@@ -185,3 +185,21 @@ Validation with the repository `.venv`, Python 3.12.10 / Windows 11 AMD64:
 | `git diff --check` and `git diff --cached --check` | Passed before commit. |
 
 Complete diff reviewed for architecture leakage. The observation criterion is configured executable-name presence at a snapshot instant, not window readiness, launch causation, or binary/path authenticity. Same-name processes and startup/exit races remain limitations. Recommended smallest next milestone is optional trusted executable-path identity hardening for the existing observed application. Polling, retries, asynchronous verification, WindowManager, vision/perception, other capability verification, and memory remain deferred. No further milestone was implemented and nothing was pushed.
+
+## 2026-09-24: Focused OpenApp post-milestone hardening
+
+Reviewed the two requested concerns from clean `nayeon-v1` at `3419166f7f34930dc6772be6ab652f283ae27dbf`. The annotated `nayeon-v1-open-app-observation-01` tag remains on that feature commit; this correction creates no new milestone tag.
+
+No reusable capability/domain execution exception exists. ActionExecutor catches Exception and does not require RuntimeError. Added the narrow ApplicationLaunchError in the OpenApp capability, following the existing typed RuntimeError-subclass convention used by the unrelated SecretNotFoundError. Failed receipts still produce a fixed, non-sensitive error in both legacy and structured paths, reach FAILED through the unchanged executor, and never run verification.
+
+A complete immediate snapshot cannot distinguish delayed startup from a failed launch. OpenApp therefore maps OBSERVED_CLOSED to INDETERMINATE, preserving snapshot evidence without claiming a trustworthy negative outcome. Exact configured presence remains VERIFIED; unsupported, missing, malformed, and failed observations remain INDETERMINATE. The service enum is retained for compatibility and documented as snapshot state only. No polling, sleeps, retries, timeout machinery, asynchronous work, or other architecture changes were added.
+
+Adjusted the immediate-absence regression and added three tests covering typed failures in both capability paths, legacy absence, and confirmation-approved absence. Existing audit, undo, session, and generic verification coverage remains intact. Validation using the repository virtual environment (approved outside the sandbox after its interpreter launch was blocked):
+
+- `.\.venv\Scripts\python.exe -m unittest -v tests.test_open_app_observation tests.test_application_observation`: 46 passed.
+- `.\.venv\Scripts\python.exe -m unittest discover -v`: 253 discovered, 253 passed, 0 failures, 0 errors, 0 skipped.
+- `.\.venv\Scripts\python.exe -m nayeon.environment`: Windows 11 AMD64 / Python 3.12.10 diagnostics passed.
+- `.\.venv\Scripts\python.exe -m compileall -q nayeon`: passed.
+- `git diff --check` and `git diff --cached --check`: passed before commit; complete diff reviewed.
+
+Current-state documentation was corrected; historical milestone descriptions above are retained as history. No live launch or process enumeration was performed by tests. Nothing was pushed; work stops for review without starting another milestone.

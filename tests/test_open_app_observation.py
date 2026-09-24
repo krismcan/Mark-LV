@@ -10,7 +10,7 @@ from nayeon.agent.executor import ActionExecutor, ExecutionStatus
 from nayeon.agent.router import TaskRouter
 from nayeon.agent.session import ConversationSession
 from nayeon.audit.service import AuditEventType, AuditService
-from nayeon.capabilities.open_app import OpenAppCapability
+from nayeon.capabilities.open_app import ApplicationLaunchError, OpenAppCapability
 from nayeon.capabilities.structured import StructuredCapabilityRequest
 from nayeon.intent.local import LocalIntentInterpreter
 from nayeon.intent.resolver import IntentResolver
@@ -75,11 +75,42 @@ class OpenAppObservationTests(unittest.TestCase):
         self.launch.assert_called_once_with("Notepad.EXE")
         self.snapshot.assert_called_once_with()
 
-    def test_successful_launch_with_trustworthy_negative_is_not_verified(self):
+    def test_successful_launch_with_immediate_absence_is_indeterminate(self):
         self.snapshot.return_value = frozenset({"system", "unrelated.exe"})
         result = self.execute()
         self.assertTrue(result.succeeded)
-        self.assertEqual(result.verification.status, VerificationStatus.NOT_VERIFIED)
+        self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
+        self.snapshot.assert_called_once_with()
+        self.assertEqual(self.audit.all()[-1].outcome, "indeterminate")
+        self.assertEqual(self.undo.count(), 0)
+
+    def test_failed_receipt_raises_typed_error_in_both_capability_paths(self):
+        self.launch.side_effect = lambda target: LaunchResult(False, target, "fake-sensitive-error")
+        for execute in (lambda: self.app.execute("open notepad"),
+                        lambda: self.app.execute_structured({"application": "notepad"})):
+            with self.subTest(execute=execute):
+                with self.assertRaises(ApplicationLaunchError) as caught:
+                    execute()
+                self.assertEqual(str(caught.exception), "Application launch failed.")
+        self.assert_unobserved()
+
+    def test_legacy_immediate_absence_is_indeterminate(self):
+        self.snapshot.return_value = frozenset({"unrelated.exe"})
+        result = self.executor.execute(self.capability, "open notepad")
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
+        self.snapshot.assert_called_once_with()
+
+    def test_approved_launch_with_immediate_absence_is_indeterminate(self):
+        self.protected()
+        pending = self.execute()
+        self.assert_unobserved()
+        self.snapshot.return_value = frozenset({"unrelated.exe"})
+        result = self.approve(pending)
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.verification.status, VerificationStatus.INDETERMINATE)
+        self.launch.assert_called_once()
+        self.snapshot.assert_called_once_with()
 
     def test_unknown_observation_is_indeterminate(self):
         self.snapshot.return_value = None

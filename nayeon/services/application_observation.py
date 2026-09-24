@@ -10,6 +10,8 @@ import re
 
 
 class ApplicationState(str, Enum):
+    """Snapshot state only; absence does not establish a failed launch outcome."""
+
     OBSERVED_OPEN = "observed_open"
     OBSERVED_CLOSED = "observed_closed"
     UNKNOWN = "unknown"
