@@ -59,6 +59,14 @@ class OpenAppCapability(CapabilityModule):
         return self._service.launch(validated["application"])
 
     @staticmethod
+    def arguments_from_request(request: str) -> dict[str, Any]:
+        """Map a local open/launch/start request without validation or OS effects."""
+        target = OpenAppCapability._extract_target(request)
+        if target == request.strip():
+            raise ValueError("A local application-launch prefix is required.")
+        return {"application": target}
+
+    @staticmethod
     def _extract_target(request: str) -> str:
         """Extract the application name from a natural-language request."""
 

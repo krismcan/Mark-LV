@@ -83,3 +83,29 @@ Validation on Python 3.12.10 / Windows 11 AMD64 using the repository `.venv`:
 | `git diff --check` and `git diff --cached --check` | Passed before commit. |
 
 Full diff reviewed before commit. No broader architecture change was required. Remaining limits: explicit structured API rather than automatic intent orchestration, process-local sequential confirmation state, legacy undo contract, and no independent verification of OS outcomes or new memory layer. See [current_state.md](current_state.md) for the API and trust-boundary details.
+
+## 2026-09-21: structured orchestration bridge
+
+Milestone: `nayeon-v1-structured-orchestration-01` (annotated). Commit message: `feat: add structured orchestration bridge`. Resolve the milestone commit with `git rev-parse 'nayeon-v1-structured-orchestration-01^{}'`.
+
+Started from clean branch `nayeon-v1`, HEAD `a16182874fcc1c5595f8e9bb06e5a1567f567fe2`. The existing annotated structured-execution milestone remained at `036b006779bb229f3435182c841c95a311b1776d`.
+
+Inspection established that local OpenApp resolution emits `{"request": original_text}`, not a structured application target. Semantic resolution preserves model-produced arguments, and DispatchPlan copies those arguments without retaining IntentSource. A deterministic mapper was therefore needed, but no intent contract redesign was necessary.
+
+Added a dedicated `StructuredOrchestrationBridge` in the agent layer for open_app only. It accepts DispatchPlan plus original text, checks current registry metadata and the structured implementation contract, constructs StructuredCapabilityRequest, and delegates once to ActionExecutor. It returns executor results unchanged; it neither calls a model nor executes a capability/service directly. Unresolved/stale/unregistered/unsupported plans are denied. Approved system controls remain dispatcher controls and are explicitly unsupported by this bridge rather than disguised as capabilities.
+
+Mapping forwards only `application` when present, even if its value is invalid (the executor/capability then rejects it). All other model fields are discarded. Without `application`, the legacy `request` field must match the caller's original text exactly, and the text must have a recognized open/launch/start prefix. The new side-effect-free `OpenAppCapability.arguments_from_request` helper reuses its existing prefix parser. No `target` alias, arbitrary model dictionary, or AI conversion is introduced. Existing legacy execution and executor trust boundaries are unchanged.
+
+Added 20 deterministic orchestration tests covering mapping, no direct execution, result preservation, rejection cases, real executor validation/permission/confirmation, and the full local resolver-to-mocked-service path. No real OS launch, network, provider, or credential access occurred.
+
+Validation with the repository virtual environment, Python 3.12.10 / Windows 11 AMD64:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_orchestration tests.test_open_app_structured` | 27 passed; initial sandbox interpreter launch was blocked, then approved external execution succeeded. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 141 discovered, 141 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Platform and Python diagnostics passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit. |
+
+Full diff reviewed before commit. No wider redesign or production defect was exposed. Remaining architectural gap: conversational session ownership of pending structured requests, approval/rejection, and system controls; the bridge is an explicit API, not UI integration. Independent verification and memory remain out of scope. Historical entries above are preserved.
