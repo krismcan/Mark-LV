@@ -469,12 +469,12 @@ class CapabilityTests(unittest.TestCase):
         self.assertEqual(caught.exception.failure, fs.FileReadFailure.STRUCTURED_REQUIRED)
         self.service.read_file.assert_not_called()
 
-    def test_bridge_still_denies_read_file_plans(self):
+    def test_bridge_prepares_read_file_plans_for_confirmation(self):
         plan = IntentDispatcher(registry=self.registry).plan(IntentResolution(
             "read_file", IntentSource.LOCAL, 1.0, {"path": PATH}))
         result = StructuredOrchestrationBridge(registry=self.registry, executor=self.executor).execute(
             plan, original_request="read explicit file")
-        self.assertEqual(result.status, ExecutionStatus.DENIED)
+        self.assertEqual(result.status, ExecutionStatus.REQUIRES_CONFIRMATION)
         self.service.read_file.assert_not_called()
 
 

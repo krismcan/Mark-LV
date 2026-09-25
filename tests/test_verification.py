@@ -351,13 +351,19 @@ class VerificationExecutionTests(unittest.TestCase):
         self.assertEqual(result.verification.reason, "fake-sensitive-reason")
 
     def session(self):
+        # Session participation now opts into mapping; direct executor fakes do not need it.
+        self.fake.map_intent_arguments = Mock(side_effect=OpenAppCapability(service=Mock()).map_intent_arguments)
         resolver = IntentResolver(local=LocalIntentInterpreter(router=TaskRouter(self.registry)))
         return ConversationSession(resolver=resolver, registry=self.registry, executor=self.executor)
 
     def test_session_approval_verifies_stored_action_without_reinterpretation(self):
         self.configure(requires_confirmation=True)
         session = self.session()
-        self.assert_not_observed(session.request("open App"))
+        pending = session.request("open App")
+        self.assertEqual(pending.status, ExecutionStatus.REQUIRES_CONFIRMATION)
+        self.assert_not_observed(pending)
+        self.fake.map_intent_arguments.assert_called_once()
+        self.fake.map_intent_arguments.side_effect = AssertionError("No remapping")
         with patch.object(IntentResolver, "resolve", side_effect=AssertionError("No reinterpretation")), \
                 patch.object(IntentDispatcher, "plan", side_effect=AssertionError("No replanning")):
             result = session.approve_pending()
@@ -369,7 +375,7 @@ class VerificationExecutionTests(unittest.TestCase):
     def test_session_cancellation_does_not_verify(self):
         self.configure(requires_confirmation=True)
         session = self.session()
-        session.request("open App")
+        self.assertEqual(session.request("open App").status, ExecutionStatus.REQUIRES_CONFIRMATION)
         self.assert_not_observed(session.request("cancel that"))
         self.assertFalse(session.has_pending)
         self.fake.execute_structured.assert_not_called()

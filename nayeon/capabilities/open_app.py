@@ -49,6 +49,16 @@ class OpenAppCapability(CapabilityModule):
 
         return self._launch(target)
 
+    def map_intent_arguments(
+        self, arguments: Mapping[str, Any], *, original_request: str,
+    ) -> dict[str, Any]:
+        """Select candidates only; explicit invalid values never trigger fallback."""
+        if "application" in arguments:
+            return {"application": arguments["application"]}
+        if arguments.get("request") == original_request:
+            return self.arguments_from_request(original_request)
+        raise ValueError("No deterministic application mapping is available.")
+
     def validate_arguments(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Validate an application target without performing any OS action."""
         if not isinstance(arguments, Mapping):

@@ -14,7 +14,7 @@ from nayeon.registry import CapabilityRegistry
 
 
 class ConversationSession:
-    """Coordinate open_app without acquiring execution or approval authority.
+    """Coordinate mapped capabilities without acquiring execution or approval authority.
 
     Approval/rejection methods are for the trusted caller/UI, never model tools.
     A new action cannot replace a pending one. No history or persistence is kept.

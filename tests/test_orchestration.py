@@ -120,9 +120,9 @@ class OrchestrationTests(unittest.TestCase):
                 self.assertEqual(plan.kind, DispatchKind.SYSTEM_CONTROL)
                 self.assert_rejected(plan)
 
-    def test_other_capabilities_are_not_generalized(self):
+    def test_other_capability_without_mapper_is_rejected(self):
         other = replace(self.capability, name="other")
-        self.registry.register(other, self.implementation)
+        self.registry.register(other, Mock(spec=["validate_arguments", "execute_structured"]))
         self.assert_rejected(DispatchPlan(DispatchKind.CAPABILITY, "other", other))
 
     def test_missing_candidate_and_mismatched_legacy_text_are_rejected(self):

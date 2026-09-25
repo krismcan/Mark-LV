@@ -309,3 +309,34 @@ Validation with repository `.venv`, Python 3.12.10 / Windows 11 AMD64, approved 
 | `git diff --check` and `git diff --cached --check` | Passed before commit; complete diff reviewed. |
 
 Limitations: Windows/local ordinary text files only, conservative path spelling and sharing, no cloud/reparse support, no allowed-root sandbox or content secrecy classifier, no confirmation-time content-version binding, no generic structured failure transport, no synchronous OS-call deadline. ConversationSession and StructuredOrchestrationBridge remain unchanged and reject read-file execution. The smallest next milestone is a generic capability-owned argument-mapping extension design, preserving the executor boundary; no implementation of it was started. Listing, mutation, search, parsing, memory, vision/browser/voice/UI, packaging and onboarding are deferred. No workbook update or push; stop for human review.
+
+## 2026-09-25: Generic capability argument mapping foundation
+
+Milestone: `nayeon-v1-capability-argument-mapping-01` (annotated). Commit message: `feat: add generic capability argument mapping`. Resolve the feature commit with `git rev-parse 'nayeon-v1-capability-argument-mapping-01^{}'`.
+
+Started from clean `nayeon-v1` at `6e7b61476f30833750a1cfc2ddfb3ad5f33cfda7`, matching the annotated filesystem-read milestone. Reproduced the unchanged 415-test baseline. The preceding design inspection made no edits; the user approved the optional mapping contract and conservative rejection of uncopyable non-JSON extras before implementation.
+
+Kris reported both prior real-Windows smoke checks successful. OpenApp executed and verified with matched Notepad identity. Direct structured ReadFile initially required confirmation, then executed with state read, 34 bytes, separate verification indeterminate and zero undo entries; the temporary smoke files were removed. These are user-performed results without supplied exact timestamps, not tests repeated by this agent or evidence of a live conversational read.
+
+Added independent runtime-checkable IntentArgumentMapper with `map_intent_arguments(arguments: Mapping[str, Any], *, original_request: str) -> dict[str, Any]`. StructuredCapability retains exactly its previous execution/validation requirements. Registry and discovery are unchanged. A mapper is trusted implementation code required to be deterministic, side-effect free and safe on untrusted candidates; method-presence detection does not establish plugin trust. It performs no service/OS/model calls, authorization or full argument validation.
+
+The generic bridge now requires both protocols and delegates mapping without imports, allowlists or fields specific to OpenApp/filesystem. It copies incoming arguments, checks dict output, copies mapped candidates, builds the existing request itself, saves isolated pending snapshots and rechecks current metadata/implementation after preparation. Missing mapper, exceptions, invalid returns, copy failures or changed binding deny preparation with fixed non-sensitive reasons and no execution/legacy fallback. Normalized validation and policy/confirmation remain in the unchanged executor.
+
+OpenApp's existing explicit application precedence, extra-field discard, exact original-request fallback match and open/launch/start parsing moved into its mapper; its validation/execution/legacy APIs and all application service/trust behavior remain intact. ReadFile uses explicit path precedence or exact original-text match plus only the read-file prefix; invalid explicit values still reach authoritative validation. Its new intent pattern uses existing local routing. No filesystem path semantics or IO entered the bridge. FilesystemService and its handle-security behavior are unchanged.
+
+ConversationSession runtime is unchanged (docstring corrected). Mapping occurs once during preparation; approval submits the stored request without resolution, dispatch, mapping or parsing. Permission/policy rechecks, changed-registration rejection, token expiry/replay, cancellation, audit privacy, undo and separate verification semantics are preserved. ReadFile has zero service calls before approval or on cancellation, one after approval, and INDETERMINATE/no-provider verification without rereading.
+
+Added 33 deterministic mapping tests, including a synthetic third capability, mapperless direct execution, input/output isolation, registration changes during preparation and ReadFile's full session lifecycle. Updated two former OpenApp-only bridge expectations to the approved optional-mapper behavior. The first full run discovered 448 tests with one failure: a synthetic verification-session fixture lacked the now-required mapper, so it never reached confirmation. Updated that session-only fake to use real OpenApp mapping, strengthened pending assertions and added a no-remapping guard; no verification production change was needed. All subsequent tests passed. Existing test methods were retained. New tests use fake services, no personal files, real applications, models or network. The full baseline retains its previously approved self-created native temporary-file test.
+
+Validation using repository `.venv`, Python 3.12.10 / Windows 11 AMD64, approved outside the sandbox:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_dispatch_structured tests.test_orchestration tests.test_open_app_structured tests.test_filesystem tests.test_session tests.test_argument_mapping` | 161 passed: 11 contract, 24 bridge, 7 OpenApp structured, 56 filesystem, 30 session, 33 mapping. |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_verification tests.test_argument_mapping` | 65 passed. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 448 discovered, 448 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; complete diff reviewed. |
+
+Compatibility limit: copying the entire input can reject an uncopyable discarded extra that old OpenApp preparation ignored; this was explicitly approved. Preparation messages are generic, and preparation denial retains the existing no-execution-audit behavior. Mapping does not add concurrency, plugin isolation, a planner or new system controls. The smallest next milestone is opt-in live conversational ReadFile approval/cancellation validation on a user-created temporary file. Filesystem expansion, computer control, identity/configuration, BYOK, memory, vision/browser/voice/UI, installer, commercial backend and compliance automation remain deferred. Previous tags remain unchanged; no workbook update or push. Stop for human review.

@@ -1,4 +1,4 @@
-"""Deterministic dispatch-to-executor bridge for the first structured capability."""
+"""Generic deterministic dispatch-to-executor preparation."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ from datetime import datetime
 
 from nayeon.agent.dispatch import DispatchKind, DispatchPlan
 from nayeon.agent.executor import ActionExecutor, ExecutionResult, ExecutionStatus
-from nayeon.capabilities.open_app import OpenAppCapability
-from nayeon.capabilities.structured import StructuredCapability, StructuredCapabilityRequest
+from nayeon.capabilities.structured import (
+    IntentArgumentMapper, StructuredCapability, StructuredCapabilityRequest,
+)
 from nayeon.registry import Capability, CapabilityRegistry
 
 
@@ -30,7 +31,7 @@ class OrchestrationResult:
 
 
 class StructuredOrchestrationBridge:
-    """Prepare open_app actions; all validation and execution remain with the executor.
+    """Delegate candidate mapping; validation and execution remain with the executor.
 
     Plans must come from the intent/dispatch authority path. This bridge does not
     resolve language, call models, approve actions, or execute system controls.
@@ -56,39 +57,33 @@ class StructuredOrchestrationBridge:
             return self._reject(plan, "System controls are not supported by this bridge.")
         if plan.kind is not DispatchKind.CAPABILITY:
             return self._reject(plan, "A resolved capability plan is required.")
-        if plan.intent != "open_app":
-            return self._reject(plan, "Only open_app is supported by this bridge.")
-
         capability = self._registry.get(plan.intent)
         if capability is None or plan.capability != capability:
             return self._reject(plan, "The capability plan is stale or unregistered.")
         implementation = self._registry.get_implementation(capability.name)
         if not isinstance(implementation, StructuredCapability):
             return self._reject(plan, "A structured capability implementation is required.")
+        if not isinstance(implementation, IntentArgumentMapper):
+            return self._reject(plan, "A capability argument mapper is required.")
         if not isinstance(original_request, str) or not original_request.strip():
             return self._reject(plan, "The original user request is required.")
 
-        if "application" in plan.arguments:
-            # Even an invalid candidate goes to capability validation, never to
-            # a legacy fallback. All other model-produced fields are discarded.
-            arguments = {"application": plan.arguments["application"]}
-        elif plan.arguments.get("request") == original_request:
-            # DispatchPlan has no source field. Bind the legacy request to the
-            # caller's original text and accept only the deterministic prefixes.
-            try:
-                arguments = OpenAppCapability.arguments_from_request(original_request)
-            except ValueError:
-                return self._reject(plan, "No deterministic application target is available.")
-        else:
-            return self._reject(plan, "No application argument or matching local request is available.")
-
-        request = StructuredCapabilityRequest(original_request, arguments)
-        # Capture exactly what is submitted, before execution or caller mutation.
-        # Validation/normalization and the authoritative snapshot stay in executor.
         try:
-            saved_capability, saved_request = deepcopy(capability), deepcopy(request)
+            saved_capability = deepcopy(capability)
+            arguments = implementation.map_intent_arguments(
+                deepcopy(plan.arguments), original_request=original_request,
+            )
+            if not isinstance(arguments, dict):
+                raise TypeError("Mapping must return a dictionary.")
+            request = StructuredCapabilityRequest(original_request, deepcopy(arguments))
+            # Capture before submission; authoritative normalized binding stays
+            # in the executor. Approval never repeats mapping.
+            saved_request = deepcopy(request)
+            if (self._registry.get(capability.name) != saved_capability
+                    or self._registry.get_implementation(capability.name) is not implementation):
+                raise ValueError("Capability registration changed during preparation.")
         except Exception:
-            return self._reject(plan, "A stable structured request snapshot is required.")
+            return self._reject(plan, "Capability argument preparation failed.")
         result = self._executor.execute_structured(capability, request)
         pending = None
         if (result.status is ExecutionStatus.REQUIRES_CONFIRMATION

@@ -38,6 +38,22 @@ class StructuredCapabilityRequest:
 
 
 @runtime_checkable
+class IntentArgumentMapper(Protocol):
+    """Optional conversational mapping, separate from structured execution.
+
+    Trusted capability code maps untrusted candidates deterministically without
+    IO, model calls, authorization, full validation, or caller-data mutation.
+    Returned candidates still require the executor's capability validation.
+    """
+
+    def map_intent_arguments(
+        self, arguments: Mapping[str, Any], *, original_request: str,
+    ) -> dict[str, Any]:
+        """Return candidates or raise when no supported mapping is available."""
+        ...
+
+
+@runtime_checkable
 class StructuredCapability(Protocol):
     """
     Optional contract for capabilities that support structured execution.
