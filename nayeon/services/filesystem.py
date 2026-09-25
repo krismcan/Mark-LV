@@ -1,4 +1,4 @@
-"""Bounded UTF-8 reads from validated Windows handles; no discovery or writes."""
+"""Bounded file reads and immediate directory listings from validated handles."""
 
 from __future__ import annotations
 
@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from enum import Enum
 import platform
 import re
+import struct
 
 
 MAX_FILE_BYTES = 64 * 1024
+MAX_DIRECTORY_ENTRIES = 256
 _MAX_PATH = 260
 _GENERIC_READ = 0x80000000
 _READ_ATTRIBUTES = 0x80
@@ -51,6 +53,46 @@ class FileReadResult:
     state: str = "read"
 
 
+class DirectoryListFailure(str, Enum):
+    NOT_FOUND = "not_found"
+    ACCESS_DENIED = "access_denied"
+    INVALID_TARGET = "invalid_target"
+    UNSAFE_PATH = "unsafe_path"
+    TOO_MANY_ENTRIES = "too_many_entries"
+    UNSUPPORTED_PLATFORM = "unsupported_platform"
+    BUSY = "busy"
+    LIST_ERROR = "list_error"
+    STRUCTURED_REQUIRED = "structured_required"
+
+
+class DirectoryListError(RuntimeError):
+    """Directory-domain failure without names, paths, or raw OS details."""
+
+    def __init__(self, failure: DirectoryListFailure) -> None:
+        self.failure = failure
+        super().__init__(f"Directory listing failed: {failure.value}.")
+
+
+@dataclass(frozen=True, repr=False)
+class DirectoryEntry:
+    name: str
+    kind: str  # file or directory; never followed or opened
+
+
+@dataclass(frozen=True, repr=False)
+class DirectoryListResult:
+    path: str
+    entries: tuple[DirectoryEntry, ...]
+    state: str = "listed"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "entries", tuple(self.entries))
+
+    @property
+    def entry_count(self) -> int:
+        return len(self.entries)
+
+
 def normalize_file_path(path: str) -> str:
     """Lexical only. Preserve component case; no IO, expansion or alias lookup."""
     if not isinstance(path, str):
@@ -68,8 +110,36 @@ def normalize_file_path(path: str) -> str:
     return path[0].upper() + path[1:]
 
 
+def normalize_directory_path(path: str) -> str:
+    """Reuse file component rules, additionally permitting an explicit drive root."""
+    if isinstance(path, str) and re.fullmatch(r"[A-Za-z]:[\\/]", path):
+        return path[0].upper() + ":\\"
+    return normalize_file_path(path)
+
+
 class FilesystemService:
-    """Read only an explicit ordinary local file, after same-handle validation."""
+    """Operate read-only on explicit local objects after same-handle validation."""
+
+    def list_directory(self, path: str) -> DirectoryListResult:
+        try:
+            path = normalize_directory_path(path)
+        except (TypeError, ValueError):
+            raise DirectoryListError(DirectoryListFailure.INVALID_TARGET) from None
+        if platform.system() != "Windows":
+            raise DirectoryListError(DirectoryListFailure.UNSUPPORTED_PLATFORM)
+        try:
+            entries = _list_windows(path)
+        except FileReadError as exc:
+            # Reuse unchanged handle checks and OS error classification. Read-only
+            # helpers retain their existing contract; translate at this boundary.
+            try:
+                failure = DirectoryListFailure(exc.failure.value)
+            except ValueError:
+                failure = DirectoryListFailure.LIST_ERROR
+            raise DirectoryListError(failure) from None
+        except OSError:
+            raise DirectoryListError(DirectoryListFailure.LIST_ERROR) from None
+        return DirectoryListResult(path, entries)
 
     def read_file(self, path: str) -> FileReadResult:
         try:
@@ -112,6 +182,8 @@ def _kernel32():
         "GetDriveTypeW": ([wintypes.LPCWSTR], wintypes.UINT),
         "GetFileType": ([wintypes.HANDLE], wintypes.DWORD),
         "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.POINTER(_FileInformation)], wintypes.BOOL),
+        "GetFileInformationByHandleEx": ([wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                         wintypes.DWORD], wintypes.BOOL),
         "GetFinalPathNameByHandleW": ([wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD,
                                        wintypes.DWORD], wintypes.DWORD),
         "ReadFile": ([wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
@@ -194,3 +266,72 @@ def _read_windows(path: str) -> bytes:
         if total > MAX_FILE_BYTES:
             raise FileReadError(FileReadFailure.TOO_LARGE)
         return buffer.raw[:total]
+
+
+def _list_windows(path: str) -> tuple[DirectoryEntry, ...]:
+    api = _kernel32()
+    root = path[:3]
+    if api.GetDriveTypeW(root) not in (2, 3, 6):
+        raise FileReadError(FileReadFailure.UNSAFE_PATH)
+    parts = path[3:].split("\\")
+    ancestors = [] if path == root else (
+        [root] + [root + "\\".join(parts[:i]) for i in range(1, len(parts))])
+    with ExitStack() as handles:
+        for expected in ancestors + [path]:
+            # FILE_LIST_DIRECTORY (1) only for the target. No write/delete sharing;
+            # retain every inspected ancestor and the exact target until done.
+            access = _READ_ATTRIBUTES | (1 if expected == path else 0)
+            handle = api.CreateFileW(expected, access, _SHARE_READ, None,
+                                     _OPEN_EXISTING, _OPEN_FLAGS, None)
+            if handle in (None, 0, ctypes.c_void_p(-1).value):
+                raise _os_failure()
+            handles.callback(api.CloseHandle, handle)
+            _inspect_handle(api, handle, expected, directory=True)
+        return _enumerate_directory(api, handle)
+
+
+def _enumerate_directory(api, handle) -> tuple[DirectoryEntry, ...]:
+    # FILE_FULL_DIR_INFO: fixed 68-byte prefix, variable UTF-16 name; each
+    # non-final record begins at an 8-byte boundary. No child handle queries.
+    # https://learn.microsoft.com/windows/win32/api/winbase/ns-winbase-file_full_dir_info
+    buffer = (ctypes.c_longlong * 512)()  # aligned, fixed 4096-byte batch
+    entries = []
+    seen = set()
+    information_class = 15  # FileFullDirectoryRestartInfo, then continuation 14
+    while True:
+        ctypes.memset(buffer, 0, ctypes.sizeof(buffer))
+        if not api.GetFileInformationByHandleEx(handle, information_class, buffer, ctypes.sizeof(buffer)):
+            if ctypes.get_last_error() == 18:  # ERROR_NO_MORE_FILES is the only normal end
+                return tuple(entries)
+            raise _os_failure()
+        information_class = 14  # FileFullDirectoryInfo
+        data = bytes(buffer)
+        offset = 0
+        while True:
+            if offset + 68 > len(data):
+                raise DirectoryListError(DirectoryListFailure.LIST_ERROR)
+            next_offset = struct.unpack_from("<I", data, offset)[0]
+            attributes, name_length = struct.unpack_from("<II", data, offset + 56)
+            end = offset + 68 + name_length
+            if (not name_length or name_length % 2 or name_length > 510 or end > len(data)
+                    or (next_offset and (next_offset % 8 or next_offset < 68 + name_length
+                                         or offset + next_offset + 68 > len(data)))):
+                raise DirectoryListError(DirectoryListFailure.LIST_ERROR)
+            try:
+                name = data[offset + 68:end].decode("utf-16-le", errors="strict")
+            except UnicodeDecodeError:
+                raise DirectoryListError(DirectoryListFailure.LIST_ERROR) from None
+            if (name in seen or any(ord(c) < 32 or c in '\\/:<>"|?*' for c in name)):
+                raise DirectoryListError(DirectoryListFailure.LIST_ERROR)
+            seen.add(name)
+            if name not in (".", ".."):
+                if len(entries) == MAX_DIRECTORY_ENTRIES:
+                    raise DirectoryListError(DirectoryListFailure.TOO_MANY_ENTRIES)
+                # The two-kind v1 contract does not represent links. Fail closed
+                # rather than mislabel or follow a child reparse point.
+                if attributes & 0x400:
+                    raise DirectoryListError(DirectoryListFailure.UNSAFE_PATH)
+                entries.append(DirectoryEntry(name, "directory" if attributes & _DIRECTORY else "file"))
+            if not next_offset:
+                break
+            offset += next_offset
