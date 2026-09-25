@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import replace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from nayeon.agent.dispatch import IntentDispatcher
 from nayeon.agent.executor import ActionExecutor, ExecutionStatus
@@ -19,7 +19,7 @@ from nayeon.policy.permissions import PermissionService
 from nayeon.policy.service import PolicyService
 from nayeon.registry import CapabilityRegistry
 from nayeon.services.application_observation import (
-    ApplicationDefinition, ApplicationObservation, ApplicationState, ProcessIdentity,
+    ApplicationDefinition, ApplicationObservation, ApplicationReadinessPolicy, ApplicationState, ProcessIdentity,
 )
 from nayeon.services.applications import ApplicationService, LaunchResult
 from nayeon.undo.service import UndoService
@@ -31,11 +31,14 @@ class OpenAppObservationTests(unittest.TestCase):
         self.enterContext(patch("nayeon.services.applications.platform.system", return_value="Windows"))
         self.snapshot = self.enterContext(patch("nayeon.services.applications.windows_process_identities",
             return_value=(ProcessIdentity("notepad.exe", r"C:\Trusted\notepad.exe"),)))
+        self.sleeper = Mock()
         self.service = ApplicationService(applications=(ApplicationDefinition(
-            "notepad", ("notepad", "notepad.exe"), ("notepad.exe",), (r"C:\Trusted\notepad.exe",)),))
+            "notepad", ("notepad", "notepad.exe"), ("notepad.exe",), (r"C:\Trusted\notepad.exe",)),),
+            readiness=ApplicationReadinessPolicy(max_attempts=1), sleeper=self.sleeper)
         self.launch = self.enterContext(patch.object(self.service, "launch",
             side_effect=lambda target: LaunchResult(True, target, "Fake launch receipt")))
-        self.observe = self.enterContext(patch.object(self.service, "observe", wraps=self.service.observe))
+        self.observe = self.enterContext(patch.object(self.service, "observe_readiness",
+                                                     wraps=self.service.observe_readiness))
         self.app = OpenAppCapability(service=self.service)
         self.verify = self.enterContext(patch.object(self.app, "verify_result", wraps=self.app.verify_result))
         self.capability = self.app.capability

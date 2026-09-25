@@ -230,3 +230,30 @@ Validation using repository `.venv`, Python 3.12.10 / Windows 11 AMD64 (approved
 | `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
 
 Remaining limits: exact lexical path identity is not signature/content authenticity, alias/reparse equivalence, launch attribution, or window readiness. Snapshot and path queries are not atomic. Recommended next small milestone is designing a bounded synchronous observation budget and temporal outcome criteria; no waiting/polling implementation was started. Window readiness, vision, memory, and other capabilities remain deferred. Existing tags are unchanged; nothing was pushed and work stops for human review.
+
+## 2026-09-25: Bounded OpenApp observation timing
+
+Milestone: `nayeon-v1-open-app-readiness-01` (annotated). Commit message: `feat: add bounded open app readiness verification`. Resolve the feature commit with `git rev-parse 'nayeon-v1-open-app-readiness-01^{}'`.
+
+Started from clean `nayeon-v1` at `5870f636c7070ba4d2a23b02099a113af7c5ce22`, matching the annotated identity milestone. Reproduced the 285-test baseline with no failures/errors/skips. Inspection confirmed one verifier invocation after execution/undo handling, one ApplicationService observation, and no reusable injected sleeper/clock in Nayeon; confirmation tests patch datetime locally. Reported the service-local design before editing. No STOP condition or checkpoint discrepancy applied.
+
+Added frozen ApplicationReadinessPolicy with defaults and hard limits of three attempts and 0.1 seconds between attempts. Trusted callers may shorten the count/delay; invalid/nonfinite values and booleans are rejected. ApplicationService accepts an injected sleeper (production default time.sleep); tests use Mock. No clock is needed because the bound counts attempts. Requested waits total at most 0.2 seconds; synchronous OS-call and scheduling time are not capped.
+
+OpenApp now delegates once to `ApplicationService.observe_readiness`. The existing one-shot `observe` API remains and shares the unchanged identity-inspection body. Readiness pins the immutable definition and timing settings once, observes immediately, waits only between remaining attempts, and stops immediately on any trusted match. It never launches, resolves intent, remaps arguments, or writes audit events. Generic executor/verification/session/dispatch/policy and launch implementation are unchanged.
+
+Absence and unreadable candidate identity can continue within the bound. Unsupported targets/platforms or missing metadata return INDETERMINATE without snapshots/waits. Malformed observation results, incomplete snapshots, observation exceptions, and sleeper exceptions stop inconclusively with suppressed error text. A first wrong-path observation does not stop the check: only trustworthy mismatches on every configured attempt preserve the existing narrow NOT_VERIFIED claim about observed candidates. Mixed absence/unreadable evidence and mismatches end INDETERMINATE; elapsed waits never establish a negative outcome. A later trusted match overrides earlier inconclusive or candidate-mismatch evidence.
+
+Retained the 285 test methods, adapting the existing OpenApp observation fixture to the new delegation method with an injected fake sleeper and one-attempt policy. Added 41 tests for default/shorter bounds, first/second/final matches, no extra waits, mixed evidence, malformed/error paths, pinned metadata/settings, no re-launch, permission/policy/confirmation, audit, undo, session, and legacy behavior. First new-suite run had one test setup error calling nonexistent PolicyService.block; corrected the fixture to use the existing blocked-capabilities constructor, without changing policy production code. All subsequent validation passed. Tests perform no real sleeps, process inspection, application launches, network, credentials, or model calls.
+
+Validation using repository `.venv`, Python 3.12.10 / Windows 11 AMD64 (approved outside the sandbox after interpreter launch was blocked):
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_open_app_identity tests.test_application_observation tests.test_open_app_observation` | 78 existing focused tests passed. |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_open_app_readiness tests.test_open_app_identity tests.test_application_observation tests.test_open_app_observation` | 119 passed. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 326 discovered, 326 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
+
+Remaining limits: no OS-call deadline, window-readiness proof, launch attribution, async/background verification, general retry infrastructure, WindowManager, vision, memory, or other capability verification. Recommended next small milestone is explicit validated trusted metadata configuration for one application, without automatic discovery. No workbook update or remote push; existing tags remain unchanged and work stops for human review.

@@ -10,6 +10,26 @@ import re
 import ntpath
 
 
+# Deliberately short, application-specific limits, not a general retry policy.
+MAX_READINESS_ATTEMPTS = 3
+MAX_READINESS_DELAY_SECONDS = 0.1
+
+
+@dataclass(frozen=True)
+class ApplicationReadinessPolicy:
+    """Bound attempts and requested waits; synchronous OS call time is not capped."""
+
+    max_attempts: int = MAX_READINESS_ATTEMPTS
+    delay_seconds: float = MAX_READINESS_DELAY_SECONDS
+
+    def __post_init__(self) -> None:
+        if type(self.max_attempts) is not int or not 1 <= self.max_attempts <= MAX_READINESS_ATTEMPTS:
+            raise ValueError("Readiness attempts must be an integer within the application limit.")
+        if (type(self.delay_seconds) not in (int, float)
+                or not 0 <= self.delay_seconds <= MAX_READINESS_DELAY_SECONDS):
+            raise ValueError("Readiness delay must be finite and within the application limit.")
+
+
 class ApplicationState(str, Enum):
     """Snapshot state only; absence does not establish a failed launch outcome."""
 

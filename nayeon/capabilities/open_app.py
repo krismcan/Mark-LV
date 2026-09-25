@@ -92,7 +92,7 @@ class OpenAppCapability(CapabilityModule):
         if not isinstance(target, str) or not target.strip():
             return unknown
         try:
-            observation = self._service.observe(target)
+            observation = self._service.observe_readiness(target)
             if (not isinstance(observation, ApplicationObservation)
                     or observation.target != target
                     or not isinstance(observation.state, ApplicationState)
