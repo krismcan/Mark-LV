@@ -3,10 +3,10 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current product milestone: `nayeon-v1-open-app-readiness-01` (annotated), `feat: add bounded open app readiness verification`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-open-app-readiness-01^{}'`.
-- Starting checkpoint and previous product milestone: `5870f636c7070ba4d2a23b02099a113af7c5ce22`, `nayeon-v1-open-app-identity-01`; its tag remains unchanged.
+- Current product milestone: `nayeon-v1-open-app-trusted-notepad-01` (annotated), `feat: configure trusted notepad identity`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-open-app-trusted-notepad-01^{}'`.
+- Starting checkpoint and previous product milestone: `86d9e9102916f69ea065cff45975e5c4f5fc4863`, `nayeon-v1-open-app-readiness-01`; its tag remains unchanged.
 - Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
-- `ConversationSession` owns the sequential request and pending-confirmation lifecycle for `open_app`. ActionExecutor remains the trust boundary; legacy successful execution and semantic parser behavior remain supported. The approved compatibility change is limited to failed OpenApp launches: a returned `LaunchResult(success=False)` now raises a controlled failure in both execution paths, so the executor records FAILED and does not verify.
+- `ConversationSession` owns the sequential request and pending-confirmation lifecycle for `open_app`. ActionExecutor remains the trust boundary; legacy successful execution and semantic parser behavior remain supported. The earlier approved failure-semantics change makes `LaunchResult(success=False)` a controlled failure in both execution paths, so the executor records FAILED and does not verify. Default Notepad aliases now use the independently registered executable when available, as approved for this milestone.
 - Execution completion and outcome verification remain separate result fields. OpenApp delegates bounded read-only identity observation to ApplicationService after successful execution. Missing trusted paths, unsupported observations, and inconclusive exhaustion remain INDETERMINATE. Observation never relaunches the application.
 
 ## Architecture stage
@@ -37,7 +37,7 @@ MEMORY retains appropriate context
 
 ## Regression status
 
-Validated on 2026-09-25 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **326 discovered, 326 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 326 test methods.
+Validated on 2026-09-25 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **359 discovered, 359 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 359 test methods.
 
 | Test module | Tests | Coverage |
 | --- | ---: | --- |
@@ -56,6 +56,7 @@ Validated on 2026-09-25 with the repository `.venv`, Python 3.12.10 on Windows 1
 | `tests/test_open_app_observation.py` | 28 | Positive/inconclusive observations, typed failed launches, real trust boundaries with mocked OS/service calls, canonical identity, legacy compatibility, session approval/cancellation, audit safety |
 | `tests/test_open_app_identity.py` | 32 | Exact paths, normalization, multiple candidates, missing/malformed/unreadable identity, conservative mismatch, metadata/request isolation, minimal evidence, fake Windows query rights and handle cleanup |
 | `tests/test_open_app_readiness.py` | 41 | Attempt/wait limits, delayed success, mixed evidence, failures, pinned metadata, fake sleeper, no relaunch, confirmation/session flow, safe single audit outcome, unchanged undo |
+| `tests/test_trusted_notepad.py` | 33 | Fake App Paths precedence, exact-file validation, rejected paths, frozen launch/observation identity, fail-closed verification, trust boundaries, audit, undo, session and legacy behavior |
 
 Validation commands (run from the repository root):
 
@@ -106,12 +107,20 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 
 ## OpenApp observation
 
-- `ApplicationDefinition` remains trusted service-owned metadata: canonical identifier, explicit accepted launch targets, expected executable basenames, and optional `accepted_executable_paths`. Paths are copied into an immutable normalized tuple, and each basename must match a configured process name. This does not alter launch routing. The sole default entry remains `notepad`, aliases `notepad` / `notepad.exe`, process `notepad.exe`. No installed path is established by repository evidence, so none is guessed or hard-coded. Default name-only metadata now yields INDETERMINATE without OS inspection. Trusted host code must explicitly provide known accepted paths through `ApplicationService(applications=...)`; neither raw user wording nor observed processes populate the trust list.
+- `ApplicationDefinition` remains trusted service-owned metadata: canonical identifier, explicit accepted launch targets, expected executable basenames, and optional `accepted_executable_paths`. Paths are copied into an immutable normalized tuple, and each basename must match a configured process name. Notepad is the first production application configured from an independent trust source: Windows App Paths. The sole default entry remains `notepad`, aliases `notepad` / `notepad.exe`, process `notepad.exe`. Explicit `ApplicationService(applications=...)` injection remains supported and does not consult the registry or change its legacy launch routing. Neither raw user wording nor observed processes populate the trust list.
 - Path normalization is lexical and deterministic: absolute local drive-letter paths only; convert `/` to `\`, collapse duplicate separators, and use `ntpath.normpath` / `normcase` for lowercase exact comparison. Reject relative/drive-relative paths, UNC/device forms, dot/parent components, trailing-dot/space components, trailing separators, control characters, wildcards, quotes, streams/extra colons, environment references, and non-`.exe` files. No expansion, filesystem resolution, fuzzy matching, substring matching, or parent-directory acceptance occurs. Multiple explicitly accepted installation paths are supported.
 - `ApplicationService.observe(target)` returns the existing minimal observation with appended `ApplicationIdentity` (MATCHED, MISMATCHED, UNKNOWN); no full paths leave the service in that result. The adapter traverses one completed Tool Help snapshot and reads paths only for exact configured name candidates using `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` and `QueryFullProcessImageNameW` with Win32 path format. Each query uses one fixed buffer and no retry. Process and snapshot handles close in finally blocks. Invalid, empty, truncated, or incomplete snapshots remain UNKNOWN. See [Microsoft's path-query contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew).
 - A single attempt reports MATCHED when at least one candidate has the exact configured process name and normalized trusted path; other unreadable candidates do not invalidate this positive evidence. MISMATCHED requires nonempty candidates from a completed snapshot, all with readable, well-formed paths and consistent basenames, and none matching any trusted path. Otherwise identity is UNKNOWN. These rules remain service-owned; temporal aggregation is described below.
 - Structured verification uses the executor's normalized `application` bound to the successful LaunchResult target. Legacy verification uses the executed receipt target without reparsing wording. Unknown receipts do not trigger observation. OpenApp only maps the service-owned identity outcome; evidence contains canonical application ID, state, and a matched/mismatched/unknown indicator. No executable paths, process inventory, command lines, or environment data are returned as verification evidence. Audit remains status-only.
-- A false launch receipt now raises `ApplicationLaunchError("Application launch failed.")` without exposing its service message. Launch exceptions also remain execution failures. Both stop before verification/observation. Successful launch receipts remain unchanged, including the legacy string path. ApplicationService's launch implementation, ActionExecutor, VerificationService, confirmation binding, undo, and ConversationSession were not changed for this milestone.
+- A false launch receipt raises `ApplicationLaunchError("Application launch failed.")` without exposing its service message. Launch exceptions also remain execution failures. Both stop before verification/observation. Successful launch receipts retain the requested target, including the legacy string path. ActionExecutor, VerificationService, confirmation binding, undo, and ConversationSession are unchanged by trusted Notepad configuration.
+
+## Trusted Notepad configuration
+
+- `services/notepad_app_paths.py` is a narrow service helper, not a general registry/discovery abstraction. At default ApplicationService construction on Windows, it reads only the default value of `Software\Microsoft\Windows\CurrentVersion\App Paths\notepad.exe`: valid HKCU first, otherwise valid HKLM, using the process's default registry view. It never merges registrations or reads the auxiliary `Path` value. See [Windows App Registration](https://learn.microsoft.com/en-us/windows/win32/shell/app-registration).
+- Require REG_SZ, the existing safe absolute-path normalization above, exact basename `notepad.exe`, and a read-only `Path.is_file()` check on that exact path. No environment expansion, PATH lookup, registry enumeration, directory scan, or alternative-path search occurs. Missing/invalid/unreadable registrations or files fail safely to unavailable identity; an invalid HKCU entry permits the explicit HKLM fallback.
+- One immutable resolved definition supplies both accepted executable identity and the absolute launch target for configured aliases. Windows launches that executable once with Popen; the receipt retains the caller's alias for existing verification binding. A configured launch failure never falls back to another executable and never verifies. Registry changes do not refresh an existing service instance; construct a new service to resolve again.
+- Missing registration, unsupported platform, or unavailable API leaves accepted paths empty. Existing launch behavior remains available, but verification is INDETERMINATE without snapshots or waits. Only Notepad is configured this way. No installed path has been guessed or read on the developer machine during this milestone.
+- `trusted_notepad_path` exposes only the selected path for explicit host diagnostics. Verification evidence and audit still omit paths and registry contents. The approved registration is configuration trust, not binary/signature authentication; file replacement, launch redirection and lexical-path differences remain limitations.
 
 ## Bounded OpenApp readiness
 
@@ -128,16 +137,65 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 - Broader capability orchestration and session-level undo integration remain deferred. System controls stay outside the bridge's capability execution path; the session handles cancellation only.
 - Intent/dispatch/request wrappers still copy dictionaries only at the top level. The new executor path deep-copies validated snapshots; capability-specific validators remain responsible for accepted types and deterministic, side-effect-free normalization.
 - Protocol detection checks structural conformance, not correctness of validation or undo. These tests do not certify arbitrary plugins or model output.
-- OpenApp verifies an exact trusted executable path and name, not binary content/signature, window readiness, foreground focus, or that this launch created the process. Snapshot enumeration and path reads are sequential, not atomic; startup/exit/PID-reuse races remain possible. Short-name, symlink, and reparse-point equivalence are not resolved: hosts must supply accepted lexical paths, and mismatch refers to that configured identity contract. No installation path is guessed; without trusted host metadata even default Notepad remains INDETERMINATE. No Nayeon memory layer exists. Undo registration failure remains separately reported; failed undo callbacks are removed rather than retried automatically.
+- OpenApp verifies an exact trusted executable path and name, not binary content/signature, window readiness, foreground focus, or that this launch created the process. Snapshot enumeration and path reads are sequential, not atomic; startup/exit/PID-reuse races remain possible. Short-name, symlink, and reparse-point equivalence are not resolved: hosts must supply accepted lexical paths, and mismatch refers to that configured identity contract. No installation path is guessed; without a valid approved App Paths registration default Notepad remains INDETERMINATE. No Nayeon memory layer exists. Undo registration failure remains separately reported; failed undo callbacks are removed rather than retried automatically.
 - Verifiers remain trusted synchronous capability code. OpenApp bounds observations and requested waits, but cannot interrupt a slow OS call and does not establish window readiness. There is no generic retry scheduler, asynchronous verification, background monitoring, or persisted evidence store.
 - Structured undo retains `UndoProvider.build_undo(request: str, output)`. Reversible implementations must derive concrete undo from execution output/state; no structured undo contract was invented. OpenApp remains non-reversible.
 - Pending approvals and their snapshots are process-local. The session owns at most one pending action and is explicitly sequential: no concurrency, persistence, database, cross-process recovery, or multi-session coordination guarantee. Executor binding checks still reject changed registrations. Session and bridge snapshots use deep copies; their Python objects are not a security boundary against code modifying private state.
 - Current validation is deterministic regression coverage, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. No live OS, provider, or network behavior was exercised by this milestone.
 
-## Next intended architectural milestone
+## Optional real-Windows manual check
 
-Trusted application metadata configuration:
-provide explicit validated host configuration for one known application installation, using the existing service-owned definition contract without automatic software discovery or exposing paths in verification/audit output.
+Not performed during automated validation. From the repository root in interactive PowerShell, run the block below. It reads the exact approved registration and checks the exact file, displays only the selected path, and stops without launch if no registration is usable. Type `YES` at the explicit confirmation to launch once through the normal session/executor boundary; any other response rejects. Audit stays in memory. Inspect the separate execution and verification statuses and minimal identity evidence; VERIFIED does not prove window readiness or that this launch created the process. Close Notepad manually afterward if desired; OpenApp has no undo.
+
+```powershell
+$manual = @'
+from dataclasses import replace
+from nayeon.agent.executor import ActionExecutor, ExecutionStatus
+from nayeon.agent.router import TaskRouter
+from nayeon.agent.session import ConversationSession
+from nayeon.audit.service import AuditService
+from nayeon.capabilities.open_app import OpenAppCapability
+from nayeon.intent.local import LocalIntentInterpreter
+from nayeon.intent.resolver import IntentResolver
+from nayeon.policy.confirmation import ConfirmationService
+from nayeon.policy.permissions import PermissionService
+from nayeon.policy.service import PolicyService
+from nayeon.registry import CapabilityRegistry
+from nayeon.services.applications import ApplicationService
+from nayeon.undo.service import UndoService
+
+service = ApplicationService()
+print('Trusted Notepad executable:', service.trusted_notepad_path or 'unavailable')
+if service.trusted_notepad_path is None:
+    raise SystemExit('No usable registration; no launch performed.')
+app = OpenAppCapability(service=service)
+capability = replace(app.capability, requires_confirmation=True)
+registry = CapabilityRegistry()
+registry.register(capability, app)
+permissions = PermissionService(default_allowed=False)
+permissions.grant('open_app')
+executor = ActionExecutor(registry, PolicyService(permissions), ConfirmationService(),
+                          AuditService(), UndoService())
+resolver = IntentResolver(local=LocalIntentInterpreter(router=TaskRouter(registry)))
+session = ConversationSession(resolver=resolver, registry=registry, executor=executor)
+result = session.request('open notepad')
+if result.status is ExecutionStatus.REQUIRES_CONFIRMATION:
+    result = (session.approve_pending() if input('Launch Notepad once? Type YES: ') == 'YES'
+              else session.reject_pending())
+print('Execution:', result.status.value)
+if result.verification is not None:
+    print('Verification:', result.verification.status.value)
+    print('Identity evidence:', result.verification.evidence)
+else:
+    print('Verification: not run')
+'@
+& .\.venv\Scripts\python.exe -c $manual
+```
+
+## Next intended milestone
+
+Opt-in real-Windows Notepad smoke validation:
+run the manual procedure above and review its minimal result before expanding production application configuration. This task did not perform that live check.
 
 This is planning/state documentation only. General retry/polling infrastructure, asynchronous/background verification, WindowManager, vision/perception, other capability verification, and independent memory remain deferred. No live application, process inventory, or real sleep was used during this milestone's validation.
 

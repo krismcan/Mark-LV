@@ -257,3 +257,27 @@ Validation using repository `.venv`, Python 3.12.10 / Windows 11 AMD64 (approved
 | `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
 
 Remaining limits: no OS-call deadline, window-readiness proof, launch attribution, async/background verification, general retry infrastructure, WindowManager, vision, memory, or other capability verification. Recommended next small milestone is explicit validated trusted metadata configuration for one application, without automatic discovery. No workbook update or remote push; existing tags remain unchanged and work stops for human review.
+
+## 2026-09-25: Trusted Notepad App Paths configuration
+
+Milestone: `nayeon-v1-open-app-trusted-notepad-01` (annotated). Commit message: `feat: configure trusted notepad identity`. Resolve the feature commit with `git rev-parse 'nayeon-v1-open-app-trusted-notepad-01^{}'`.
+
+Started from clean `nayeon-v1` at `86d9e9102916f69ea065cff45975e5c4f5fc4863`, matching the readiness milestone. The user approved Windows App Paths as the independent trust source after the earlier inspection stopped rather than guess an installed path. Inspection found no existing Nayeon registry abstraction. Reported the narrow service-local helper, precedence, validation and exact-file check before implementation; no STOP condition applied.
+
+Default ApplicationService construction resolves only the default REG_SZ value of the exact Notepad App Paths key, using valid HKCU first or valid HKLM otherwise, in the process's default registry view. Existing lexical normalization rejects unsafe paths; exact basename notepad.exe and exact-file is_file are required. No auxiliary Path value, registry enumeration, filesystem search, PATH resolution or process-derived trust is used. The immutable ApplicationDefinition supplies both the configured absolute launch target and accepted executable identity. Canonical aliases and process name remain unchanged; receipt targets preserve existing request binding. Explicit definition injection remains supported without registry access or changed launch routing.
+
+Missing/unreadable/invalid registrations leave trusted identity unavailable: existing launching remains compatible, verification stays INDETERMINATE without observation. A configured exact-target launch failure does not fall back and does not verify. Readiness, identity outcome semantics, generic executor/verification/session, permission/policy/confirmation, audit and undo contracts are unchanged. Only Notepad is configured. No real registration or installation path was inspected; no live launch or process query was performed. The current-state document includes an optional interactive manual check through the normal session boundary, requiring explicit confirmation.
+
+Retained all 326 existing tests, making the empty-identity fixture explicitly inject name-only metadata to prevent real registry access. Added 33 permanent tests with fake registry/default-value reads, exact-file checks, launches, snapshots and sleepers. The first new test run exposed a fixture naming collision between fake Windows registry and capability registry (one failure, two errors); renamed the fake fixture without production changes. Subsequent focused and complete validation passed.
+
+Validation with repository `.venv`, Python 3.12.10 / Windows 11 AMD64, approved outside the sandbox after interpreter startup was blocked:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_trusted_notepad tests.test_open_app_identity tests.test_open_app_readiness tests.test_application_observation tests.test_open_app_observation` | 152 passed. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 359 discovered, 359 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
+
+Registration trust is not binary authenticity; lexical identity, redirection, startup races, window readiness and launch attribution limits remain. Configuration is fixed for the service lifetime. The smallest recommended next milestone is opt-in real-Windows Notepad smoke validation, not further implementation. No workbook changes or push; previous tags remain unchanged. Stop for human review.

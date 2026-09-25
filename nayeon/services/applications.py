@@ -13,9 +13,10 @@ import time
 from nayeon.services.application_observation import (
     ApplicationDefinition, ApplicationObservation, ApplicationState,
     ApplicationIdentity, ProcessIdentity, normalize_executable_path,
-    ApplicationReadinessPolicy, DEFAULT_APPLICATIONS, windows_process_identities,
+    ApplicationReadinessPolicy, windows_process_identities,
 )
 import ntpath
+from nayeon.services.notepad_app_paths import resolve_notepad_definition
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,7 @@ class ApplicationService:
     """Launch local applications in a controlled, platform-aware way."""
 
     def __init__(
-        self, *, applications: tuple[ApplicationDefinition, ...] = DEFAULT_APPLICATIONS,
+        self, *, applications: tuple[ApplicationDefinition, ...] | None = None,
         readiness: ApplicationReadinessPolicy = ApplicationReadinessPolicy(),
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -39,12 +40,24 @@ class ApplicationService:
             raise TypeError("Application readiness requires a policy and callable sleeper.")
         self._readiness = readiness
         self._sleeper = sleeper
+        self._uses_app_paths = applications is None
+        if applications is None:
+            applications = (resolve_notepad_definition(),)
         self._applications: dict[str, ApplicationDefinition] = {}
         for definition in applications:
             for target in definition.targets:
                 if target in self._applications:
                     raise ValueError("Ambiguous application observation target.")
                 self._applications[target] = definition
+
+    @property
+    def trusted_notepad_path(self) -> str | None:
+        """Expose only the selected launch identity for explicit host diagnostics."""
+        if self._uses_app_paths:
+            definition = self._applications.get("notepad")
+            if definition is not None and definition.accepted_executable_paths:
+                return definition.accepted_executable_paths[0]
+        return None
 
     def observe(self, target: str) -> ApplicationObservation:
         """Retain one-shot observation without waits or launch side effects."""
@@ -186,6 +199,13 @@ class ApplicationService:
 
     def _launch_windows(self, target: str) -> LaunchResult:
         """Launch an application on Windows."""
+
+        trusted_path = self.trusted_notepad_path
+        if trusted_path is not None and target.casefold() in self._applications:
+            # Use the same frozen registration as verification; no alias/PATH fallback
+            # if this exact executable fails or disappears after configuration.
+            subprocess.Popen([trusted_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return LaunchResult(True, target, "Launched configured application.")
 
         path = Path(target)
 

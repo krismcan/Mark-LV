@@ -10,7 +10,7 @@ from nayeon.capabilities.structured import StructuredCapabilityRequest
 from nayeon.services.application_observation import (
     ApplicationDefinition, ApplicationIdentity, ApplicationObservation, ApplicationState,
     ProcessIdentity, normalize_executable_path, windows_process_identities,
-    _kernel32 as load_kernel32,
+    _kernel32 as load_kernel32, DEFAULT_APPLICATIONS,
 )
 from nayeon.services.applications import ApplicationService
 from nayeon.verification.contract import VerificationStatus
@@ -59,7 +59,7 @@ class OpenAppIdentityTests(unittest.TestCase):
                 self.assertEqual(self.observe_paths(path).verification.status, VerificationStatus.INDETERMINATE)
 
     def test_default_metadata_without_trusted_paths_cannot_verify(self):
-        self.observe.side_effect = ApplicationService().observe
+        self.observe.side_effect = ApplicationService(applications=DEFAULT_APPLICATIONS).observe
         self.assertEqual(self.execute().verification.status, VerificationStatus.INDETERMINATE)
         self.snapshot.assert_not_called()
 
