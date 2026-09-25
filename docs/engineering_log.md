@@ -281,3 +281,31 @@ Validation with repository `.venv`, Python 3.12.10 / Windows 11 AMD64, approved 
 | `git diff --check` and `git diff --cached --check` | Passed before commit; full diff reviewed. |
 
 Registration trust is not binary authenticity; lexical identity, redirection, startup races, window readiness and launch attribution limits remain. Configuration is fixed for the service lifetime. The smallest recommended next milestone is opt-in real-Windows Notepad smoke validation, not further implementation. No workbook changes or push; previous tags remain unchanged. Stop for human review.
+
+## 2026-09-25: Read-only filesystem foundation
+
+Milestone: `nayeon-v1-filesystem-read-01` (annotated). Commit message: `feat: add read-only filesystem foundation`. Resolve the feature commit with `git rev-parse 'nayeon-v1-filesystem-read-01^{}'`.
+
+Started from clean `nayeon-v1` at `f75d1283d54b5c8e50b4f33a7f12caf0314e5124`; the annotated trusted-Notepad tag resolves there and is unchanged. Reproduced all 359 baseline tests before editing. Kris reported a successful real-Windows OpenApp check: execution executed, verification verified, evidence `{'application_id': 'notepad', 'state': 'observed_open', 'identity': 'matched'}`. This is user-reported live validation, not an agent-run test; no exact test timestamp was supplied. OpenApp is accepted as the reference capability for current v1 scope and was not expanded.
+
+Initial inspection stopped without edits because reparse-aware file opening had no existing contract and the bridge explicitly supported only open_app. The user approved structured-executor-only filesystem execution, deferring conversation/bridge integration, and approved a narrow service-owned Win32 helper with decisive identity validation and reading on the same handle. No generic layers or parallel request protocol were introduced.
+
+Added ReadFileCapability and FilesystemService. The capability accepts only a StructuredCapabilityRequest path, validates lexically with no IO, requires dedicated read_file permission and confirmation through unchanged policy/executor services, and rejects legacy string execution. Strict path rules reject ambiguity, devices, UNC, traversal, variables, globs and streams; slash/drive-letter normalization preserves component case. Requests are limited to fewer than 260 UTF-16 units. A service-owned 64 KiB content limit and strict UTF-8/control filter bound the first text-only implementation.
+
+Windows opens use CreateFileW OPEN_EXISTING, read access, FILE_SHARE_READ only, OPEN_REPARSE_POINT, BACKUP_SEMANTICS and OPEN_NO_RECALL. Explicit ancestor handles are inspected and retained without enumeration. The file opens once; GetFileType, GetFileInformationByHandle and normalized DOS GetFinalPathNameByHandleW must establish an ordinary, non-reparse, non-offline/non-recall object with exact requested path spelling. Case/short-name/redirected/unavailable identities fail closed. Only then does bounded ReadFile consume that same handle, with no reopen or fallback. All handles close on exit. Same-handle validation is authoritative, not a pathname precheck. No privileges are enabled or shell/external tools invoked.
+
+Success returns a frozen path/text/byte-count/read-state result. Domain failures are typed, fixed-message FileReadError outcomes; the existing executor records FAILED and suppresses exception details. No new generic error transport was added. No VerificationProvider or second read is used: separate generic verification stays INDETERMINATE/no-provider after successful execution. Existing audit records capability/status only. PermissionService's existing default-allow behavior is unchanged; hosts can require explicit grants, and read_file always requires confirmation under its registered metadata.
+
+Added 56 tests covering lexical validation, fake Win32 identity/redirection/reparse/error paths, handle cleanup, byte limits/growth, UTF-8/control rejection, registration, permission/policy/confirmation, snapshot binding, cancellation/replay, privacy, failure propagation and structured executor integration. One native Windows test creates and reads only its own temporary ordinary file; reparse scenarios are entirely simulated, requiring no admin rights or real links. All 359 previous tests remain unchanged and green. No production defect or further STOP condition was encountered.
+
+Validation with repository `.venv`, Python 3.12.10 / Windows 11 AMD64, approved execution outside the sandbox:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_filesystem` | 56 passed. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` | 415 discovered, 415 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; complete diff reviewed. |
+
+Limitations: Windows/local ordinary text files only, conservative path spelling and sharing, no cloud/reparse support, no allowed-root sandbox or content secrecy classifier, no confirmation-time content-version binding, no generic structured failure transport, no synchronous OS-call deadline. ConversationSession and StructuredOrchestrationBridge remain unchanged and reject read-file execution. The smallest next milestone is a generic capability-owned argument-mapping extension design, preserving the executor boundary; no implementation of it was started. Listing, mutation, search, parsing, memory, vision/browser/voice/UI, packaging and onboarding are deferred. No workbook update or push; stop for human review.
