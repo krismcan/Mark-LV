@@ -1,11 +1,11 @@
-"""Bounded file reads and immediate directory listings from validated handles."""
+"""Bounded reads/listings and irreversible empty-file creation on Windows."""
 
 from __future__ import annotations
 
 from contextlib import ExitStack
 import ctypes
 from ctypes import wintypes
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import platform
 import re
@@ -93,6 +93,46 @@ class DirectoryListResult:
         return len(self.entries)
 
 
+class FileCreateFailure(str, Enum):
+    ALREADY_EXISTS = "already_exists"
+    NOT_FOUND = "not_found"
+    ACCESS_DENIED = "access_denied"
+    INVALID_TARGET = "invalid_target"
+    UNSAFE_PATH = "unsafe_path"
+    UNSUPPORTED_PLATFORM = "unsupported_platform"
+    BUSY = "busy"
+    CREATE_ERROR = "create_error"
+    STRUCTURED_REQUIRED = "structured_required"
+
+
+class FileCreateError(RuntimeError):
+    """Pre-commit failure without path, identity or raw OS error details."""
+
+    def __init__(self, failure: FileCreateFailure) -> None:
+        self.failure = failure
+        super().__init__(f"Empty file creation failed: {failure.value}.")
+
+
+@dataclass(frozen=True, repr=False)
+class FileCreateResult:
+    """Committed creation receipt, not a claim about subsequent file state.
+
+    Only copied metadata escapes; no handle, lease, rollback or undo resource.
+    byte_count describes the empty creation, not later concurrent user writes.
+    """
+
+    path: str
+    state: str = field(default="created", init=False)
+    byte_count: int = field(default=0, init=False)
+    _identity: tuple[int, bytes] | None = field(default=None, repr=False)
+
+
+class FileCreateObservation(str, Enum):
+    MATCHED = "matched"
+    CHANGED = "changed"
+    UNKNOWN = "unknown"
+
+
 def normalize_file_path(path: str) -> str:
     """Lexical only. Preserve component case; no IO, expansion or alias lookup."""
     if not isinstance(path, str):
@@ -118,7 +158,34 @@ def normalize_directory_path(path: str) -> str:
 
 
 class FilesystemService:
-    """Operate read-only on explicit local objects after same-handle validation."""
+    """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def create_empty_file(self, path: str) -> FileCreateResult:
+        try:
+            path = normalize_file_path(path)
+        except (TypeError, ValueError):
+            raise FileCreateError(FileCreateFailure.INVALID_TARGET) from None
+        if platform.system() != "Windows":
+            raise FileCreateError(FileCreateFailure.UNSUPPORTED_PLATFORM)
+        try:
+            return _create_empty_windows(path)
+        except FileReadError as exc:
+            # Ancestor checks retain their existing read-only contract.
+            failure = FileCreateFailure.__members__.get(exc.failure.name, FileCreateFailure.CREATE_ERROR)
+            raise FileCreateError(failure) from None
+        except OSError:
+            raise FileCreateError(FileCreateFailure.CREATE_ERROR) from None
+
+    def observe_created_file(self, result: FileCreateResult) -> FileCreateObservation:
+        if (not isinstance(result, FileCreateResult) or not _valid_create_identity(result._identity)
+                or platform.system() != "Windows"):
+            return FileCreateObservation.UNKNOWN
+        try:
+            path = normalize_file_path(result.path)
+            return _observe_created_windows(path, result._identity)
+        except Exception:
+            # No fallback identity, retry, mutation, or raw exception disclosure.
+            return FileCreateObservation.UNKNOWN
 
     def list_directory(self, path: str) -> DirectoryListResult:
         try:
@@ -335,3 +402,119 @@ def _enumerate_directory(api, handle) -> tuple[DirectoryEntry, ...]:
             if not next_offset:
                 break
             offset += next_offset
+
+
+class _FileIdInfo(ctypes.Structure):
+    # FILE_ID_INFO, FileIdInfo (18). Never substitute the older 64-bit index.
+    # https://learn.microsoft.com/windows/win32/api/winbase/ns-winbase-file_id_info
+    _fields_ = [("volume", ctypes.c_ulonglong), ("identifier", ctypes.c_ubyte * 16)]
+
+
+def _valid_create_identity(identity) -> bool:
+    return (type(identity) is tuple and len(identity) == 2
+            and type(identity[0]) is int and 0 < identity[0] < 2**64
+            and type(identity[1]) is bytes and len(identity[1]) == 16 and any(identity[1]))
+
+
+def _create_snapshot(api, handle, expected: str):
+    """Read-only snapshot: affirmative contradictions differ from missing evidence."""
+    if api.GetFileType(handle) != 1:
+        return FileCreateObservation.UNKNOWN, None
+    info = _FileInformation()
+    if not api.GetFileInformationByHandle(handle, ctypes.byref(info)):
+        return FileCreateObservation.UNKNOWN, None
+    if info.attributes & (_DIRECTORY | _UNSAFE_ATTRIBUTES):
+        return FileCreateObservation.CHANGED, None
+    buffer = ctypes.create_unicode_buffer(_MAX_PATH + 4)
+    length = api.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
+    if not 4 < length < len(buffer) or length != len(buffer.value.encode("utf-16-le")) // 2:
+        return FileCreateObservation.UNKNOWN, None
+    if not buffer.value.startswith("\\\\?\\"):
+        return FileCreateObservation.UNKNOWN, None
+    final = buffer.value[4:]
+    if final[:1].upper() + final[1:] != expected or info.size_high or info.size_low:
+        return FileCreateObservation.CHANGED, None
+    identity = _FileIdInfo()
+    if not api.GetFileInformationByHandleEx(handle, 18, ctypes.byref(identity), ctypes.sizeof(identity)):
+        return FileCreateObservation.UNKNOWN, None
+    value = (identity.volume, bytes(identity.identifier))
+    if not _valid_create_identity(value):
+        return FileCreateObservation.UNKNOWN, None
+    return FileCreateObservation.MATCHED, value
+
+
+def _create_ancestors(api, path: str, handles: ExitStack, close) -> None:
+    root = path[:3]
+    if api.GetDriveTypeW(root) not in (2, 3, 6):
+        raise FileReadError(FileReadFailure.UNSAFE_PATH)
+    parts = path[3:].split("\\")
+    ancestors = [root] + [root + "\\".join(parts[:i]) for i in range(1, len(parts))]
+    for expected in ancestors:
+        # Include FILE_LIST_DIRECTORY (read-data sharing category), not only
+        # attributes. Keep no-write/no-delete sharing until creation completes.
+        handle = api.CreateFileW(expected, _READ_ATTRIBUTES | 1, _SHARE_READ,
+                                 None, _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            raise _os_failure()
+        handles.callback(close, handle)
+        _inspect_handle(api, handle, expected, directory=True)
+
+
+def _create_empty_windows(path: str) -> FileCreateResult:
+    api = _kernel32()
+    identity = None
+    close_ok = True
+
+    def close(handle):
+        nonlocal close_ok
+        try:
+            if not api.CloseHandle(handle):
+                close_ok = False
+        except Exception:
+            close_ok = False
+        # A close diagnostic must not misreport committed creation as FAILED.
+        # Attempt every close once; do not retry a possibly already closed handle.
+
+    with ExitStack() as handles:
+        _create_ancestors(api, path, handles, close)
+        # CREATE_NEW (1) is the mutation commit point. No write/delete access,
+        # overwrite fallback, pathname precheck or rollback. Read-data access
+        # makes no-write/no-delete sharing effective during the short snapshot.
+        handle = api.CreateFileW(path, _READ_ATTRIBUTES | 1, _SHARE_READ, None, 1,
+                                 0x80 | 0x00200000 | 0x00100000, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            failure = {80: FileCreateFailure.ALREADY_EXISTS, 183: FileCreateFailure.ALREADY_EXISTS,
+                       2: FileCreateFailure.NOT_FOUND, 3: FileCreateFailure.NOT_FOUND,
+                       5: FileCreateFailure.ACCESS_DENIED, 32: FileCreateFailure.BUSY}.get(
+                           ctypes.get_last_error(), FileCreateFailure.CREATE_ERROR)
+            raise FileCreateError(failure)
+        handles.callback(close, handle)
+        try:
+            observation, evidence = _create_snapshot(api, handle, path)
+            if observation is FileCreateObservation.MATCHED:
+                identity = evidence
+        except Exception:
+            # The file exists now. Optional evidence failure NEVER deletes it
+            # or changes execution into a pre-commit failure.
+            pass
+    return FileCreateResult(path, _identity=identity if close_ok else None)
+
+
+def _observe_created_windows(path: str, original_identity) -> FileCreateObservation:
+    api = _kernel32()
+    with ExitStack() as handles:
+        try:
+            _create_ancestors(api, path, handles, lambda h: api.CloseHandle(h))
+        except FileReadError as exc:
+            return (FileCreateObservation.CHANGED if exc.failure is FileReadFailure.NOT_FOUND
+                    else FileCreateObservation.UNKNOWN)
+        handle = api.CreateFileW(path, _READ_ATTRIBUTES | 1, _SHARE_READ, None,
+                                 _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            return (FileCreateObservation.CHANGED if ctypes.get_last_error() in (2, 3)
+                    else FileCreateObservation.UNKNOWN)
+        handles.callback(api.CloseHandle, handle)
+        observation, identity = _create_snapshot(api, handle, path)
+        if observation is FileCreateObservation.MATCHED and identity != original_identity:
+            return FileCreateObservation.CHANGED
+        return observation
