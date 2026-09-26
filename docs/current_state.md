@@ -3,11 +3,12 @@
 ## Checkpoint
 
 - Branch: `nayeon-v1`.
-- Current product milestone: `nayeon-v1-filesystem-list-01` (annotated), `feat: add bounded directory listing`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-filesystem-list-01^{}'`.
-- Starting checkpoint and previous product milestone: `3070a89c3690df1e39c8a31cc096cb0396f81df8`, `nayeon-v1-capability-argument-mapping-01`; its tag remains unchanged.
+- Current product milestone: `nayeon-v1-undo-resource-lifecycle-01` (annotated), `feat: add undo resource lifecycle`. Resolve the verified product commit with `git rev-parse 'nayeon-v1-undo-resource-lifecycle-01^{}'`.
+- Starting checkpoint and previous product milestone: `cd600fbc5ead84f9415217ca605551d8e5389fe9`, `nayeon-v1-filesystem-list-01`; its tag remains unchanged.
 - Kris reported the real-Windows OpenApp smoke test passed: execution `executed`, verification `verified`, evidence `{'application_id': 'notepad', 'state': 'observed_open', 'identity': 'matched'}`. OpenApp is the completed reference capability for current v1 scope. This report is user-provided live evidence, separate from automated tests; no OpenApp expansion was made.
 - Kris also reported the direct structured filesystem smoke test passed: initial `requires_confirmation`, execution `executed`, state `read`, 34 bytes, verification `indeterminate`, and zero undo entries. Subsequently, both conversational ReadFile rejection and approval passed on real Windows: approval returned `executed`, state `read`, 33 bytes, verification `indeterminate`, zero undo entries, and cleared pending state. Temporary smoke files/scripts and the temporary PYTHONPATH override were removed. These are user-performed results, not smoke checks rerun during directory-listing implementation.
 - Historical checkpoint and validation details are retained in [engineering_log.md](engineering_log.md).
+- Kris subsequently reported real-Windows conversational ListDirectory rejection and approval passed: approval returned state `listed`, three immediate entries, no nested child, verification `indeterminate`, and zero undo entries. Temporary smoke artifacts were removed and the tree was clean. This is user-provided live evidence, not a smoke check rerun for the resource-lifecycle milestone.
 - `ConversationSession` owns the sequential request and pending-confirmation lifecycle for registered structured capabilities that opt into argument mapping. OpenApp, ReadFile and ListDirectory implement that optional contract. ActionExecutor remains the trust boundary; legacy successful OpenApp execution and semantic parser behavior remain supported. A false OpenApp launch receipt remains FAILED without verification. Trusted Notepad launch/identity and the existing ReadFile path/handle/read logic are unchanged; the filesystem service now additionally enumerates a validated directory handle.
 - Execution completion and outcome verification remain separate result fields. OpenApp delegates bounded read-only identity observation to ApplicationService after successful execution. Missing trusted paths, unsupported observations, and inconclusive exhaustion remain INDETERMINATE. Observation never relaunches the application.
 
@@ -27,6 +28,7 @@ MEMORY retains appropriate context
 | Layer | Implemented state |
 | --- | --- |
 | Trust and execution | Permission checks feed policy; the executor applies policy, defers protected actions to confirmation, checks one-time capability/request-bound tokens, reevaluates policy after approval, and records audit events. Reversible actions require `UndoProvider` and register concrete undo callbacks. |
+| Undo resource lifecycle | Optional registration cleanup transfers with successful insertion into UndoService; callback completion, eviction, clear and explicit close dispose detached entries once. Optional UnregisteredResourceProvider releases returned output when executor ownership transfer never commits. Execution -> undo registration -> verification remains unchanged. |
 | Intent | Validated intent models; deterministic local routing and contextual cancel/undo controls; local-first resolution; configured local and semantic confidence gates; semantic authority limited to the registry and approved system controls. |
 | AI parsing | Provider-independent AI service and semantic response adapter. Malformed response fields, including blank intents, return unresolved results. The result model's non-empty-intent invariant remains enforced. |
 | Dispatch | `IntentDispatcher` maps resolved intents to registered capabilities or approved system controls and leaves unsupported intents unresolved. Planning does not execute actions. |
@@ -41,7 +43,7 @@ MEMORY retains appropriate context
 
 ## Regression status
 
-Validated on 2026-09-25 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **508 discovered, 508 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 508 test methods.
+Validated on 2026-09-26 with the repository `.venv`, Python 3.12.10 on Windows 11 (AMD64): **553 discovered, 553 passed, 0 failures, 0 errors, 0 skipped**. Subtest cases are additional cases within these 553 test methods.
 
 | Test module | Tests | Coverage |
 | --- | ---: | --- |
@@ -50,6 +52,7 @@ Validated on 2026-09-25 with the repository `.venv`, Python 3.12.10 on Windows 1
 | `tests/test_dispatch_structured.py` | 11 | Dispatch planning, argument isolation, structured request and protocol detection |
 | `tests/test_policy_confirmation.py` | 17 | Permission/policy precedence, confirmation binding, replay, rejection, expiry, opaque action identity |
 | `tests/test_undo.py` | 8 | Bounded LIFO undo, callback failures, registration validation, provider contract |
+| `tests/test_undo_resources.py` | 45 | Fake-resource custody, callback-before-cleanup, eviction/clear/close, in-flight undo, reentrancy, cleanup failure containment and executor transfer/abandonment paths |
 | `tests/test_executor.py` | 16 | Real policy/confirmation boundary with fake implementations, audit outcomes, undo integration, temporary JSONL persistence |
 | `tests/test_open_app_structured.py` | 7 | Strict application arguments, no side effect during validation, mocked service delegation, legacy compatibility |
 | `tests/test_structured_executor.py` | 23 | Structured validation/policy/confirmation/execution, snapshot isolation, legacy-token separation, replay, expiry, audit redaction, undo, mocked OpenApp integration |
@@ -74,7 +77,17 @@ Validation commands (run from the repository root):
 git diff --check
 ```
 
-All passed. Python required approved execution outside the Windows sandbox; no alternate interpreter was substituted. The combined directory/filesystem/mapping/orchestration/session suite passed 203 tests (60 + 56 + 33 + 24 + 30). All prior 448 test methods remain unchanged. New tests use fake Win32 APIs/services plus one native self-created temporary-directory test; the retained baseline includes one native self-created temporary-file read. Both native tests skip only on non-Windows and passed here. No personal directories/files, real junctions/symlinks, models, network, credentials or application launches were used. Audit persistence tests use temporary directories. Real permission and confirmation services remain in executor/session tests. A separate user-performed real-Windows ListDirectory conversational smoke check has NOT YET been performed.
+All passed. Python required approved execution outside the Windows sandbox; no alternate interpreter was substituted. The focused resource/undo/executor/verification/orchestration/session/filesystem/directory suite passed 271 tests (45 + 8 + 16 + 32 + 24 + 30 + 56 + 60). All prior 508 test methods remain unchanged. New tests use fake resources/counters only. The retained baseline includes one native self-created temporary-file read and one native self-created temporary-directory listing; both skip only on non-Windows and passed here. No personal directories/files, real junctions/symlinks, models, network, credentials or application launches were used. Audit persistence tests use temporary directories. Real permission and confirmation services remain in executor/session tests. User-performed live smoke evidence is recorded separately above.
+
+## Generic undo resource lifecycle
+
+- `UndoRegistration.cleanup: Callable[[], None] | None` is optional and validated as callable. Existing registrations without cleanup keep their behavior. Providers must give each owned resource a single registration; structural protocol detection does not enforce correct provider ownership.
+- Custody remains with the provider until `UndoService.register()` appends under its existing lock. That insertion is the ownership-transfer point. Invalid or post-close registration rejects before insertion; the caller still owns cleanup. Once committed, cleanup failure from an evicted older entry cannot turn the new registration into a failure.
+- `undo_last()` still pops before invoking the callback. Every normal return, including `False` or a refusal-shaped value, retains existing success interpretation; ordinary callback exceptions retain the existing failure result, with no retry. Its `finally` invokes cleanup after callback completion. Cleanup cannot replace the primary callback outcome.
+- Eviction detaches the oldest entry; reusable `clear()` detaches all current entries without running undo callbacks. Terminal, idempotent `close()` detaches queued entries and rejects later registration with `RuntimeError("Undo service is closed.")`. Callbacks and cleanup run outside the history lock. Already-popped in-flight callbacks retain their resources until their own `finally`; close does not wait for those calls. A host requiring complete shutdown must also finish active calls. Host shutdown wiring remains future work.
+- Detachment provides exactly one cleanup invocation per terminal resource-bearing entry through these APIs, even with reentrant cleanup; repeated clear/close/undo cannot invoke it again. There are no finalizers or garbage-collection correctness mechanisms. Cleanup failures, including interrupts raised by cleanup itself, are contained and never retried. `UndoService.cleanup_failures` counts failed attempts without exception strings, paths or resource identifiers. This reports failure, not proof of release; providers own the actual disposal implementation.
+- Independent optional `UnregisteredResourceProvider.release_unregistered_resources(*, output)` is called by the executing implementation's executor guard on exit if returned output never transferred to undo history. The guard starts before success audit and covers build/registration failures, closed service, audit exceptions and later failures without transfer. After successful registration, the executor never releases that resource, including after verification/audit failures. Execution -> undo registration -> verification is unchanged. A non-reversible provider opting in also releases on exit, since it never registers undo; failures before execution returns remain the provider's responsibility.
+- Provider cleanup failure is contained in the fixed `ActionExecutor.unregistered_cleanup_failures` counter. The original result/exception is preserved. Counters deliberately avoid dependence on audit persistence, which may itself be failing; future hosts can inspect them. No generic executor resource/domain logic, host framework, Windows ownership or filesystem mutation was added. CreateFile remains **not implemented**.
 
 ## Session lifecycle
 
@@ -174,7 +187,7 @@ All passed. Python required approved execution outside the Windows sandbox; no a
 - Structured undo retains `UndoProvider.build_undo(request: str, output)`. Reversible implementations must derive concrete undo from execution output/state; no structured undo contract was invented. OpenApp remains non-reversible.
 - Pending approvals and their snapshots are process-local. The session owns at most one pending action and is explicitly sequential: no concurrency, persistence, database, cross-process recovery, or multi-session coordination guarantee. Executor binding checks still reject changed registrations. Session and bridge snapshots use deep copies; their Python objects are not a security boundary against code modifying private state.
 - Filesystem scope is Windows ordinary local file reads and immediate directory listing only; non-Windows returns UNSUPPORTED_PLATFORM. Strict identity and restrictive sharing may reject otherwise readable objects. Reparse-backed/cloud-placeholder targets are unsupported; listing also rejects child links. Hard links are not a content-authenticity boundary, and no allowed-root sandbox or secret-content detector is implemented. The host controls permission grants and disclosure of returned text/names. Byte/entry bounds are not wall-clock deadlines for synchronous OS calls.
-- Current validation is deterministic regression coverage plus self-created native temporary file/directory tests, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, concurrency, or every possible malformed input. Kris separately reported OpenApp, direct structured ReadFile and conversational ReadFile approval/rejection successes. User-performed conversational ListDirectory live validation remains pending.
+- Current validation is deterministic regression coverage plus self-created native temporary file/directory tests, not end-to-end coverage of the legacy UI, live providers, OS application launching, all discovery/configuration paths, general concurrency, or every possible malformed input. Lifecycle tests cover the existing UndoService lock with controlled threads/reentrancy, not a concurrent session/executor guarantee. Kris separately reported OpenApp, direct structured ReadFile, conversational ReadFile and ListDirectory approval/rejection successes.
 
 ## Optional real-Windows manual check
 
@@ -227,8 +240,8 @@ else:
 
 ## Next intended milestone
 
-Opt-in conversational ListDirectory smoke validation:
-exercise the local session request, explicit approval and rejection on a user-created harmless temporary directory, recording only minimal outcomes. The native regression test establishes service-level enumeration on its own temporary directory, not a user-performed conversational smoke result. No new capability or UI implementation is proposed here.
+Safe empty-file creation:
+introduce a separately scoped CreateFile implementation using validated same-created-handle rollback, retained-object verification/undo and the generic resource lifecycle. CreateFile, retained Windows HANDLE ownership, ReOpenFile and disposition-based deletion remain unimplemented in this milestone; they require the next scoped implementation and review.
 
 This is planning/state documentation only. Filesystem mutation, recursion/search/indexing, document parsing, memory ingestion, general retry infrastructure, asynchronous/background verification, computer-control expansion, identity/configuration, BYOK, vision, browser, voice, desktop UI, installer, managed backend and autonomy remain deferred. No live application launch, process inventory or real sleep was used during this milestone's validation.
 

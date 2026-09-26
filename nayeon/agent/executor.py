@@ -16,7 +16,7 @@ from nayeon.policy.confirmation import (
 )
 from nayeon.policy.service import PolicyAction, PolicyDecision, PolicyService
 from nayeon.registry import Capability, CapabilityRegistry
-from nayeon.undo.contract import UndoProvider
+from nayeon.undo.contract import UndoProvider, UnregisteredResourceProvider
 from nayeon.undo.service import UndoService
 from nayeon.verification.contract import VerificationResult
 from nayeon.verification.service import VerificationService
@@ -71,7 +71,13 @@ class ActionExecutor:
         self._audit = audit
         self._undo = undo
         self._verification = VerificationService()
+        self._unregistered_cleanup_failures = 0
         self._structured_pending: dict[str, tuple[ConfirmationRequest, _StructuredAction]] = {}
+
+    @property
+    def unregistered_cleanup_failures(self) -> int:
+        """Failed abandonment-cleanup attempts, without exception/resource details."""
+        return self._unregistered_cleanup_failures
 
     def _prepare_structured(
         self, capability: Capability, request: StructuredCapabilityRequest,
@@ -380,79 +386,92 @@ class ActionExecutor:
                 policy_decision=policy_decision,
             )
 
-        self._audit.record(
-            AuditEventType.EXECUTION_SUCCEEDED,
-            capability=capability.name,
-            outcome="success",
-            message=f"Capability '{capability.name}' executed successfully.",
-        )
+        ownership_transferred = False
+        try:
+            self._audit.record(
+                AuditEventType.EXECUTION_SUCCEEDED,
+                capability=capability.name,
+                outcome="success",
+                message=f"Capability '{capability.name}' executed successfully.",
+            )
 
-        message = f"Capability '{capability.name}' executed."
-        if capability.reversible:
-            assert isinstance(implementation, UndoProvider)
+            message = f"Capability '{capability.name}' executed."
+            if capability.reversible:
+                assert isinstance(implementation, UndoProvider)
 
-            try:
-                registration = implementation.build_undo(
-                    request=request,
-                    output=output,
-                )
+                try:
+                    registration = implementation.build_undo(
+                        request=request,
+                        output=output,
+                    )
 
-                undo_operation = self._undo.register(
-                    capability=capability.name,
-                    description=registration.description,
-                    callback=registration.callback,
-                )
-            except Exception as exc:
-                self._audit.record(
-                    AuditEventType.UNDO_REGISTRATION_FAILED,
-                    capability=capability.name,
-                    outcome="failed",
-                    message=(
+                    undo_operation = self._undo.register(
+                        capability=capability.name,
+                        description=registration.description,
+                        callback=registration.callback,
+                        cleanup=registration.cleanup,
+                    )
+                    ownership_transferred = True
+                except Exception as exc:
+                    self._audit.record(
+                        AuditEventType.UNDO_REGISTRATION_FAILED,
+                        capability=capability.name,
+                        outcome="failed",
+                        message=(
+                            f"Capability '{capability.name}' executed, "
+                            "but undo could not be registered."
+                        ),
+                        details={
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+
+                    message = (
                         f"Capability '{capability.name}' executed, "
                         "but undo could not be registered."
-                    ),
-                    details={
-                        "error_type": type(exc).__name__,
-                    },
-                )
+                    )
+                else:
+                    self._audit.record(
+                        AuditEventType.UNDO_REGISTERED,
+                        capability=capability.name,
+                        outcome="registered",
+                        message=f"Undo registered for '{capability.name}'.",
+                        details={
+                            "operation_id": undo_operation.operation_id,
+                        },
+                    )
+                    message = f"Capability '{capability.name}' executed. Undo is available."
 
-                message = (
-                    f"Capability '{capability.name}' executed, "
-                    "but undo could not be registered."
-                )
-            else:
-                self._audit.record(
-                    AuditEventType.UNDO_REGISTERED,
-                    capability=capability.name,
-                    outcome="registered",
-                    message=f"Undo registered for '{capability.name}'.",
-                    details={
-                        "operation_id": undo_operation.operation_id,
-                    },
-                )
-                message = f"Capability '{capability.name}' executed. Undo is available."
-
-        # Use the implementation that executed, never a fresh registry lookup.
-        # Structured arguments come from the bound normalized snapshot, not from
-        # caller input, approval reinterpretation, or the capability's mutable copy.
-        verification_request = (
-            StructuredCapabilityRequest(structured.request, structured.arguments)
-            if structured is not None else request
-        )
-        verification = self._verification.verify(
-            implementation, request=verification_request, output=output,
-        )
-        self._audit.record(
-            AuditEventType.VERIFICATION_OUTCOME,
-            capability=capability.name,
-            outcome=verification.status.value,
-            message="Post-execution verification completed.",
-        )
-        return ExecutionResult(
-            status=ExecutionStatus.EXECUTED,
-            capability=capability.name,
-            message=message,
-            output=output,
-            policy_decision=policy_decision,
-            verification=verification,
-        )
+            # Use the implementation that executed, never a fresh registry lookup.
+            # Structured arguments come from the bound normalized snapshot, not from
+            # caller input, approval reinterpretation, or the capability's mutable copy.
+            verification_request = (
+                StructuredCapabilityRequest(structured.request, structured.arguments)
+                if structured is not None else request
+            )
+            verification = self._verification.verify(
+                implementation, request=verification_request, output=output,
+            )
+            self._audit.record(
+                AuditEventType.VERIFICATION_OUTCOME,
+                capability=capability.name,
+                outcome=verification.status.value,
+                message="Post-execution verification completed.",
+            )
+            return ExecutionResult(
+                status=ExecutionStatus.EXECUTED,
+                capability=capability.name,
+                message=message,
+                output=output,
+                policy_decision=policy_decision,
+                verification=verification,
+            )
+        finally:
+            if not ownership_transferred:
+                try:
+                    if isinstance(implementation, UnregisteredResourceProvider):
+                        implementation.release_unregistered_resources(output=output)
+                except BaseException:
+                    # Preserve the original result/error, even if abandonment
+                    # cleanup fails. Do not expose or retain provider details.
+                    self._unregistered_cleanup_failures += 1
