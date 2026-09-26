@@ -434,3 +434,35 @@ Validation on Windows 11 AMD64 / Python 3.12.10 using the repository `.venv`; re
 The native test created one empty file in its own temporary directory, checked existence/zero size, performed read-only observation, proved a second creation request cannot overwrite it, and removed only its own fixture. Unsupported native FileIdInfo is allowed to remain inconclusive; the fixture does not manufacture a VERIFIED claim. User-performed live conversational CreateFile smoke validation is **NOT YET performed**. The single next intended milestone is opt-in conversational rejection/approval smoke validation in a user-created temporary directory, with manual fixture cleanup and no implicit undo.
 
 Content writing, append/overwrite/truncate, further filesystem mutation, DeleteFile, ADS synchronization and broader product work remain deferred. No executor, session, bridge, verification-service, undo-lifecycle or existing capability implementation changed. No previous tag moved, workbook updated or remote pushed. Stop for human review.
+
+## 2026-09-26 — Irreversible single-directory creation
+
+Starting checkpoint verified: branch `nayeon-v1`, HEAD `3aa09605ef88a77124e61c8cab9186af6a67e98e`, annotated `nayeon-v1-filesystem-create-01` resolving exactly to HEAD, clean tree. The unchanged baseline passed 622/622 with zero failures/errors/skips. Milestone: `feat: add safe directory creation`, annotated `nayeon-v1-filesystem-create-directory-01`; resolve the exact commit with `git rev-parse 'nayeon-v1-filesystem-create-directory-01^{}'`.
+
+The user reported CreateFile live Windows validation completed: rejection created nothing, approval created exactly one 0-byte file, verification VERIFIED, undo count 0, smoke artifacts removed and repository clean. This supersedes the previous entry's pending status. No date is inferred for that user-performed check, and it was not repeated as a live conversational test during this milestone.
+
+The approved contract is one new empty local directory with an already-existing parent, intentionally irreversible because another process can add content before attempted rollback/undo. No automatic deletion, parent creation, replacement, file content or broader mutation is implemented. Future deletion requires a separate capability and authority contract.
+
+- Added CreateDirectoryCapability: LOCAL, filesystem service, dedicated create_directory permission, mandatory confirmation, no LLM, reversible=False. Structured mapping forwards explicit path even if invalid, discards extras, and otherwise requires exact original request binding before only `create directory `. Existing case handling and lexical path validation are reused; root-only targets fail. No broader aliases or recursive/parents/options fields are accepted.
+- FilesystemService retains the unchanged ancestor validation helper through one documented CreateDirectoryW call. Ancestors have FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES and read sharing only, with disk/directory/attribute/exact-path checks. Existing objects and missing parents fail without fallback; NULL security attributes use the parent's default inherited ACL. Existing read/list/file-create implementations are unchanged.
+- Successful CreateDirectoryW is the mutation commit point. Later optional bounded read-only observation or close diagnostics preserve a frozen `DirectoryCreateResult(state="created")`; no automatic rollback occurs. All acquired handles have scoped deterministic close attempts. No handle, owning lease or long-lived resource escapes; no undo or abandonment-provider contract participates. Generic post-commit audit exceptions still propagate without erasing mutation or authorizing retry.
+- CreateDirectoryW returns no handle, so pathname observation cannot prove exact created-object continuity. A later FileIdInfo value would establish only the reopened object's identity; no such value is treated as a creation anchor. Safe directory/path observation remains INDETERMINATE. Trustworthy missing target/parent, non-directory, unsafe/reparse target or wrong final path is NOT_VERIFIED. Access/sharing/metadata/unsupported/malformed evidence and unsafe ancestors are INDETERMINATE. No VERIFIED path is exposed and no child enumeration, mutation or deletion occurs during verification. Later emptiness is not certified.
+- Result repr/audit exclude requested paths, child names, handles, raw OS details and private observations. Permission/policy/confirmation, exact saved approval without remapping, session state, prior undo entries and generic lifecycle guarantees remain unchanged.
+
+Added 62 permanent tests in `tests/test_directory_creation.py`, using fake Windows APIs for unsafe edge cases and one permitted self-owned native temporary parent/child fixture. The native fixture checks empty child existence, read-only observation, conservative INDETERMINATE verification and failure on second creation; TemporaryDirectory cleanup is test infrastructure, not capability undo. All prior 622 tests remain unchanged. No unsafe reparse setup, personal files, admin access, real credentials, models, network calls or application launches were used in tests.
+
+Validation on Windows 11 AMD64 / Python 3.12.10 using the repository `.venv`; Python ran with approved sandbox escalation and no substitute interpreter:
+
+| Command | Result |
+| --- | --- |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` before editing | 622 passed; zero failures/errors/skips. |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_directory_creation` | 62 passed, including the native temporary fixture. |
+| `.\.venv\Scripts\python.exe -m unittest -v tests.test_directory_creation tests.test_file_creation tests.test_filesystem tests.test_directory_listing tests.test_undo_resources tests.test_executor tests.test_verification tests.test_argument_mapping tests.test_orchestration tests.test_session` | 427 passed: 62 directory creation, 69 file creation, 56 filesystem, 60 listing, 45 lifecycle, 16 executor, 32 verification, 33 mapping, 24 orchestration, 30 session. |
+| `.\.venv\Scripts\python.exe -m unittest discover -v` after implementation | 684 discovered, 684 passed, 0 failures, 0 errors, 0 skipped. |
+| `.\.venv\Scripts\python.exe -m nayeon.environment` | Passed. |
+| `.\.venv\Scripts\python.exe -m compileall -q nayeon` | Passed. |
+| `git diff --check` and `git diff --cached --check` | Passed before commit; complete diff reviewed. |
+
+Live user conversational CreateDirectory smoke validation is **NOT YET performed**. The single next intended milestone is opt-in conversational rejection/approval smoke validation in a user-created temporary parent, recording committed creation, INDETERMINATE verification and unchanged undo count, with manual fixture cleanup.
+
+Content writing, recursive mkdir, parent creation, append/overwrite, deletion, move/rename/copy/trash, filesystem undo redesign and broader product work remain deferred. No executor, session, bridge, verification-service, undo-lifecycle or existing capability implementation changed. No prior tag moved, workbook updated or remote pushed. Stop for human review.

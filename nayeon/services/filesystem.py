@@ -1,4 +1,4 @@
-"""Bounded reads/listings and irreversible empty-file creation on Windows."""
+"""Bounded reads/listings and irreversible file/directory creation on Windows."""
 
 from __future__ import annotations
 
@@ -133,6 +133,41 @@ class FileCreateObservation(str, Enum):
     UNKNOWN = "unknown"
 
 
+class DirectoryCreateFailure(str, Enum):
+    ALREADY_EXISTS = "already_exists"
+    NOT_FOUND = "not_found"
+    ACCESS_DENIED = "access_denied"
+    INVALID_TARGET = "invalid_target"
+    UNSAFE_PATH = "unsafe_path"
+    UNSUPPORTED_PLATFORM = "unsupported_platform"
+    BUSY = "busy"
+    CREATE_ERROR = "create_error"
+    STRUCTURED_REQUIRED = "structured_required"
+
+
+class DirectoryCreateError(RuntimeError):
+    """Pre-commit directory creation failure; no private OS details."""
+
+    def __init__(self, failure: DirectoryCreateFailure) -> None:
+        self.failure = failure
+        super().__init__(f"Directory creation failed: {failure.value}.")
+
+
+class DirectoryCreateObservation(str, Enum):
+    PRESENT = "present"  # Safe current path, NOT proof of the exact created object.
+    CONTRADICTED = "contradicted"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, repr=False)
+class DirectoryCreateResult:
+    """Committed creation with optional unbound snapshot, never an owning lease."""
+
+    path: str
+    state: str = field(default="created", init=False)
+    _observation: DirectoryCreateObservation = field(default=DirectoryCreateObservation.UNKNOWN, repr=False)
+
+
 def normalize_file_path(path: str) -> str:
     """Lexical only. Preserve component case; no IO, expansion or alias lookup."""
     if not isinstance(path, str):
@@ -159,6 +194,38 @@ def normalize_directory_path(path: str) -> str:
 
 class FilesystemService:
     """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def create_directory(self, path: str) -> DirectoryCreateResult:
+        try:
+            # A final component is required; unlike listing, drive root is invalid.
+            path = normalize_file_path(path)
+        except (TypeError, ValueError):
+            raise DirectoryCreateError(DirectoryCreateFailure.INVALID_TARGET) from None
+        if platform.system() != "Windows":
+            raise DirectoryCreateError(DirectoryCreateFailure.UNSUPPORTED_PLATFORM)
+        try:
+            return _create_directory_windows(path)
+        except FileReadError as exc:
+            failure = DirectoryCreateFailure.__members__.get(exc.failure.name, DirectoryCreateFailure.CREATE_ERROR)
+            raise DirectoryCreateError(failure) from None
+        except OSError:
+            raise DirectoryCreateError(DirectoryCreateFailure.CREATE_ERROR) from None
+
+    def observe_created_directory(self, result: DirectoryCreateResult) -> DirectoryCreateObservation:
+        if not isinstance(result, DirectoryCreateResult) or platform.system() != "Windows":
+            return DirectoryCreateObservation.UNKNOWN
+        try:
+            path = normalize_file_path(result.path)
+            api = _kernel32()
+            with ExitStack() as handles:
+                try:
+                    _create_ancestors(api, path, handles, lambda h: api.CloseHandle(h))
+                except FileReadError as exc:
+                    return (DirectoryCreateObservation.CONTRADICTED if exc.failure is FileReadFailure.NOT_FOUND
+                            else DirectoryCreateObservation.UNKNOWN)
+                return _directory_create_snapshot(api, path)
+        except Exception:
+            return DirectoryCreateObservation.UNKNOWN
 
     def create_empty_file(self, path: str) -> FileCreateResult:
         try:
@@ -518,3 +585,70 @@ def _observe_created_windows(path: str, original_identity) -> FileCreateObservat
         if observation is FileCreateObservation.MATCHED and identity != original_identity:
             return FileCreateObservation.CHANGED
         return observation
+
+
+def _directory_create_snapshot(api, path: str) -> DirectoryCreateObservation:
+    """Bounded read-only pathname reopen; cannot establish creation continuity."""
+    handle = api.CreateFileW(path, _READ_ATTRIBUTES | 1, _SHARE_READ, None,
+                             _OPEN_EXISTING, _OPEN_FLAGS, None)
+    if handle in (None, 0, ctypes.c_void_p(-1).value):
+        return (DirectoryCreateObservation.CONTRADICTED if ctypes.get_last_error() in (2, 3)
+                else DirectoryCreateObservation.UNKNOWN)
+    with ExitStack() as handles:
+        handles.callback(api.CloseHandle, handle)
+        if api.GetFileType(handle) != 1:
+            return DirectoryCreateObservation.UNKNOWN
+        info = _FileInformation()
+        if not api.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            return DirectoryCreateObservation.UNKNOWN
+        if not info.attributes & _DIRECTORY or info.attributes & _UNSAFE_ATTRIBUTES:
+            return DirectoryCreateObservation.CONTRADICTED
+        buffer = ctypes.create_unicode_buffer(_MAX_PATH + 4)
+        length = api.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
+        if (not 4 < length < len(buffer) or not buffer.value.startswith("\\\\?\\")
+                or length != len(buffer.value.encode("utf-16-le")) // 2):
+            return DirectoryCreateObservation.UNKNOWN
+        final = buffer.value[4:]
+        if final[:1].upper() + final[1:] != path:
+            return DirectoryCreateObservation.CONTRADICTED
+        # Even FileIdInfo here would identify only this later open, not the
+        # handle-less creation. Do not manufacture a trusted identity baseline.
+        return DirectoryCreateObservation.PRESENT
+
+
+def _create_directory_windows(path: str) -> DirectoryCreateResult:
+    api = _kernel32()
+    # Configure only this new path; existing file/list API loading stays intact.
+    create = api.CreateDirectoryW
+    create.argtypes = [wintypes.LPCWSTR, ctypes.c_void_p]
+    create.restype = wintypes.BOOL
+    observation = DirectoryCreateObservation.UNKNOWN
+    close_ok = True
+
+    def close(handle):
+        nonlocal close_ok
+        try:
+            if not api.CloseHandle(handle):
+                close_ok = False
+        except Exception:
+            close_ok = False
+        # Diagnostics cannot convert committed mutation into a pre-commit error.
+
+    with ExitStack() as handles:
+        _create_ancestors(api, path, handles, close)
+        # Exactly one final component. NULL security attributes inherit the
+        # parent ACL; no recursion, precheck, replace, rollback or delete path.
+        # https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
+        if not create(path, None):
+            failure = {80: DirectoryCreateFailure.ALREADY_EXISTS, 183: DirectoryCreateFailure.ALREADY_EXISTS,
+                       2: DirectoryCreateFailure.NOT_FOUND, 3: DirectoryCreateFailure.NOT_FOUND,
+                       5: DirectoryCreateFailure.ACCESS_DENIED, 32: DirectoryCreateFailure.BUSY}.get(
+                           ctypes.get_last_error(), DirectoryCreateFailure.CREATE_ERROR)
+            raise DirectoryCreateError(failure)
+        # Mutation has committed. This path-open snapshot is optional evidence
+        # only and cannot turn success into failure or trigger deletion.
+        try:
+            observation = _directory_create_snapshot(api, path)
+        except Exception:
+            pass
+    return DirectoryCreateResult(path, _observation=observation if close_ok else DirectoryCreateObservation.UNKNOWN)
