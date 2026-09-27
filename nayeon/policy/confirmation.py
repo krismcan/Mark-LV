@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import secrets
 
@@ -11,7 +11,7 @@ import secrets
 class ConfirmationRequest:
     token: str
     capability: str
-    request: str
+    request: str = field(repr=False)
     created_at: datetime
     expires_at: datetime
 

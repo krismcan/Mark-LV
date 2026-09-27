@@ -1,5 +1,6 @@
 """Permission precedence and confirmations with a controlled clock."""
 
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 import unittest
 from unittest.mock import patch
@@ -92,6 +93,32 @@ class ConfirmationTests(unittest.TestCase):
         for capability, request in ((" ", "request"), ("example", " ")):
             with self.subTest(capability=capability, request=request), self.assertRaises(ValueError):
                 self.service.create(capability, request)
+
+    def test_request_repr_and_str_hide_sensitive_text_preserving_runtime_data(self):
+        request = r"send C:\Private\confidential.txt to person@example.invalid"
+        pending = self.service.create("example", request)
+        for representation in (repr(pending), str(pending)):
+            for sensitive in (request, "Private", "confidential.txt", "person@example.invalid"):
+                self.assertNotIn(sensitive, representation)
+        self.assertEqual(pending.request, request)
+        # Explicit serialization retains runtime data; it is not a logging API.
+        self.assertEqual(asdict(pending)["request"], request)
+        other = replace(pending, request="different private request")
+        self.assertEqual(repr(pending), repr(other))
+        self.assertNotEqual(pending, other)
+        self.assertTrue(self.approve(pending.token, request=request).approved)
+
+    def test_redacted_request_still_requires_exact_text_and_opaque_binding(self):
+        request = r"inspect C:\Private\confidential.txt"
+        binding = object()
+        pending = self.service.create("example", request, binding=binding)
+        self.assertNotIn(repr(binding), repr(pending))
+        self.assertFalse(self.service.approve(
+            pending.token, capability="example", request=request + " changed", binding=binding
+        ).approved)
+        self.assertFalse(self.service.approve(
+            pending.token, capability="example", request=request, binding=binding
+        ).approved)
 
     def test_matching_token_approves_only_once(self):
         token = self.create().token

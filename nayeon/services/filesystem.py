@@ -269,6 +269,54 @@ class FileCopyResult:
     _digest: bytes | None = field(default=None, repr=False)
 
 
+class FileDeleteError(RuntimeError):
+    """Fixed, redacted pre-disposition failure."""
+
+    def __init__(self) -> None:
+        super().__init__("File deletion could not be safely prepared or executed.")
+
+
+class DeleteDisposition(str, Enum):
+    ACKNOWLEDGED = "acknowledged"
+    NOT_ACKNOWLEDGED = "not_acknowledged"
+    UNKNOWN = "unknown"
+
+
+class DeleteClose(str, Enum):
+    COMPLETE = "complete"
+    UNKNOWN = "unknown"
+
+
+class DeleteObservation(str, Enum):
+    CONFIRMED_ABSENT = "confirmed_absent"
+    PRESENT_SAME_IDENTITY = "present_same_identity"
+    PRESENT_DIFFERENT_IDENTITY = "present_different_identity"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, repr=False)
+class _DeletionBinding:
+    """Internally observed values only; no content, access time or owning handle."""
+
+    path: str
+    namespace: tuple[tuple[int, bytes], ...]
+    identity: tuple[int, bytes]
+    size: int
+    links: int
+    attributes: int
+    creation_time: int
+    write_time: int
+
+
+@dataclass(frozen=True, repr=False)
+class FileDeleteResult:
+    disposition: DeleteDisposition
+    source_close: DeleteClose
+    observation: DeleteObservation
+    _binding: _DeletionBinding = field(repr=False)
+    _cleanup_complete: bool = field(default=True, repr=False)
+
+
 def encode_creation_text(text: str) -> bytes:
     """Strict UTF-8, 1..64 KiB; reject C0/C1/DEL except TAB, LF and CR.
 
@@ -316,6 +364,45 @@ def normalize_directory_path(path: str) -> str:
 
 class FilesystemService:
     """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def prepare_deletion(self, path: str) -> _DeletionBinding:
+        """Approved DeleteFile-only metadata preparation, before confirmation.
+
+        No mutation or content read; all handles close before evidence escapes.
+        """
+        try:
+            path = normalize_file_path(path)
+            if platform.system() != "Windows":
+                raise FileDeleteError()
+            return _prepare_delete_windows(path)
+        except Exception:
+            raise FileDeleteError() from None
+
+    def delete_file(self, binding: _DeletionBinding) -> FileDeleteResult:
+        try:
+            if not _valid_deletion_binding(binding) or platform.system() != "Windows":
+                raise FileDeleteError()
+            return _delete_windows(binding)
+        except Exception:
+            raise FileDeleteError() from None
+
+    def observe_deleted_file(self, result: FileDeleteResult) -> DeleteObservation:
+        """Fresh read-only observation; never re-prepare or freshen the binding."""
+        if (type(result) is not FileDeleteResult or not _valid_deletion_binding(result._binding)
+                or result._cleanup_complete is not True or platform.system() != "Windows"):
+            return DeleteObservation.UNKNOWN
+        try:
+            api = _kernel32()
+            def close(handle):
+                if not api.CloseHandle(handle):
+                    raise FileDeleteError()
+            with ExitStack() as handles:
+                namespace = _delete_namespace(api, result._binding.path, handles, close)
+                if namespace != result._binding.namespace:
+                    return DeleteObservation.UNKNOWN
+                return _delete_observe_path(api, result._binding)
+        except Exception:
+            return DeleteObservation.UNKNOWN
 
     def copy_file(self, source_path: str, destination_path: str) -> FileCopyResult:
         try:
@@ -953,6 +1040,151 @@ def _create_text_windows(path: str, data: bytes) -> TextFileCreateResult:
             identity = None
     return TextFileCreateResult(path, len(data), write, flush, written,
                                 _identity=identity if close_ok else None)
+
+
+class _FileDispositionInfo(ctypes.Structure):
+    # FILE_DISPOSITION_INFO contains BOOLEAN, not the four-byte Win32 BOOL.
+    _fields_ = [("delete_file", ctypes.c_ubyte)]
+
+
+def _valid_deletion_binding(binding) -> bool:
+    if type(binding) is not _DeletionBinding:
+        return False
+    try:
+        return (normalize_file_path(binding.path) == binding.path
+                and type(binding.namespace) is tuple
+                and len(binding.namespace) == len(binding.path[3:].split("\\"))
+                and all(_valid_create_identity(value) for value in binding.namespace)
+                and _valid_create_identity(binding.identity)
+                and type(binding.size) is int and 0 <= binding.size <= MAX_FILE_BYTES
+                and type(binding.links) is int and binding.links == 1
+                and type(binding.attributes) is int and 0 <= binding.attributes < 2**32
+                and not binding.attributes & (_DIRECTORY | _UNSAFE_ATTRIBUTES | 1 | 4)
+                and all(type(value) is int and 0 <= value < 2**64
+                        for value in (binding.creation_time, binding.write_time)))
+    except (TypeError, ValueError):
+        return False
+
+
+def _delete_identity(api, handle):
+    info = _FileIdInfo()
+    if not api.GetFileInformationByHandleEx(handle, 18, ctypes.byref(info), ctypes.sizeof(info)):
+        raise FileDeleteError()
+    identity = (info.volume, bytes(info.identifier))
+    if not _valid_create_identity(identity):
+        raise FileDeleteError()
+    return identity
+
+
+def _delete_namespace(api, path, handles, close):
+    ancestors = []
+    class Registration:
+        def callback(self, callback, handle):
+            handles.callback(callback, handle)
+            ancestors.append(handle)
+    # Identical production access/share/path checks; collect identities only.
+    _create_ancestors(api, path, Registration(), close)
+    return tuple(_delete_identity(api, handle) for handle in ancestors)
+
+
+def _delete_snapshot(api, handle, path, namespace):
+    state, identity, size = _text_file_snapshot(api, handle, path)
+    if state is not FileCreateObservation.MATCHED:
+        raise FileDeleteError()
+    info = _inspect_handle(api, handle, path, directory=False)
+    if size != (info.size_high << 32) | info.size_low:
+        raise FileDeleteError()
+    # Existing native helpers expose creation and last-write, not ChangeTime.
+    binding = _DeletionBinding(path, namespace, identity, size, info.links, info.attributes,
+                               (info.creation.dwHighDateTime << 32) | info.creation.dwLowDateTime,
+                               (info.write.dwHighDateTime << 32) | info.write.dwLowDateTime)
+    if not _valid_deletion_binding(binding):
+        raise FileDeleteError()
+    return binding
+
+
+def _prepare_delete_windows(path):
+    api = _kernel32()
+    def close(handle):
+        if not api.CloseHandle(handle):
+            raise FileDeleteError()
+    with ExitStack() as handles:
+        namespace = _delete_namespace(api, path, handles, close)
+        handle = api.CreateFileW(path, _READ_ATTRIBUTES, 0, None, _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            raise FileDeleteError()
+        handles.callback(close, handle)
+        return _delete_snapshot(api, handle, path, namespace)
+
+
+def _delete_observe_path(api, binding):
+    # Caller retains and has matched every ancestor against the saved namespace.
+    handle = api.CreateFileW(binding.path, _READ_ATTRIBUTES, 0, None,
+                             _OPEN_EXISTING, _OPEN_FLAGS, None)
+    if handle in (None, 0, ctypes.c_void_p(-1).value):
+        return (DeleteObservation.CONFIRMED_ABSENT if ctypes.get_last_error() == 2
+                else DeleteObservation.UNKNOWN)
+    observation = DeleteObservation.UNKNOWN
+    try:
+        state, identity, _ = _text_file_snapshot(api, handle, binding.path)
+        if state is FileCreateObservation.MATCHED:
+            observation = (DeleteObservation.PRESENT_SAME_IDENTITY if identity == binding.identity
+                           else DeleteObservation.PRESENT_DIFFERENT_IDENTITY)
+    finally:
+        if not api.CloseHandle(handle):
+            observation = DeleteObservation.UNKNOWN
+    return observation
+
+
+def _delete_windows(binding):
+    api = _kernel32()
+    set_info = api.SetFileInformationByHandle
+    set_info.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    set_info.restype = wintypes.BOOL
+    disposition_info = _FileDispositionInfo(1)
+    if ctypes.sizeof(disposition_info) != 1:
+        raise FileDeleteError()
+    disposition = DeleteDisposition.UNKNOWN
+    source_close = DeleteClose.UNKNOWN
+    observation = DeleteObservation.UNKNOWN
+    cleanup_complete = True
+    def close(handle):
+        nonlocal cleanup_complete
+        try:
+            ok = bool(api.CloseHandle(handle))
+        except Exception:
+            ok = False
+        if not ok:
+            cleanup_complete = False
+        return ok
+    with ExitStack() as ancestors:
+        namespace = _delete_namespace(api, binding.path, ancestors, close)
+        if namespace != binding.namespace:
+            raise FileDeleteError()
+        target = api.CreateFileW(binding.path, 0x10000 | _READ_ATTRIBUTES, 0, None,
+                                 _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if target in (None, 0, ctypes.c_void_p(-1).value):
+            raise FileDeleteError()
+        try:
+            if _delete_snapshot(api, target, binding.path, namespace) != binding:
+                raise FileDeleteError()
+            # One invocation. TRUE is committed destructive state; FALSE is
+            # known non-acknowledgement. Exceptions cannot establish completion.
+            try:
+                acknowledged = set_info(target, 4, ctypes.byref(disposition_info), 1)
+                disposition = (DeleteDisposition.ACKNOWLEDGED if acknowledged
+                               else DeleteDisposition.NOT_ACKNOWLEDGED)
+            except Exception:
+                disposition = DeleteDisposition.UNKNOWN
+        finally:
+            # Sole owner: no outer target callback can close this handle again.
+            source_close = DeleteClose.COMPLETE if close(target) else DeleteClose.UNKNOWN
+        # All ancestors remain retained through this bounded observation.
+        try:
+            observation = _delete_observe_path(api, binding)
+        except Exception:
+            observation = DeleteObservation.UNKNOWN
+    return FileDeleteResult(disposition, source_close, observation, binding, cleanup_complete)
 
 
 def _copy_read(api, handle, size: int) -> bytes:

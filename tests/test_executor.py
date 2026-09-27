@@ -115,6 +115,34 @@ class ActionExecutorTests(unittest.TestCase):
         self.implementation.execute.assert_called_once_with("do example")
         self.assertEqual(self.events()[-1], AuditEventType.CONFIRMATION_REJECTED)
 
+    def test_nested_confirmation_repr_and_jsonl_audit_keep_request_private(self):
+        capability = self.register(confirmation=True)
+        request = r"send C:\Private\confidential.txt to person@example.invalid"
+        with TemporaryDirectory() as directory:
+            log = Path(directory) / "audit.jsonl"
+            audit = AuditService(log)
+            executor = ActionExecutor(
+                self.registry, self.policy, self.confirmation, audit, self.undo
+            )
+            pending = executor.execute(capability, request)
+            self.assertEqual(pending.status, ExecutionStatus.REQUIRES_CONFIRMATION)
+            self.assertEqual(pending.confirmation_request.request, request)
+            rejected = executor.reject(pending.confirmation_request.token, capability=capability)
+            self.assertEqual(rejected.status, ExecutionStatus.DENIED)
+            self.implementation.execute.assert_not_called()
+            second = executor.execute(capability, request)
+            approved = executor.approve_and_execute(
+                second.confirmation_request.token, capability=capability, request=request
+            )
+            self.assertEqual(approved.status, ExecutionStatus.EXECUTED)
+            self.implementation.execute.assert_called_once_with(request)
+            representations = [repr(audit.all()), log.read_text(encoding="utf-8")]
+            for result in (pending, rejected, second, approved):
+                representations.extend((repr(result), str(result)))
+            for representation in representations:
+                for sensitive in (request, "confidential.txt", "person@example.invalid", "Private"):
+                    self.assertNotIn(sensitive, representation)
+
     def test_approval_for_changed_request_does_not_execute(self):
         capability, token = self.pending()
         result = self.executor.approve_and_execute(token, capability=capability, request="other request")
