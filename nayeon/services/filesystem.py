@@ -7,6 +7,7 @@ import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 import platform
 import re
 import struct
@@ -217,6 +218,57 @@ class TextFileCreateResult:
     _identity: tuple[int, bytes] | None = field(default=None, repr=False)
 
 
+class FileCopyFailure(str, Enum):
+    NOT_FOUND = "not_found"
+    ALREADY_EXISTS = "already_exists"
+    ACCESS_DENIED = "access_denied"
+    INVALID_TARGET = "invalid_target"
+    UNSAFE_PATH = "unsafe_path"
+    TOO_LARGE = "too_large"
+    CROSS_VOLUME = "cross_volume"
+    BUSY = "busy"
+    COPY_ERROR = "copy_error"
+    UNSUPPORTED_PLATFORM = "unsupported_platform"
+    STRUCTURED_REQUIRED = "structured_required"
+
+
+class FileCopyError(RuntimeError):
+    """Pre-commit copy failure with fixed, non-sensitive domain information."""
+
+    def __init__(self, failure: FileCopyFailure) -> None:
+        self.failure = failure
+        super().__init__(f"File copy failed: {failure.value}.")
+
+
+class CopyOutcome(str, Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNKNOWN = "unknown"
+
+
+class CopyFlushOutcome(str, Enum):
+    COMPLETE = "complete"
+    UNKNOWN = "unknown"
+    NOT_ATTEMPTED = "not_attempted"
+
+
+@dataclass(frozen=True, repr=False)
+class FileCopyResult:
+    """Committed destination receipt. Private evidence, never content or handles."""
+
+    source_path: str
+    destination_path: str
+    expected_byte_count: int
+    copy_outcome: CopyOutcome = CopyOutcome.UNKNOWN
+    flush_outcome: CopyFlushOutcome = CopyFlushOutcome.NOT_ATTEMPTED
+    written_byte_count: int | None = None
+    state: str = field(default="created", init=False)
+    source_read_complete: bool = field(default=True, init=False)
+    _source_identity: tuple[int, bytes] | None = field(default=None, repr=False)
+    _destination_identity: tuple[int, bytes] | None = field(default=None, repr=False)
+    _digest: bytes | None = field(default=None, repr=False)
+
+
 def encode_creation_text(text: str) -> bytes:
     """Strict UTF-8, 1..64 KiB; reject C0/C1/DEL except TAB, LF and CR.
 
@@ -264,6 +316,52 @@ def normalize_directory_path(path: str) -> str:
 
 class FilesystemService:
     """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def copy_file(self, source_path: str, destination_path: str) -> FileCopyResult:
+        try:
+            source_path = normalize_file_path(source_path)
+            destination_path = normalize_file_path(destination_path)
+            if source_path.casefold() == destination_path.casefold():
+                raise ValueError("Self-copy is not supported.")
+        except (TypeError, ValueError):
+            raise FileCopyError(FileCopyFailure.INVALID_TARGET) from None
+        if platform.system() != "Windows":
+            raise FileCopyError(FileCopyFailure.UNSUPPORTED_PLATFORM)
+        try:
+            return _copy_file_windows(source_path, destination_path)
+        except FileCopyError:
+            raise
+        except FileReadError as exc:
+            failure = FileCopyFailure.__members__.get(exc.failure.name, FileCopyFailure.COPY_ERROR)
+            raise FileCopyError(failure) from None
+        except Exception:
+            raise FileCopyError(FileCopyFailure.COPY_ERROR) from None
+
+    def observe_copied_file(self, result: FileCopyResult) -> FileCreateObservation:
+        # Incomplete receipts are inconclusive; never upgrade them from pathname presence.
+        if not isinstance(result, FileCopyResult) or platform.system() != "Windows":
+            return FileCreateObservation.UNKNOWN
+        try:
+            normalize_file_path(result.source_path)
+            path = normalize_file_path(result.destination_path)
+            if (result.state != "created" or result.source_read_complete is not True
+                    or type(result.expected_byte_count) is not int
+                    or not 0 <= result.expected_byte_count <= MAX_FILE_BYTES
+                    or result.copy_outcome is not CopyOutcome.COMPLETE
+                    or result.flush_outcome is not CopyFlushOutcome.COMPLETE
+                    or type(result.written_byte_count) is not int
+                    or result.written_byte_count != result.expected_byte_count
+                    or not _valid_create_identity(result._source_identity)
+                    or not _valid_create_identity(result._destination_identity)
+                    or type(result._digest) is not bytes or len(result._digest) != 32):
+                return FileCreateObservation.UNKNOWN
+            if (result._source_identity == result._destination_identity
+                    or result._source_identity[0] != result._destination_identity[0]
+                    or result.source_path.casefold() == path.casefold()):
+                return FileCreateObservation.CHANGED
+            return _observe_copy_windows(path, result)
+        except Exception:
+            return FileCreateObservation.UNKNOWN
 
     def create_text_file(self, path: str, text: str) -> TextFileCreateResult:
         try:
@@ -622,7 +720,7 @@ def _create_snapshot(api, handle, expected: str):
     return FileCreateObservation.MATCHED, value
 
 
-def _create_ancestors(api, path: str, handles: ExitStack, close) -> None:
+def _create_ancestors(api, path: str, handles: ExitStack, close):
     root = path[:3]
     if api.GetDriveTypeW(root) not in (2, 3, 6):
         raise FileReadError(FileReadFailure.UNSAFE_PATH)
@@ -637,6 +735,7 @@ def _create_ancestors(api, path: str, handles: ExitStack, close) -> None:
             raise _os_failure()
         handles.callback(close, handle)
         _inspect_handle(api, handle, expected, directory=True)
+    return handle  # Retained immediate parent, for native volume evidence.
 
 
 def _create_empty_windows(path: str) -> FileCreateResult:
@@ -854,6 +953,149 @@ def _create_text_windows(path: str, data: bytes) -> TextFileCreateResult:
             identity = None
     return TextFileCreateResult(path, len(data), write, flush, written,
                                 _identity=identity if close_ok else None)
+
+
+def _copy_read(api, handle, size: int) -> bytes:
+    """Fresh synchronous handle starts at zero; bounded bytes AND native calls.
+
+    Return at EOF or at the N+1 ceiling. Caller distinguishes trustworthy
+    length disagreement from native/malformed evidence failures.
+    """
+    buffer = ctypes.create_string_buffer(size + 1)
+    total = 0
+    for _ in range(size + 2):
+        count = wintypes.DWORD()
+        remaining = len(buffer) - total
+        if not api.ReadFile(handle, ctypes.byref(buffer, total), remaining, ctypes.byref(count), None):
+            raise FileCopyError(FileCopyFailure.COPY_ERROR)
+        if count.value > remaining:
+            raise FileCopyError(FileCopyFailure.COPY_ERROR)
+        total += count.value
+        if count.value == 0 or total == len(buffer):
+            return buffer.raw[:total]
+    raise FileCopyError(FileCopyFailure.COPY_ERROR)
+
+
+def _copy_file_windows(source: str, destination: str) -> FileCopyResult:
+    api = _kernel32()
+    api.WriteFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                             ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    api.WriteFile.restype = wintypes.BOOL
+    api.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    api.FlushFileBuffers.restype = wintypes.BOOL
+    copy = CopyOutcome.UNKNOWN
+    flush = CopyFlushOutcome.NOT_ATTEMPTED
+    written = None
+    destination_identity = None
+    close_ok = True
+
+    def close(handle):
+        nonlocal close_ok
+        try:
+            if not api.CloseHandle(handle):
+                close_ok = False
+        except Exception:
+            close_ok = False
+
+    with ExitStack() as handles:
+        _create_ancestors(api, source, handles, close)
+        source_handle = api.CreateFileW(source, _GENERIC_READ, _SHARE_READ, None,
+                                        _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if source_handle in (None, 0, ctypes.c_void_p(-1).value):
+            raise _os_failure()
+        handles.callback(close, source_handle)
+        state, source_identity, size = _text_file_snapshot(api, source_handle, source)
+        if state is not FileCreateObservation.MATCHED:
+            raise FileCopyError(FileCopyFailure.INVALID_TARGET)
+        if size > MAX_FILE_BYTES:
+            raise FileCopyError(FileCopyFailure.TOO_LARGE)
+        parent = _create_ancestors(api, destination, handles, close)
+        parent_id = _FileIdInfo()
+        if not api.GetFileInformationByHandleEx(parent, 18, ctypes.byref(parent_id), ctypes.sizeof(parent_id)):
+            raise FileCopyError(FileCopyFailure.COPY_ERROR)
+        parent_identity = (parent_id.volume, bytes(parent_id.identifier))
+        if not _valid_create_identity(parent_identity):
+            raise FileCopyError(FileCopyFailure.COPY_ERROR)
+        if parent_identity[0] != source_identity[0]:
+            raise FileCopyError(FileCopyFailure.CROSS_VOLUME)
+
+        data = _copy_read(api, source_handle, size)
+        after, identity_after, size_after = _text_file_snapshot(api, source_handle, source)
+        if (len(data) != size or after is not FileCreateObservation.MATCHED
+                or identity_after != source_identity or size_after != size):
+            raise FileCopyError(FileCopyFailure.COPY_ERROR)
+        digest = hashlib.sha256(data).digest()
+        buffer = ctypes.create_string_buffer(data)
+        count = wintypes.DWORD()
+        handle = api.CreateFileW(destination, 0x40000000 | _READ_ATTRIBUTES | 1, _SHARE_READ,
+                                 None, 1, 0x80 | 0x00200000 | 0x00100000, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            failure = {80: FileCopyFailure.ALREADY_EXISTS, 183: FileCopyFailure.ALREADY_EXISTS,
+                       2: FileCopyFailure.NOT_FOUND, 3: FileCopyFailure.NOT_FOUND,
+                       5: FileCopyFailure.ACCESS_DENIED, 32: FileCopyFailure.BUSY}.get(
+                           ctypes.get_last_error(), FileCopyFailure.COPY_ERROR)
+            raise FileCopyError(failure)
+        # CREATE_NEW committed. No ordinary later diagnostic may erase it.
+        handles.callback(close, handle)
+        try:
+            state, identity, initial_size = _text_file_snapshot(api, handle, destination)
+            if (state is FileCreateObservation.MATCHED and initial_size == 0
+                    and identity != source_identity and identity[0] == source_identity[0]):
+                destination_identity = identity
+                if size == 0:
+                    copy, written = CopyOutcome.COMPLETE, 0
+                elif api.WriteFile(handle, buffer, size, ctypes.byref(count), None):
+                    if count.value <= size:
+                        written = count.value
+                        copy = CopyOutcome.COMPLETE if written == size else CopyOutcome.PARTIAL
+                if copy is CopyOutcome.COMPLETE:
+                    flush = CopyFlushOutcome.UNKNOWN
+                    if api.FlushFileBuffers(handle):
+                        flush = CopyFlushOutcome.COMPLETE
+                state, final_identity, _ = _text_file_snapshot(api, handle, destination)
+                if state is not FileCreateObservation.MATCHED or final_identity != destination_identity:
+                    destination_identity = None
+        except Exception:
+            destination_identity = None
+    return FileCopyResult(source, destination, size, copy, flush, written,
+                          _source_identity=source_identity,
+                          _destination_identity=destination_identity if close_ok else None,
+                          _digest=digest)
+
+
+def _observe_copy_windows(path: str, result: FileCopyResult) -> FileCreateObservation:
+    """Destination-only observation, bound to execution-time content and identity."""
+    api = _kernel32()
+
+    def close(handle):
+        if not api.CloseHandle(handle):
+            raise OSError("Observation cleanup was inconclusive.")
+
+    with ExitStack() as handles:
+        try:
+            _create_ancestors(api, path, handles, close)
+        except FileReadError as exc:
+            return (FileCreateObservation.CHANGED if exc.failure is FileReadFailure.NOT_FOUND
+                    else FileCreateObservation.UNKNOWN)
+        handle = api.CreateFileW(path, _GENERIC_READ, _SHARE_READ, None,
+                                 _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            return (FileCreateObservation.CHANGED if ctypes.get_last_error() in (2, 3)
+                    else FileCreateObservation.UNKNOWN)
+        handles.callback(close, handle)
+        state, identity, size = _text_file_snapshot(api, handle, path)
+        if state is not FileCreateObservation.MATCHED:
+            return state
+        if identity != result._destination_identity or size != result.expected_byte_count:
+            return FileCreateObservation.CHANGED
+        data = _copy_read(api, handle, size)
+        after, identity_after, size_after = _text_file_snapshot(api, handle, path)
+        if after is not FileCreateObservation.MATCHED:
+            return after
+        if (identity_after != identity or size_after != size or len(data) != size
+                or hashlib.sha256(data).digest() != result._digest):
+            return FileCreateObservation.CHANGED
+        return FileCreateObservation.MATCHED
 
 
 def _observe_created_text_windows(path: str, original_identity, expected: bytes) -> FileCreateObservation:
