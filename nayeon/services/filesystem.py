@@ -168,6 +168,76 @@ class DirectoryCreateResult:
     _observation: DirectoryCreateObservation = field(default=DirectoryCreateObservation.UNKNOWN, repr=False)
 
 
+class TextFileCreateFailure(str, Enum):
+    ALREADY_EXISTS = "already_exists"
+    NOT_FOUND = "not_found"
+    ACCESS_DENIED = "access_denied"
+    INVALID_TARGET = "invalid_target"
+    INVALID_TEXT = "invalid_text"
+    UNSAFE_PATH = "unsafe_path"
+    UNSUPPORTED_PLATFORM = "unsupported_platform"
+    BUSY = "busy"
+    CREATE_ERROR = "create_error"
+    STRUCTURED_REQUIRED = "structured_required"
+
+
+class TextFileCreateError(RuntimeError):
+    """Pre-commit failure only; no path, text or OS details."""
+
+    def __init__(self, failure: TextFileCreateFailure) -> None:
+        self.failure = failure
+        super().__init__(f"Text file creation failed: {failure.value}.")
+
+
+class TextWriteOutcome(str, Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNKNOWN = "unknown"
+
+
+class TextFlushOutcome(str, Enum):
+    COMPLETE = "complete"
+    UNKNOWN = "unknown"
+    NOT_ATTEMPTED = "not_attempted"
+
+
+@dataclass(frozen=True, repr=False)
+class TextFileCreateResult:
+    """Committed creation; write counts are acknowledgements, not verification.
+
+    No content or owning handle is retained. Identity is private copied metadata.
+    """
+
+    path: str
+    expected_byte_count: int
+    write_outcome: TextWriteOutcome = TextWriteOutcome.UNKNOWN
+    flush_outcome: TextFlushOutcome = TextFlushOutcome.NOT_ATTEMPTED
+    written_byte_count: int | None = None
+    state: str = field(default="created", init=False)
+    _identity: tuple[int, bytes] | None = field(default=None, repr=False)
+
+
+def encode_creation_text(text: str) -> bytes:
+    """Strict UTF-8, 1..64 KiB; reject C0/C1/DEL except TAB, LF and CR.
+
+    No stripping, newline conversion, normalization or BOM insertion.
+    The character bound avoids allocating an unbounded encoded buffer.
+    """
+    if not isinstance(text, str):
+        raise TypeError("An explicit text string is required.")
+    if not 1 <= len(text) <= MAX_FILE_BYTES:
+        raise ValueError("Text must encode to 1 through 65536 bytes.")
+    try:
+        data = text.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        raise ValueError("Text must be valid UTF-8.") from None
+    if len(data) > MAX_FILE_BYTES or any(
+        (ord(c) < 32 and c not in "\t\r\n") or 0x7F <= ord(c) <= 0x9F for c in text
+    ):
+        raise ValueError("Text is oversized or contains unsupported control characters.")
+    return data
+
+
 def normalize_file_path(path: str) -> str:
     """Lexical only. Preserve component case; no IO, expansion or alias lookup."""
     if not isinstance(path, str):
@@ -194,6 +264,48 @@ def normalize_directory_path(path: str) -> str:
 
 class FilesystemService:
     """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def create_text_file(self, path: str, text: str) -> TextFileCreateResult:
+        try:
+            path = normalize_file_path(path)
+        except (TypeError, ValueError):
+            raise TextFileCreateError(TextFileCreateFailure.INVALID_TARGET) from None
+        try:
+            data = encode_creation_text(text)
+        except (TypeError, ValueError):
+            raise TextFileCreateError(TextFileCreateFailure.INVALID_TEXT) from None
+        if platform.system() != "Windows":
+            raise TextFileCreateError(TextFileCreateFailure.UNSUPPORTED_PLATFORM)
+        try:
+            return _create_text_windows(path, data)
+        except FileReadError as exc:
+            failure = TextFileCreateFailure.__members__.get(exc.failure.name, TextFileCreateFailure.CREATE_ERROR)
+            raise TextFileCreateError(failure) from None
+        except OSError:
+            raise TextFileCreateError(TextFileCreateFailure.CREATE_ERROR) from None
+
+    def observe_created_text_file(self, result: TextFileCreateResult, text: str) -> FileCreateObservation:
+        if not isinstance(result, TextFileCreateResult) or platform.system() != "Windows":
+            return FileCreateObservation.UNKNOWN
+        try:
+            path = normalize_file_path(result.path)
+            expected = encode_creation_text(text)
+            if (result.state != "created" or type(result.expected_byte_count) is not int
+                    or result.expected_byte_count != len(expected)
+                    or not isinstance(result.write_outcome, TextWriteOutcome)
+                    or not isinstance(result.flush_outcome, TextFlushOutcome)):
+                return FileCreateObservation.UNKNOWN
+            observation = _observe_created_text_windows(path, result._identity, expected)
+            if observation is FileCreateObservation.CHANGED:
+                return observation
+            if (result.write_outcome is TextWriteOutcome.COMPLETE
+                    and result.flush_outcome is TextFlushOutcome.COMPLETE
+                    and type(result.written_byte_count) is int
+                    and result.written_byte_count == len(expected)):
+                return observation
+        except Exception:
+            pass
+        return FileCreateObservation.UNKNOWN
 
     def create_directory(self, path: str) -> DirectoryCreateResult:
         try:
@@ -652,3 +764,139 @@ def _create_directory_windows(path: str) -> DirectoryCreateResult:
         except Exception:
             pass
     return DirectoryCreateResult(path, _observation=observation if close_ok else DirectoryCreateObservation.UNKNOWN)
+
+
+def _text_file_snapshot(api, handle, path: str):
+    """Observe type/path/size and 128-bit identity on this exact handle."""
+    if api.GetFileType(handle) != 1:
+        return FileCreateObservation.UNKNOWN, None, None
+    info = _FileInformation()
+    if not api.GetFileInformationByHandle(handle, ctypes.byref(info)):
+        return FileCreateObservation.UNKNOWN, None, None
+    if info.attributes & (_DIRECTORY | _UNSAFE_ATTRIBUTES):
+        return FileCreateObservation.CHANGED, None, None
+    buffer = ctypes.create_unicode_buffer(_MAX_PATH + 4)
+    length = api.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
+    if (not 4 < length < len(buffer) or not buffer.value.startswith("\\\\?\\")
+            or length != len(buffer.value.encode("utf-16-le")) // 2):
+        return FileCreateObservation.UNKNOWN, None, None
+    final = buffer.value[4:]
+    if final[:1].upper() + final[1:] != path:
+        return FileCreateObservation.CHANGED, None, None
+    identity = _FileIdInfo()
+    if not api.GetFileInformationByHandleEx(handle, 18, ctypes.byref(identity), ctypes.sizeof(identity)):
+        return FileCreateObservation.UNKNOWN, None, None
+    value = (identity.volume, bytes(identity.identifier))
+    if not _valid_create_identity(value):
+        return FileCreateObservation.UNKNOWN, None, None
+    return FileCreateObservation.MATCHED, value, (info.size_high << 32) | info.size_low
+
+
+def _create_text_windows(path: str, data: bytes) -> TextFileCreateResult:
+    api = _kernel32()
+    # Load/configure the new APIs and allocate the bounded buffer BEFORE mutation.
+    api.WriteFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                             ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    api.WriteFile.restype = wintypes.BOOL
+    api.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    api.FlushFileBuffers.restype = wintypes.BOOL
+    buffer = ctypes.create_string_buffer(data)
+    count = wintypes.DWORD()
+    write = TextWriteOutcome.UNKNOWN
+    flush = TextFlushOutcome.NOT_ATTEMPTED
+    written = None
+    identity = None
+    close_ok = True
+
+    def close(handle):
+        nonlocal close_ok
+        try:
+            if not api.CloseHandle(handle):
+                close_ok = False
+        except Exception:
+            close_ok = False
+
+    with ExitStack() as handles:
+        _create_ancestors(api, path, handles, close)
+        # GENERIC_WRITE supports FlushFileBuffers; read/attribute access permits
+        # same-handle inspection. No write/delete sharing, OVERLAPPED or delete flag.
+        handle = api.CreateFileW(path, 0x40000000 | _READ_ATTRIBUTES | 1, _SHARE_READ,
+                                 None, 1, 0x80 | 0x00200000 | 0x00100000, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            failure = {80: TextFileCreateFailure.ALREADY_EXISTS, 183: TextFileCreateFailure.ALREADY_EXISTS,
+                       2: TextFileCreateFailure.NOT_FOUND, 3: TextFileCreateFailure.NOT_FOUND,
+                       5: TextFileCreateFailure.ACCESS_DENIED, 32: TextFileCreateFailure.BUSY}.get(
+                           ctypes.get_last_error(), TextFileCreateFailure.CREATE_ERROR)
+            raise TextFileCreateError(failure)
+        # CREATE_NEW committed. Every ordinary failure below returns a receipt;
+        # nothing deletes, truncates, retries or reopens a path for mutation.
+        handles.callback(close, handle)
+        try:
+            state, initial_identity, size = _text_file_snapshot(api, handle, path)
+            if state is FileCreateObservation.MATCHED and size == 0:
+                identity = initial_identity
+                # One synchronous attempt. FALSE does not establish zero bytes.
+                if api.WriteFile(handle, buffer, len(data), ctypes.byref(count), None):
+                    if count.value <= len(data):
+                        written = count.value
+                        write = (TextWriteOutcome.COMPLETE if written == len(data)
+                                 else TextWriteOutcome.PARTIAL)
+                if write is TextWriteOutcome.COMPLETE:
+                    flush = TextFlushOutcome.UNKNOWN
+                    if api.FlushFileBuffers(handle):
+                        flush = TextFlushOutcome.COMPLETE
+                state, final_identity, _ = _text_file_snapshot(api, handle, path)
+                if state is not FileCreateObservation.MATCHED or final_identity != identity:
+                    identity = None
+        except Exception:
+            # Keep any completed write/flush acknowledgements; drop uncertain
+            # identity evidence. A later observer cannot upgrade this weak receipt.
+            identity = None
+    return TextFileCreateResult(path, len(data), write, flush, written,
+                                _identity=identity if close_ok else None)
+
+
+def _observe_created_text_windows(path: str, original_identity, expected: bytes) -> FileCreateObservation:
+    api = _kernel32()
+
+    def close(handle):
+        if not api.CloseHandle(handle):
+            # The service converts failed observation cleanup to UNKNOWN, while
+            # ExitStack still attempts the remaining closes exactly once.
+            raise OSError("Observation cleanup was inconclusive.")
+
+    with ExitStack() as handles:
+        try:
+            _create_ancestors(api, path, handles, close)
+        except FileReadError as exc:
+            return (FileCreateObservation.CHANGED if exc.failure is FileReadFailure.NOT_FOUND
+                    else FileCreateObservation.UNKNOWN)
+        handle = api.CreateFileW(path, _GENERIC_READ, _SHARE_READ, None,
+                                 _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if handle in (None, 0, ctypes.c_void_p(-1).value):
+            return (FileCreateObservation.CHANGED if ctypes.get_last_error() in (2, 3)
+                    else FileCreateObservation.UNKNOWN)
+        handles.callback(close, handle)
+        state, identity, size = _text_file_snapshot(api, handle, path)
+        if state is not FileCreateObservation.MATCHED:
+            return state
+        if not _valid_create_identity(original_identity):
+            return FileCreateObservation.UNKNOWN
+        if identity != original_identity or size != len(expected):
+            return FileCreateObservation.CHANGED
+        # Bound both allocation and calls. Each non-EOF read must make progress;
+        # at most expected length + 1 bytes are ever read, on this same handle.
+        buffer = ctypes.create_string_buffer(len(expected) + 1)
+        total = 0
+        while total < len(buffer):
+            count = wintypes.DWORD()
+            remaining = len(buffer) - total
+            if not api.ReadFile(handle, ctypes.byref(buffer, total), remaining, ctypes.byref(count), None):
+                return FileCreateObservation.UNKNOWN
+            if count.value > remaining:
+                return FileCreateObservation.UNKNOWN
+            if count.value == 0:
+                break
+            total += count.value
+        return (FileCreateObservation.MATCHED if buffer.raw[:total] == expected
+                else FileCreateObservation.CHANGED)
