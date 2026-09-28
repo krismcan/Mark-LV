@@ -317,6 +317,31 @@ class FileDeleteResult:
     _cleanup_complete: bool = field(default=True, repr=False)
 
 
+class DirectoryDeleteError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Directory deletion could not be safely prepared or executed.")
+
+
+@dataclass(frozen=True, repr=False)
+class _DirectoryDeletionBinding:
+    path: str
+    namespace: tuple[tuple[int, bytes], ...]
+    identity: tuple[int, bytes]
+    attributes: int
+    creation_time: int
+    write_time: int
+    empty: bool
+
+
+@dataclass(frozen=True, repr=False)
+class DirectoryDeleteResult:
+    disposition: DeleteDisposition
+    target_close: DeleteClose
+    observation: DeleteObservation
+    _binding: _DirectoryDeletionBinding = field(repr=False)
+    _cleanup_complete: bool = field(default=True, repr=False)
+
+
 def encode_creation_text(text: str) -> bytes:
     """Strict UTF-8, 1..64 KiB; reject C0/C1/DEL except TAB, LF and CR.
 
@@ -364,6 +389,48 @@ def normalize_directory_path(path: str) -> str:
 
 class FilesystemService:
     """Own local filesystem IO; creation is explicit and never rolled back."""
+
+    def prepare_directory_deletion(self, path: str) -> _DirectoryDeletionBinding:
+        """DeleteDirectory-only bounded metadata/emptiness preparation; no mutation."""
+        try:
+            path = normalize_file_path(path)  # Requires a real non-root component.
+            if platform.system() != "Windows":
+                raise DirectoryDeleteError()
+            api = _kernel32()
+            def close(handle):
+                if not api.CloseHandle(handle):
+                    raise DirectoryDeleteError()
+            with ExitStack() as handles:
+                namespace = _delete_namespace(api, path, handles, close)
+                return _directory_delete_preflight(api, path, namespace, close)
+        except Exception:
+            raise DirectoryDeleteError() from None
+
+    def delete_directory(self, binding: _DirectoryDeletionBinding) -> DirectoryDeleteResult:
+        try:
+            if not _valid_directory_deletion_binding(binding) or platform.system() != "Windows":
+                raise DirectoryDeleteError()
+            return _delete_directory_windows(binding)
+        except Exception:
+            raise DirectoryDeleteError() from None
+
+    def observe_deleted_directory(self, result: DirectoryDeleteResult) -> DeleteObservation:
+        if (type(result) is not DirectoryDeleteResult
+                or not _valid_directory_deletion_binding(result._binding)
+                or result._cleanup_complete is not True or platform.system() != "Windows"):
+            return DeleteObservation.UNKNOWN
+        try:
+            api = _kernel32()
+            def close(handle):
+                if not api.CloseHandle(handle):
+                    raise DirectoryDeleteError()
+            with ExitStack() as handles:
+                namespace = _delete_namespace(api, result._binding.path, handles, close)
+                if namespace != result._binding.namespace:
+                    return DeleteObservation.UNKNOWN
+                return _observe_directory_deletion(api, result._binding)
+        except Exception:
+            return DeleteObservation.UNKNOWN
 
     def prepare_deletion(self, path: str) -> _DeletionBinding:
         """Approved DeleteFile-only metadata preparation, before confirmation.
@@ -1185,6 +1252,163 @@ def _delete_windows(binding):
         except Exception:
             observation = DeleteObservation.UNKNOWN
     return FileDeleteResult(disposition, source_close, observation, binding, cleanup_complete)
+
+
+def _valid_directory_deletion_binding(binding) -> bool:
+    if type(binding) is not _DirectoryDeletionBinding:
+        return False
+    try:
+        return (normalize_file_path(binding.path) == binding.path
+                and type(binding.namespace) is tuple
+                and len(binding.namespace) == len(binding.path[3:].split("\\"))
+                and all(_valid_create_identity(v) for v in binding.namespace)
+                and _valid_create_identity(binding.identity)
+                and binding.identity not in binding.namespace
+                and type(binding.attributes) is int and 0 <= binding.attributes < 2**32
+                and bool(binding.attributes & _DIRECTORY)
+                and not binding.attributes & (_UNSAFE_ATTRIBUTES | 1 | 4)
+                and binding.empty is True
+                and all(type(v) is int and 0 <= v < 2**64
+                        for v in (binding.creation_time, binding.write_time)))
+    except (TypeError, ValueError):
+        return False
+
+
+def _require_empty_directory(api, handle):
+    """Bounded handle enumeration, no listing collection or child opens.
+
+    At most two dot records and a terminal call are needed. Refuse any
+    non-progress/malformed response; a real child stops inspection immediately.
+    """
+    buffer = (ctypes.c_longlong * 512)()
+    seen = set()
+    for call in range(3):
+        ctypes.memset(buffer, 0, ctypes.sizeof(buffer))
+        if not api.GetFileInformationByHandleEx(handle, 15 if call == 0 else 14,
+                                               buffer, ctypes.sizeof(buffer)):
+            if ctypes.get_last_error() == 18:
+                return
+            raise DirectoryDeleteError()
+        data, offset = bytes(buffer), 0
+        while True:
+            if offset + 68 > len(data):
+                raise DirectoryDeleteError()
+            next_offset = struct.unpack_from("<I", data, offset)[0]
+            attributes, length = struct.unpack_from("<II", data, offset + 56)
+            end = offset + 68 + length
+            if (not length or length % 2 or length > 510 or end > len(data)
+                    or (next_offset and (next_offset % 8 or next_offset < 68 + length
+                                         or offset + next_offset + 68 > len(data)))):
+                raise DirectoryDeleteError()
+            name = data[offset + 68:end].decode("utf-16-le", errors="strict")
+            if (name not in (".", "..") or name in seen or not attributes & _DIRECTORY
+                    or attributes & _UNSAFE_ATTRIBUTES):
+                raise DirectoryDeleteError()
+            seen.add(name)
+            if not next_offset:
+                break
+            offset += next_offset
+    raise DirectoryDeleteError()  # No normal end within the finite call budget.
+
+
+def _directory_delete_snapshot(api, handle, path, namespace):
+    info = _inspect_handle(api, handle, path, directory=True)
+    # Target policy only; ancestor attributes use the unchanged production rules.
+    binding = _DirectoryDeletionBinding(
+        path, namespace, _delete_identity(api, handle), info.attributes,
+        (info.creation.dwHighDateTime << 32) | info.creation.dwLowDateTime,
+        (info.write.dwHighDateTime << 32) | info.write.dwLowDateTime, True,
+    )
+    if not _valid_directory_deletion_binding(binding):
+        raise DirectoryDeleteError()
+    _require_empty_directory(api, handle)
+    return binding
+
+
+def _directory_delete_preflight(api, path, namespace, close):
+    # Native root/ancestor/type checks before any DELETE-capable target open.
+    handle = api.CreateFileW(path, 0x81, 0, None, _OPEN_EXISTING, _OPEN_FLAGS, None)
+    if handle in (None, 0, ctypes.c_void_p(-1).value):
+        raise DirectoryDeleteError()
+    try:
+        return _directory_delete_snapshot(api, handle, path, namespace)
+    finally:
+        close(handle)
+
+
+def _observe_directory_deletion(api, binding):
+    handle = api.CreateFileW(binding.path, _READ_ATTRIBUTES, 0, None,
+                             _OPEN_EXISTING, _OPEN_FLAGS, None)
+    if handle in (None, 0, ctypes.c_void_p(-1).value):
+        return (DeleteObservation.CONFIRMED_ABSENT if ctypes.get_last_error() == 2
+                else DeleteObservation.UNKNOWN)
+    observation = DeleteObservation.UNKNOWN
+    try:
+        # A replacement regular file also means pathname reuse, not failure of
+        # the original directory deletion. Never enumerate/modify a replacement.
+        info = _FileInformation()
+        if not api.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            raise DirectoryDeleteError()
+        directory = bool(info.attributes & _DIRECTORY)
+        _inspect_handle(api, handle, binding.path, directory=directory)
+        identity = _delete_identity(api, handle)
+        if identity != binding.identity:
+            observation = DeleteObservation.PRESENT_DIFFERENT_IDENTITY
+        elif directory:
+            observation = DeleteObservation.PRESENT_SAME_IDENTITY
+    finally:
+        if not api.CloseHandle(handle):
+            observation = DeleteObservation.UNKNOWN
+    return observation
+
+
+def _delete_directory_windows(binding):
+    api = _kernel32()
+    set_info = api.SetFileInformationByHandle
+    set_info.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    set_info.restype = wintypes.BOOL
+    info = _FileDispositionInfo(1)
+    if ctypes.sizeof(info) != 1:
+        raise DirectoryDeleteError()
+    cleanup_complete = True
+    def close(handle):
+        nonlocal cleanup_complete
+        try:
+            ok = bool(api.CloseHandle(handle))
+        except Exception:
+            ok = False
+        if not ok:
+            cleanup_complete = False
+        return ok
+    disposition = DeleteDisposition.UNKNOWN
+    observation = DeleteObservation.UNKNOWN
+    with ExitStack() as ancestors:
+        namespace = _delete_namespace(api, binding.path, ancestors, close)
+        if namespace != binding.namespace:
+            raise DirectoryDeleteError()
+        if (_directory_delete_preflight(api, binding.path, namespace, close) != binding
+                or not cleanup_complete):
+            raise DirectoryDeleteError()
+        target = api.CreateFileW(binding.path, 0x10081, 0, None,
+                                 _OPEN_EXISTING, _OPEN_FLAGS, None)
+        if target in (None, 0, ctypes.c_void_p(-1).value):
+            raise DirectoryDeleteError()
+        try:
+            if _directory_delete_snapshot(api, target, binding.path, namespace) != binding:
+                raise DirectoryDeleteError()
+            try:
+                ok = set_info(target, 4, ctypes.byref(info), 1)
+                disposition = DeleteDisposition.ACKNOWLEDGED if ok else DeleteDisposition.NOT_ACKNOWLEDGED
+            except Exception:
+                disposition = DeleteDisposition.UNKNOWN
+        finally:
+            # Sole target owner. No retry, no outer target cleanup callback.
+            target_close = DeleteClose.COMPLETE if close(target) else DeleteClose.UNKNOWN
+        try:
+            observation = _observe_directory_deletion(api, binding)
+        except Exception:
+            observation = DeleteObservation.UNKNOWN
+    return DirectoryDeleteResult(disposition, target_close, observation, binding, cleanup_complete)
 
 
 def _copy_read(api, handle, size: int) -> bytes:
