@@ -1,8 +1,8 @@
 # Phase 6.3 bounded keyboard text input review
 
-Status: IMPLEMENTED, UNCOMMITTED; automated validation PASSED and human review is now the active gate. Controlled live smoke has NOT run. This is not yet a committed/tagged milestone.
+Status: IMPLEMENTED; automated validation PASSED; controlled disposable-window live smoke PASSED; human closure approved. The initial implementation is committed/tagged, and this document records final smoke closure evidence.
 
-Protected checkpoint: `nayeon-v1`, HEAD `a1079ea4ca4d60e1dc12c40e67231be9df907855`, tag `nayeon-v1-desktop-window-focus-01`. Starting tree was clean and matched exactly. HEAD/branch/tag remain unchanged. No commit, staging, tag operation, push, spreadsheet update, or live keyboard mutation occurred.
+Protected starting checkpoint: branch `nayeon-v1`, commit `a1079ea4ca4d60e1dc12c40e67231be9df907855`, tag `nayeon-v1-desktop-window-focus-01`. Phase 6.3 implementation was committed as `8175cd34e28b002a33585cb2c1bd1bc3019c89e2` and tagged `nayeon-v1-desktop-keyboard-text-01` before live smoke. No push or spreadsheet update had occurred at the time of that implementation checkpoint.
 
 ## Exact user contract
 
@@ -86,17 +86,24 @@ Results:
 - `compileall`: **PASS**.
 - `git diff --check`: **PASS**.
 
-No live keyboard mutation was used for automated validation; native keyboard injection remained mocked in the test suite. The worktree contains exactly the five intended untracked Phase 6.3 files listed above. No staging, commit, tag, push or spreadsheet update has occurred.
+No live keyboard mutation was used for automated validation; native keyboard injection remained mocked in the test suite. The five intended Phase 6.3 files were committed in the implementation checkpoint above. The later controlled smoke used only the disposable harness and did not modify product code.
 
 ## Limitations and review gate
 
 Win32 cannot atomically pin a borrowed HWND or its foreground ownership across query/injection calls. The final foreground sample reduces the unchecked interval but cannot eliminate races; after-the-fact checks cannot retract injected events. The target is a root/foreground window, not a frozen child edit control, caret or selection. Routing within that exact window can change without changing its identity. Unicode packet handling, integrity restrictions, hooks, application behavior and already-held keys may prevent or alter visible text. A complete accepted event count is not proof of rendering, consumption or exact text contents. Partial insertion can include an unmatched event or surrogate; this capability does not repair it.
 
-Review readiness: READY — code, deterministic tests and this handoff are available for human inspection. Live-smoke readiness: READY FOR CONTROLLED HUMAN-APPROVED SMOKE using only the disposable-window procedure below; smoke has not run.
+Review readiness: COMPLETE — code, deterministic tests, controlled live smoke, and this handoff have passed human review. Live smoke: PASSED using only the disposable-window harness below.
 
-## Controlled disposable-window smoke procedure (not executed)
+## Controlled disposable-window smoke — executed
 
-After executable validation passes and a human approves this gate, copy the following harness to a temporary `.py` file in the repository, review it, and launch it with the validated interpreter from the repository root. Tkinter availability must be checked first. It creates its own disposable window and entry, uses a local-only ConversationSession and the central executor, and refuses to prepare or inject for any other root window. It never focuses/refocuses or reads the entry's contents. Counters expose only attempts and accepted event counts. No product code is changed for the smoke.
+The following temporary harness was created from this reviewed procedure and executed with the validated repository interpreter. Tkinter availability passed first. It created its own disposable window and entry, used a local-only ConversationSession and the central executor, and refused to prepare or inject for any other root window. It never focused/refocused or read the entry's contents. Product code was not changed for the smoke.
+
+Observed smoke results:
+
+- Default deny: `denied`; attempts=0; accepted=None; undo=False.
+- Permission granted: `requires_confirmation`; attempts=0; accepted=None; undo=False.
+- Approved saved action: `executed`; state=`typed`; verification=`verified`; attempts=1; accepted=24; undo=False.
+- The disposable window remained the only eligible target; no pre-existing user application was targeted.
 
 ```python
 import ctypes
