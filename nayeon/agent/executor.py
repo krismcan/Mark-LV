@@ -9,7 +9,9 @@ from enum import Enum
 from typing import Any
 
 from nayeon.audit.service import AuditEventType, AuditService
-from nayeon.capabilities.structured import StructuredCapability, StructuredCapabilityRequest
+from nayeon.capabilities.structured import (
+    PreparedApprovalValidator, StructuredCapability, StructuredCapabilityRequest,
+)
 from nayeon.policy.confirmation import (
     ConfirmationRequest,
     ConfirmationService,
@@ -133,7 +135,21 @@ class ActionExecutor:
             return self.reject(token, capability=capability)
         _, action = pending
         try:
-            candidate = self._prepare_structured(capability, request)
+            if isinstance(action.implementation, PreparedApprovalValidator):
+                # Preparation-time targets must not be replaced by approval-time
+                # foreground acquisition. Validate raw input against the saved action.
+                registered = self._registry.get(capability.name)
+                implementation = self._registry.get_implementation(capability.name)
+                if registered != action.capability or implementation is not action.implementation:
+                    raise ValueError("Structured capability registration changed.")
+                arguments = implementation.validate_approval_arguments(
+                    deepcopy(request.arguments), prepared=deepcopy(action.arguments),
+                )
+                if not isinstance(arguments, dict):
+                    raise TypeError("Approval validation must return a dictionary.")
+                candidate = _StructuredAction(registered, implementation, request.original_request, arguments)
+            else:
+                candidate = self._prepare_structured(capability, request)
             matches = (
                 candidate.capability == action.capability
                 and candidate.implementation is action.implementation

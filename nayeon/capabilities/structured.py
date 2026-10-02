@@ -54,6 +54,20 @@ class IntentArgumentMapper(Protocol):
 
 
 @runtime_checkable
+class PreparedApprovalValidator(Protocol):
+    """Validate approval input against saved preparation without acquiring a new target.
+
+    Returns the saved normalized arguments only when the raw candidate matches.
+    Must perform no IO or side effects; saved arguments remain executor-owned.
+    """
+
+    def validate_approval_arguments(
+        self, arguments: Mapping[str, Any], *, prepared: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
+
+@runtime_checkable
 class StructuredCapability(Protocol):
     """
     Optional contract for capabilities that support structured execution.
