@@ -306,9 +306,19 @@ class TargetValidationTests(unittest.TestCase):
                           "UIAutomation", "screenshot", "OCR", "playwright", "selenium",
                           "AuditService", "CapabilityModule", "ConfirmationService", "json", "pickle"):
             self.assertNotIn(forbidden, source)
-        for path in ("nayeon/services/__init__.py", "nayeon/agent/router.py", "nayeon/agent/executor.py",
+        for path in ("nayeon/services/__init__.py", "nayeon/agent/router.py",
                      "nayeon/capabilities/focus_window.py", "nayeon/capabilities/type_text.py"):
             self.assertNotIn("target_validation", (Path(__file__).parents[1] / path).read_text())
+        # Phase 6.6 permits exactly the private executor-owned lexical seam;
+        # public dispatch and legacy capabilities must remain unintegrated.
+        import ast
+        executor_source = (Path(__file__).parents[1] / "nayeon/agent/executor.py").read_text()
+        tree = ast.parse(executor_source)
+        owners = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                  and any(isinstance(child, ast.ImportFrom)
+                          and child.module == "nayeon.services.target_validation"
+                          for child in ast.walk(node))]
+        self.assertEqual(owners, ["_pointer_invocation"])
         self.assertEqual({name for name in dir(self.service) if not name.startswith("_")},
                          {"acquire_target", "verify_target"})
 

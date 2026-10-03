@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -75,6 +76,28 @@ class ActionExecutor:
         self._verification = VerificationService()
         self._unregistered_cleanup_failures = 0
         self._structured_pending: dict[str, tuple[ConfirmationRequest, _StructuredAction]] = {}
+
+    @contextmanager
+    def _pointer_invocation(self, capability: Capability, *, service=None):
+        """Private lexical binding proof; no registered capability/execution route.
+
+        Service injection is a trusted deterministic test seam, never model input.
+        Nothing is retained on this executor after the invocation ends.
+        """
+        from nayeon.agent.pointer_binding import _PointerInvocation
+        from nayeon.services.target_validation import _TargetVerificationService
+
+        if type(capability) is not Capability:
+            raise TypeError("Exact registered capability metadata required.")
+        if service is None:
+            service = _TargetVerificationService()
+        if type(service) is not _TargetVerificationService:
+            raise TypeError("Trusted target service required.")
+        invocation = _PointerInvocation(self, capability, service)
+        try:
+            yield invocation
+        finally:
+            invocation.close()
 
     @property
     def unregistered_cleanup_failures(self) -> int:
