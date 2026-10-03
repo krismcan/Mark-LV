@@ -78,22 +78,31 @@ class ActionExecutor:
         self._structured_pending: dict[str, tuple[ConfirmationRequest, _StructuredAction]] = {}
 
     @contextmanager
-    def _pointer_invocation(self, capability: Capability, *, service=None):
-        """Private lexical binding proof; no registered capability/execution route.
+    def _pointer_invocation(
+        self, capability: Capability, *, service=None, hit_service=None,
+    ):
+        """Private lexical location-bound approval proof; no execution route.
 
         Service injection is a trusted deterministic test seam, never model input.
         Nothing is retained on this executor after the invocation ends.
         """
         from nayeon.agent.pointer_binding import _PointerInvocation
+        from nayeon.services.pointer_hit_validation import _PointerHitValidationService
         from nayeon.services.target_validation import _TargetVerificationService
 
         if type(capability) is not Capability:
             raise TypeError("Exact registered capability metadata required.")
         if service is None:
             service = _TargetVerificationService()
+        if hit_service is None:
+            hit_service = _PointerHitValidationService()
         if type(service) is not _TargetVerificationService:
             raise TypeError("Trusted target service required.")
-        invocation = _PointerInvocation(self, capability, service)
+        if type(hit_service) is not _PointerHitValidationService:
+            raise TypeError("Trusted pointer hit validation service required.")
+        invocation = _PointerInvocation(
+            self, capability, service, hit_service,
+        )
         try:
             yield invocation
         finally:

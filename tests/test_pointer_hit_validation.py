@@ -238,9 +238,18 @@ class PointerHitValidationTests(unittest.TestCase):
                           'AttachThreadInput', 'screenshot', 'OCR', 'UIAutomation',
                           'playwright', 'selenium', 'AuditService', 'UndoService'):
             self.assertNotIn(forbidden, source)
-        for path in ('nayeon/services/__init__.py', 'nayeon/agent/router.py',
-                     'nayeon/agent/pointer_binding.py'):
+        for path in ('nayeon/services/__init__.py', 'nayeon/agent/router.py'):
             self.assertNotIn('pointer_hit_validation', (root / path).read_text())
+        # Phase 6.8 permits exactly one private approval-binding integration.
+        binding_source = (root / 'nayeon/agent/pointer_binding.py').read_text()
+        self.assertIn('pointer_hit_validation', binding_source)
+        self.assertIn('_PointerHitValidationService', binding_source)
+        for capability_file in (root / 'nayeon/capabilities').glob('*.py'):
+            self.assertNotIn(
+                'pointer_hit_validation',
+                capability_file.read_text(),
+                capability_file.name,
+            )
 
 
 if __name__ == '__main__':
