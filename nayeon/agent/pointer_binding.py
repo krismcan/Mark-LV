@@ -1,4 +1,7 @@
-"""Private location-bound pointer approval proof. No executable pointer authority or route."""
+"""Private location-bound pointer approval and execution-eligibility proof.
+
+No executable pointer authority or native mutation route.
+"""
 from copy import deepcopy
 from dataclasses import dataclass, fields
 from enum import Enum
@@ -11,7 +14,11 @@ from nayeon.services.pointer_hit_validation import (
     _PointerHitValidationService,
     _ProposedPoint,
 )
-from nayeon.services.target_validation import _TargetBinding, _valid_target_binding
+from nayeon.services.target_validation import (
+    _TargetBinding,
+    _TargetVerificationService,
+    _valid_target_binding,
+)
 from nayeon.verification.contract import VerificationStatus
 
 __all__ = ()
@@ -64,6 +71,16 @@ class _PointerOperation(_LocalOnly):
         self.point.__post_init__()
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _PointerEligibilityResult(_LocalOnly):
+    """Post-confirmation read-only eligibility; never native effect authority."""
+    status: VerificationStatus = VerificationStatus.INDETERMINATE
+
+    def __post_init__(self):
+        if type(self.status) is not VerificationStatus:
+            raise TypeError("Exact private eligibility status required.")
+
+
 def _snapshot(operation):
     # Independent immutable scalar snapshot also detects accidental frozen bypass.
     operation.__post_init__()
@@ -81,13 +98,15 @@ def _snapshot(operation):
 
 
 class _PointerInvocation(_LocalOnly):
-    """Own one exact target + action + location approval binding.
+    """Own one exact target + action + location approval and eligibility check.
 
     Preparation performs the Phase 6.7 read-only hit check before confirmation.
-    That check establishes only preparation-time eligibility. Human confirmation
-    commonly outlives Phase 6.5 freshness, so neither approval nor the retained
-    point is execution authority. A later executor-owned phase must gather fresh
-    post-confirmation target/location evidence immediately before any effect.
+    After one-time approval and policy recheck, execution eligibility is assessed
+    using a brand-new foreground target baseline and a brand-new hit validation
+    of the original approved point. Fresh evidence may confirm or reject the
+    approval; it never replaces or refreshes what the human approved.
+
+    Even VERIFIED eligibility is observational only. No native effect exists.
     """
 
     __slots__ = (
@@ -97,6 +116,8 @@ class _PointerInvocation(_LocalOnly):
     )
 
     def __init__(self, executor, capability, service, hit_service):
+        if type(service) is not _TargetVerificationService:
+            raise TypeError("Trusted target service required.")
         if type(hit_service) is not _PointerHitValidationService:
             raise TypeError("Trusted pointer hit validation service required.")
         self._executor = executor
@@ -170,14 +191,42 @@ class _PointerInvocation(_LocalOnly):
             self.close()
             raise ValueError("Pointer binding preparation failed.") from None
 
-    def approve(self, operation, *, target, action, point):
-        """Consume approval only for the exact preparation-time composite binding.
+    def _eligible_now(self, operation):
+        """Gather new evidence; never mutate or replace the approved operation."""
+        unknown = _PointerEligibilityResult()
+        try:
+            # Revalidate exact approved object/snapshot before any fresh reads.
+            if (operation is not self._operation
+                    or operation.target is not self._target
+                    or operation.action is not self._action
+                    or operation.point is not self._point
+                    or _snapshot(operation) != self._snapshot):
+                return unknown
 
-        Approval proves which target/action/point combination was authorized.
-        It deliberately does not rerun Phase 6.5 or 6.7, because a human delay
-        normally makes that preparation evidence stale. Approval therefore does
-        not grant native execution authority.
+            # A new baseline gets new timestamps. Only identity/context may match
+            # the approval; the approved target object itself is never refreshed.
+            fresh = self._service.acquire_target()
+            if type(fresh) is not _TargetBinding:
+                return unknown
+            if (fresh.identity != operation.target.identity
+                    or fresh.context != operation.target.context):
+                return _PointerEligibilityResult(VerificationStatus.NOT_VERIFIED)
+
+            # Phase 6.7 now gets the new baseline and the original approved point.
+            hit = self._hit_service.validate_hit(operation.point, fresh)
+            if type(hit) is not _PointerHitResult:
+                return unknown
+            return _PointerEligibilityResult(hit.status)
+        except Exception:
+            return unknown
+
+    def approve(self, operation, *, target, action, point):
+        """Consume approval, recheck policy, then assess fresh eligibility.
+
+        The returned private status combines confirmation success with a fresh
+        read-only eligibility assessment. VERIFIED still grants no native effect.
         """
+        unknown = _PointerEligibilityResult()
         try:
             if (self._closed or self._confirmation is None
                     or operation is not self._operation
@@ -189,7 +238,8 @@ class _PointerInvocation(_LocalOnly):
                     or operation.point is not point
                     or _snapshot(operation) != self._snapshot
                     or self._executor._registry.get(self._capability.name) != self._capability):
-                return False
+                return unknown
+
             result = self._executor._confirmation.approve(
                 self._confirmation.token,
                 capability=self._capability.name,
@@ -202,9 +252,20 @@ class _PointerInvocation(_LocalOnly):
                 "approved" if result.approved else "denied",
                 result.reason,
             )
-            return result.approved and self._policy().action is PolicyAction.CONFIRM
+            if not result.approved:
+                return unknown
+            if self._policy().action is not PolicyAction.CONFIRM:
+                return unknown
+
+            eligibility = self._eligible_now(operation)
+            self._record(
+                AuditEventType.VERIFICATION_OUTCOME,
+                eligibility.status.value,
+                "Post-confirmation pointer execution eligibility assessed.",
+            )
+            return eligibility
         except Exception:
-            return False
+            return unknown
         finally:
             self.close()
 

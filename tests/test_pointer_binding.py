@@ -1,4 +1,4 @@
-"""Deterministic Phase 6.8 exact location-bound pointer approval tests; no live input."""
+﻿"""Deterministic Phase 6.8 exact location-bound pointer approval tests; no live input."""
 from copy import copy, deepcopy
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
@@ -11,6 +11,7 @@ from nayeon.agent.executor import ActionExecutor
 from nayeon.agent.pointer_binding import (
     _PointerAction,
     _PointerActionKind,
+    _PointerEligibilityResult,
     _PointerInvocation,
     _PointerOperation,
 )
@@ -66,7 +67,7 @@ class PointerBindingTests(unittest.TestCase):
         self.native.identity.return_value = I
         self.service = _TargetVerificationService(
             native=self.native, platform="win32",
-            clock=Mock(side_effect=[10, 20]),
+            clock=Mock(side_effect=[10, 20, 50, 60]),
         )
 
         self.hit_native = Mock(spec=["context", "window_at", "root", "identity"])
@@ -76,7 +77,7 @@ class PointerBindingTests(unittest.TestCase):
         self.hit_native.identity.return_value = I
         self.hit_service = _PointerHitValidationService(
             native=self.hit_native, platform="win32",
-            clock=Mock(side_effect=[30, 40]),
+            clock=Mock(side_effect=[30, 40, 70, 80]),
         )
 
         self.action = _PointerAction()
@@ -122,10 +123,15 @@ class PointerBindingTests(unittest.TestCase):
             self.assertEqual((operation.point.x, operation.point.y), POINT)
             self.assertIs(self.confirmation._bindings[confirmation.token], operation)
             self.assertEqual(self.hit_native.window_at.call_count, 2)
-            self.assertTrue(self.approve(invocation, operation))
-            self.assertFalse(self.approve(invocation, operation))
+            result = self.approve(invocation, operation)
+            self.assertIs(type(result), _PointerEligibilityResult)
+            self.assertIs(result.status, VerificationStatus.VERIFIED)
+            self.assertIs(
+                self.approve(invocation, operation).status,
+                VerificationStatus.INDETERMINATE,
+            )
             verify_target.assert_not_called()
-            self.assertEqual(self.hit_native.window_at.call_count, 2)
+            self.assertEqual(self.hit_native.window_at.call_count, 4)
         self.assert_cleared(invocation)
 
     def test_old_location_free_prepare_and_operation_are_rejected(self):
@@ -163,9 +169,12 @@ class PointerBindingTests(unittest.TestCase):
                         point = _ProposedPoint(point.x + 1, point.y)
                     else:
                         candidate = _PointerOperation(target, action, point)
-                    self.assertFalse(invocation.approve(
-                        candidate, target=target, action=action, point=point
-                    ))
+                    self.assertIs(
+                        invocation.approve(
+                            candidate, target=target, action=action, point=point
+                        ).status,
+                        VerificationStatus.INDETERMINATE,
+                    )
                     self.assert_cleared(invocation)
 
     def test_post_prepare_tampering_rejected(self):
@@ -205,12 +214,15 @@ class PointerBindingTests(unittest.TestCase):
                             operation, "point",
                             _ProposedPoint(operation.point.x, operation.point.y),
                         )
-                    self.assertFalse(invocation.approve(
-                        operation,
-                        target=operation.target,
-                        action=operation.action,
-                        point=operation.point,
-                    ))
+                    self.assertIs(
+                        invocation.approve(
+                            operation,
+                            target=operation.target,
+                            action=operation.action,
+                            point=operation.point,
+                        ).status,
+                        VerificationStatus.INDETERMINATE,
+                    )
                     self.assert_cleared(invocation)
 
     def test_action_and_point_exact_types(self):
@@ -324,10 +336,13 @@ class PointerBindingTests(unittest.TestCase):
             calls.attach_mock(approve, "approve")
             with self.invocation() as invocation:
                 operation, _ = self.prepare(invocation)
-                self.assertTrue(self.approve(invocation, operation))
+                self.assertEqual(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
         self.assertEqual(
             [c[0] for c in calls.mock_calls],
-            ["policy", "acquire", "hit", "hit", "create", "approve", "policy"],
+            [
+                "policy", "acquire", "hit", "hit", "create", "approve", "policy",
+                "acquire", "hit", "hit",
+            ],
         )
 
     def test_only_exact_verified_hit_can_enter_confirmation_binding(self):
@@ -385,8 +400,8 @@ class PointerBindingTests(unittest.TestCase):
             with self.invocation() as invocation:
                 operation, _ = self.prepare(invocation)
                 self.assertEqual(self.hit_native.window_at.call_count, 2)
-                self.assertTrue(self.approve(invocation, operation))
-        self.assertEqual(self.hit_native.window_at.call_count, 2)
+                self.assertEqual(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
+        self.assertEqual(self.hit_native.window_at.call_count, 4)
         verify.assert_not_called()
         self.assertFalse(hasattr(operation, "hit_result"))
         self.assertFalse(hasattr(operation, "verification"))
@@ -404,7 +419,7 @@ class PointerBindingTests(unittest.TestCase):
                             confirmation,
                             expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
                         )
-                    self.assertFalse(self.approve(invocation, operation))
+                    self.assertIsNot(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
                     self.assert_cleared(invocation)
 
     def test_legacy_confirmation_route_cannot_approve_location_bound_operation(self):
@@ -416,24 +431,27 @@ class PointerBindingTests(unittest.TestCase):
                 request=confirmation.request,
             )
             self.assertFalse(result.succeeded)
-            self.assertFalse(self.approve(invocation, operation))
+            self.assertIsNot(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
             self.assert_cleared(invocation)
 
     def test_close_and_cross_invocation_reuse_rejected(self):
         with self.invocation() as invocation:
             operation, _ = self.prepare(invocation)
         self.assert_cleared(invocation)
-        self.assertFalse(self.approve(invocation, operation))
+        self.assertIsNot(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
 
         self.setUp()
         with self.invocation() as next_invocation:
             self.prepare(next_invocation)
-            self.assertFalse(next_invocation.approve(
-                operation,
-                target=operation.target,
-                action=operation.action,
-                point=operation.point,
-            ))
+            self.assertIs(
+                next_invocation.approve(
+                    operation,
+                    target=operation.target,
+                    action=operation.action,
+                    point=operation.point,
+                ).status,
+                VerificationStatus.INDETERMINATE,
+            )
             self.assert_cleared(next_invocation)
 
     def test_second_prepare_fails_closed(self):
@@ -471,7 +489,7 @@ class PointerBindingTests(unittest.TestCase):
             with patch.object(
                 self.policy, "evaluate", side_effect=RuntimeError("PRIVATE")
             ):
-                self.assertFalse(self.approve(invocation, operation))
+                self.assertIsNot(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
             self.assert_cleared(invocation)
 
         self.setUp()
@@ -485,7 +503,7 @@ class PointerBindingTests(unittest.TestCase):
         with self.invocation() as invocation:
             operation, _ = self.prepare(invocation)
             self.registry.unregister(self.capability.name)
-            self.assertFalse(self.approve(invocation, operation))
+            self.assertIsNot(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
             self.assert_cleared(invocation)
 
     def test_reversible_or_unprotected_metadata_has_zero_native_reads(self):
@@ -505,7 +523,7 @@ class PointerBindingTests(unittest.TestCase):
         original_fields = set(vars(self.executor))
         with self.invocation() as invocation:
             operation, confirmation = self.prepare(invocation)
-            self.assertTrue(self.approve(invocation, operation))
+            self.assertEqual(self.approve(invocation, operation).status, VerificationStatus.VERIFIED)
         self.assertEqual(set(vars(self.executor)), original_fields)
         self.assertEqual(self.executor._structured_pending, {})
         for event in self.audit.all():
@@ -541,6 +559,115 @@ class PointerBindingTests(unittest.TestCase):
                 hit_service=self.hit_service,
             ):
                 pass
+
+
+    def test_post_confirmation_fresh_target_mismatch_is_not_verified(self):
+        other = replace(
+            I, hwnd=I.hwnd + 10, root=I.root + 10,
+            pid=I.pid + 10, tid=I.tid + 10,
+            creation_time=I.creation_time + 10,
+        )
+        self.native.foreground.side_effect = [
+            I.hwnd, I.hwnd, other.hwnd, other.hwnd,
+        ]
+        self.native.identity.side_effect = [I, I, other, other]
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.NOT_VERIFIED)
+        # Fresh target mismatch stops before a second point hit validation.
+        self.assertEqual(self.hit_native.window_at.call_count, 2)
+        self.assert_cleared(invocation)
+
+    def test_post_confirmation_point_obstruction_is_not_verified(self):
+        other = replace(
+            I, hwnd=I.hwnd + 20, root=I.root + 20,
+            pid=I.pid + 20, tid=I.tid + 20,
+            creation_time=I.creation_time + 20,
+        )
+        self.hit_native.window_at.side_effect = [
+            CHILD, CHILD, other.hwnd + 100, other.hwnd + 100,
+        ]
+        self.hit_native.root.side_effect = [
+            I.hwnd, I.hwnd, other.hwnd, other.hwnd,
+        ]
+        self.hit_native.identity.side_effect = [I, I, other, other]
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.NOT_VERIFIED)
+        self.assertEqual(self.hit_native.window_at.call_count, 4)
+        self.assert_cleared(invocation)
+
+    def test_post_confirmation_stale_fresh_hit_evidence_is_indeterminate(self):
+        self.hit_service._clock = Mock(
+            side_effect=[30, 40, 60 + MAX_AGE_NS + 1]
+        )
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.INDETERMINATE)
+        # The stale t0 check happens before post-confirmation native hit reads.
+        self.assertEqual(self.hit_native.window_at.call_count, 2)
+        self.assert_cleared(invocation)
+
+    def test_post_confirmation_target_acquisition_failure_is_indeterminate(self):
+        self.native.foreground.side_effect = [
+            I.hwnd, I.hwnd, RuntimeError("PRIVATE_FRESH_SECRET"),
+        ]
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.INDETERMINATE)
+        self.assertNotIn("PRIVATE_FRESH_SECRET", repr(self.audit.all()))
+        self.assertEqual(self.hit_native.window_at.call_count, 2)
+        self.assert_cleared(invocation)
+
+    def test_failed_confirmation_never_starts_fresh_eligibility_reads(self):
+        with self.invocation() as invocation:
+            operation, confirmation = self.prepare(invocation)
+            self.confirmation._pending[confirmation.token] = replace(
+                confirmation,
+                expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            )
+            target_reads = self.native.foreground.call_count
+            hit_reads = self.hit_native.window_at.call_count
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.INDETERMINATE)
+        self.assertEqual(self.native.foreground.call_count, target_reads)
+        self.assertEqual(self.hit_native.window_at.call_count, hit_reads)
+        self.assert_cleared(invocation)
+
+    def test_verified_eligibility_is_read_only_and_audited_separately(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            result = self.approve(invocation, operation)
+        self.assertIs(result.status, VerificationStatus.VERIFIED)
+        outcomes = [
+            e for e in self.audit.all()
+            if e.event_type is AuditEventType.VERIFICATION_OUTCOME
+        ]
+        self.assertEqual(len(outcomes), 1)
+        self.assertEqual(outcomes[0].outcome, VerificationStatus.VERIFIED.value)
+        self.assertEqual(outcomes[0].details, {})
+        self.implementation.execute.assert_not_called()
+        self.assertEqual(self.undo.count(), 0)
+        for event in self.audit.all():
+            self.assertNotIn(
+                event.event_type,
+                (AuditEventType.EXECUTION_STARTED, AuditEventType.EXECUTION_SUCCEEDED),
+            )
+        self.assert_cleared(invocation)
+
+    def test_eligibility_result_is_private_typed_and_non_serializable(self):
+        result = _PointerEligibilityResult(VerificationStatus.VERIFIED)
+        self.assertFalse(hasattr(result, "__dict__"))
+        self.assertEqual(repr(result), "_PointerEligibilityResult(<private>)")
+        for exporter in (copy, deepcopy, pickle.dumps, json.dumps):
+            with self.assertRaises(TypeError):
+                exporter(result)
+        with self.assertRaises(TypeError):
+            _PointerEligibilityResult("verified")
 
     def test_no_public_exports_native_mutation_or_execution_methods(self):
         from nayeon.agent import pointer_binding
