@@ -10,18 +10,11 @@ from nayeon.services.pointer_observation import (
 from nayeon.services.windows_desktop import WindowsDesktopAdapter, _WindowsNative, _require
 
 
-class _PointerNative(_WindowsNative):
+class _HitTestNative(_WindowsNative):
     def __init__(self):
         super().__init__()
-        self.u.GetCursorPos.argtypes = [ctypes.POINTER(W.POINT)]
-        self.u.GetCursorPos.restype = W.BOOL
         self.u.WindowFromPoint.argtypes = [W.POINT]
         self.u.WindowFromPoint.restype = W.HWND
-
-    def cursor(self):
-        point = W.POINT()
-        _require(self.u.GetCursorPos(ctypes.byref(point)))
-        return point.x, point.y
 
     def window_at(self, point):
         return self.u.WindowFromPoint(W.POINT(*point)) or 0
@@ -29,6 +22,18 @@ class _PointerNative(_WindowsNative):
     def root(self, hwnd):
         # HWNDs are borrowed; no ownership or cleanup is acquired here.
         return _require(self.u.GetAncestor(hwnd, 2))  # GA_ROOT
+
+
+class _PointerNative(_HitTestNative):
+    def __init__(self):
+        super().__init__()
+        self.u.GetCursorPos.argtypes = [ctypes.POINTER(W.POINT)]
+        self.u.GetCursorPos.restype = W.BOOL
+
+    def cursor(self):
+        point = W.POINT()
+        _require(self.u.GetCursorPos(ctypes.byref(point)))
+        return point.x, point.y
 
 
 def _handle(value):
