@@ -1,6 +1,6 @@
 """Private location-bound approval, fresh eligibility, and bounded insertion."""
 from copy import deepcopy
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 
 from nayeon.audit.service import AuditEventType
@@ -18,7 +18,7 @@ from nayeon.services.target_validation import (
     _TargetVerificationService,
     _valid_target_binding,
 )
-from nayeon.verification.contract import VerificationStatus
+from nayeon.verification.contract import VerificationResult, VerificationStatus
 from nayeon.services.pointer_coordinates import _CoordinateResult, _PointerCoordinateService
 from nayeon.services.pointer_effect import (
     _EffectStatus, _PointerEffectReceipt, _PointerEffectService,
@@ -95,6 +95,61 @@ class _PointerPostObservationResult(_LocalOnly):
             raise TypeError("Exact private post-observation status required.")
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _PointerVerificationProvider(_LocalOnly):
+    """One-use trusted adapter of captured evidence; no observation or authority.
+
+    Private receipts cannot cross VerificationService's deepcopy boundary.
+    Keep them local to this ephemeral provider; pass only a fixed request and
+    None output through the standard service. Never register this adapter.
+    """
+    _receipt: object
+    _observation: object
+    _sealed: tuple = field(default=(), init=False)
+    _used: bool = field(default=False, init=False)
+
+    def __post_init__(self):
+        if type(self) is not _PointerVerificationProvider:
+            raise TypeError("Exact private verification provider required.")
+        object.__setattr__(self, "_sealed", self._evidence_snapshot())
+
+    def _evidence_snapshot(self):
+        if (type(self._receipt) is not _PointerEffectReceipt
+                or type(self._observation) is not _PointerPostObservationResult):
+            raise TypeError("Exact captured pointer evidence required.")
+        self._receipt.__post_init__()
+        self._observation.__post_init__()
+        return (id(self._receipt), self._receipt.status, self._receipt.attempted,
+                self._receipt.inserted, id(self._observation), self._observation.status)
+
+    def verify_result(self, *, request, output):
+        unknown = VerificationResult(reason="Bounded pointer evidence is inconclusive; UI/task result unverified.")
+        try:
+            if type(self) is not _PointerVerificationProvider or self._used:
+                return unknown
+            object.__setattr__(self, "_used", True)
+            if (type(request) is not str or request != _REQUEST or output is not None
+                    or self._evidence_snapshot() != self._sealed):
+                return unknown
+            _, effect, attempted, inserted, _, observed = self._sealed
+            if not attempted or effect is _EffectStatus.INDETERMINATE:
+                return unknown
+            if effect is _EffectStatus.PARTIAL:
+                return VerificationResult(VerificationStatus.NOT_VERIFIED,
+                    "The complete approved input batch was not inserted; UI/task result unverified.")
+            if effect is not _EffectStatus.INSERTED or inserted != 3:
+                return unknown
+            if observed is VerificationStatus.NOT_VERIFIED:
+                return VerificationResult(VerificationStatus.NOT_VERIFIED,
+                    "The bounded post-effect sample contradicted original-target identity/context and foreground equality; UI/task result unverified.")
+            if observed is not VerificationStatus.VERIFIED:
+                return unknown
+            return VerificationResult(VerificationStatus.VERIFIED,
+                "The complete approved three-record input batch was inserted, and the bounded post-effect sample matched original-target identity/context and foreground within the original-binding age window; UI/task result unverified.")
+        except Exception:
+            return unknown
+
+
 def _snapshot(operation):
     # Independent immutable scalar snapshot also detects accidental frozen bypass.
     operation.__post_init__()
@@ -131,6 +186,7 @@ class _PointerInvocation(_LocalOnly):
         "_coordinate_service", "_effect_service",
         "_services", "_registered", "_implementation",
         "_post_observation",
+        "_verification",
     )
 
     def __init__(self, executor, capability, service, hit_service, *,
@@ -158,6 +214,7 @@ class _PointerInvocation(_LocalOnly):
         self._confirmation = None
         self._closed = self._started = False
         self._post_observation = None
+        self._verification = VerificationResult()
 
     def _record(self, event, outcome, message):
         self._executor._audit.record(
@@ -301,10 +358,31 @@ class _PointerInvocation(_LocalOnly):
         """Consume exact approval for one effect; accept no VERIFIED authority."""
         return self._consume(operation, target=target, action=action, point=point, effect=True)
 
+    def _verify_captured_effect(self, operation, receipt, receipt_seal, observation_seal):
+        """Standard verification of local evidence only, before authority cleanup."""
+        unknown = VerificationResult(reason="Bounded pointer evidence is inconclusive; UI/task result unverified.")
+        try:
+            if not self._bound(operation):
+                return unknown
+            provider = _PointerVerificationProvider(receipt, self._post_observation)
+            if provider._sealed != (*receipt_seal, *observation_seal):
+                return unknown
+            result = self._executor._verification.verify(provider, request=_REQUEST, output=None)
+            # No read or mutation: detect binding/evidence changes during the bridge.
+            if (not self._bound(operation)
+                    or provider._evidence_snapshot() != provider._sealed
+                    or type(result) is not VerificationResult):
+                return unknown
+            return result
+        except Exception:
+            return unknown
+
     def _consume(self, operation, *, target, action, point, effect):
         unknown = (_PointerEffectReceipt() if effect
                    else _PointerEligibilityResult())
         completed = unknown
+        receipt_seal = None
+        observation_seal = None
         try:
             if (self._closed or self._confirmation is None
                     or (effect and self._effect_service is None)
@@ -360,10 +438,13 @@ class _PointerInvocation(_LocalOnly):
                 # Assume an indeterminate attempt if the trusted seam violates
                 # its result contract after being called. Never retry it.
                 completed = _PointerEffectReceipt(_EffectStatus.INDETERMINATE, True)
-                receipt = self._effect_service._insert(mapped.evidence)
-                if type(receipt) is _PointerEffectReceipt:
-                    receipt.__post_init__()
-                    completed = receipt
+                try:
+                    receipt = self._effect_service._insert(mapped.evidence)
+                    if type(receipt) is _PointerEffectReceipt:
+                        receipt.__post_init__()
+                        completed = receipt
+                finally:
+                    receipt_seal = (id(completed), completed.status, completed.attempted, completed.inserted)
                 # Auditing follows the bounded effect: no file I/O between the
                 # final evidence samples and native insertion. Preserve receipt
                 # even if audit writing fails after an actual attempt.
@@ -390,6 +471,7 @@ class _PointerInvocation(_LocalOnly):
                         self._post_observation = observed
                 except Exception:
                     pass  # Observation failure cannot change the effect receipt.
+                observation_seal = (id(self._post_observation), self._post_observation.status)
                 try:
                     self._record(
                         AuditEventType.POINTER_POST_OBSERVATION_OUTCOME,
@@ -398,6 +480,20 @@ class _PointerInvocation(_LocalOnly):
                     )
                 except Exception:
                     pass  # Preserve both evidence categories if auditing fails.
+            # Preserve the original receipt/observation APIs. Only the first
+            # effect consume gets a standard result; closed calls cannot reuse
+            # evidence or overwrite the retained, authority-free conclusion.
+            if effect and not self._closed:
+                self._verification = self._verify_captured_effect(
+                    operation, completed, receipt_seal, observation_seal)
+                try:
+                    self._record(
+                        AuditEventType.VERIFICATION_OUTCOME,
+                        self._verification.status.value,
+                        "Captured bounded pointer evidence assessed; UI/task result unverified.",
+                    )
+                except Exception:
+                    pass
             try:
                 if effect:
                     self._record(
