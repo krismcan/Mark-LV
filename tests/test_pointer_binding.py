@@ -21,6 +21,8 @@ from nayeon.policy.permissions import PermissionService
 from nayeon.policy.service import PolicyService
 from nayeon.registry import Capability, CapabilityRegistry, ExecutionMode
 from nayeon.services.keyboard_text import _TextBinding
+from nayeon.services.pointer_coordinates import _PointerCoordinateService
+from nayeon.services.pointer_effect import _EffectStatus, _PointerEffectService
 from nayeon.services.pointer_hit_validation import (
     _PointerHitResult,
     _PointerHitValidationService,
@@ -683,6 +685,525 @@ class PointerBindingTests(unittest.TestCase):
             [name for name in dir(ActionExecutor) if "pointer" in name],
             ["_pointer_invocation"],
         )
+
+from nayeon.services.pointer_coordinates import (
+    _CoordinateEvidence, _CoordinateNative, _CoordinateResult, _PointerCoordinateService,
+)
+from nayeon.services.pointer_effect import (
+    _EffectStatus, _PointerEffectNative, _PointerEffectReceipt, _PointerEffectService,
+)
+
+
+class PointerEffectIntegrationTests(unittest.TestCase):
+    """Phase 6.11: exact services and injected fakes only; no live input."""
+    prepare = PointerBindingTests.prepare
+    approve = PointerBindingTests.approve
+
+    def setUp(self):
+        PointerBindingTests.setUp(self)
+        self.native_guard = self.enterContext(patch.object(
+            _PointerEffectNative, "__init__", side_effect=AssertionError("Live input forbidden")))
+        self.coordinate_guard = self.enterContext(patch.object(
+            _CoordinateNative, "__init__", side_effect=AssertionError("Live metrics forbidden")))
+        self.metric_native = Mock(spec=["metric"])
+        self.metric_native.metric.side_effect = lambda i: {76: 30000, 77: 26000, 78: 4000, 79: 4000}[i]
+        self.coordinate_service = _PointerCoordinateService(platform="win32", native=self.metric_native)
+        self.effect_native = Mock(spec=["_send_input"])
+        self.effect_native._send_input.return_value = 3
+        self.effect_service = _PointerEffectService(platform="win32", native=self.effect_native)
+
+    def tearDown(self):
+        self.native_guard.assert_not_called()
+        self.coordinate_guard.assert_not_called()
+
+    def invocation(self):
+        return self.executor._pointer_invocation(
+            self.capability, service=self.service, hit_service=self.hit_service,
+            coordinate_service=self.coordinate_service, effect_service=self.effect_service)
+
+    def execute_effect(self, invocation, operation, **overrides):
+        args = dict(target=operation.target, action=operation.action, point=operation.point)
+        args.update(overrides)
+        return invocation._execute_effect(operation, **args)
+
+    def assert_cleared(self, invocation):
+        PointerBindingTests.assert_cleared(self, invocation)
+        for name in ("_coordinate_service", "_effect_service", "_services", "_registered", "_implementation"):
+            self.assertIsNone(getattr(invocation, name))
+
+    def assert_not_attempted(self, invocation, receipt):
+        self.assertEqual(receipt, _PointerEffectReceipt())
+        self.metric_native.metric.assert_not_called()
+        self.effect_native._send_input.assert_not_called()
+        self.assert_cleared(invocation)
+
+    def test_exact_confirmation_fresh_chain_original_point_and_one_effect(self):
+        calls = Mock()
+        with patch.object(self.confirmation, "approve", wraps=self.confirmation.approve) as approve, \
+                patch.object(self.policy, "evaluate", wraps=self.policy.evaluate) as policy, \
+                patch.object(_TargetVerificationService, "acquire_target", autospec=True, side_effect=_TargetVerificationService.acquire_target) as acquire, \
+                patch.object(_PointerHitValidationService, "validate_hit", autospec=True, side_effect=_PointerHitValidationService.validate_hit) as hit, \
+                patch.object(_PointerCoordinateService, "normalize", autospec=True,
+                             side_effect=_PointerCoordinateService.normalize) as normalize, \
+                patch.object(_PointerEffectService, "_insert", autospec=True,
+                             side_effect=_PointerEffectService._insert) as insert:
+            for mock, name in ((approve, "confirm"), (policy, "policy"), (acquire, "target"),
+                               (hit, "hit"), (normalize, "normalize"), (insert, "insert")):
+                calls.attach_mock(mock, name)
+            with self.invocation() as invocation:
+                operation, confirmation = self.prepare(invocation)
+                self.assertIs(self.confirmation._bindings[confirmation.token], operation)
+                self.metric_native.metric.assert_not_called()
+                self.effect_native._send_input.assert_not_called()
+                calls.mock_calls.clear()
+                receipt = self.execute_effect(invocation, operation)
+                self.assertEqual([c[0] for c in calls.mock_calls],
+                                 ["confirm", "policy", "target", "hit", "normalize", "insert"])
+                normalize.assert_called_once_with(self.coordinate_service, self.point)
+                self.assertIs(normalize.call_args.args[1], operation.point)
+                insert.assert_called_once()
+                self.assertIs(insert.call_args.args[0], self.effect_service)
+                self.assertIs(insert.call_args.args[1].point, self.point)
+                self.assertEqual(self.execute_effect(invocation, operation), _PointerEffectReceipt())
+                insert.assert_called_once()
+        self.assertEqual(receipt, _PointerEffectReceipt(_EffectStatus.INSERTED, True, 3))
+        self.effect_native._send_input.assert_called_once()
+        self.assertEqual([c.args[0] for c in self.metric_native.metric.call_args_list], [76, 77, 78, 79])
+        self.assert_cleared(invocation)
+
+    def test_unprepared_and_substituted_exact_approval_block_effect(self):
+        with self.invocation() as invocation:
+            self.assert_not_attempted(invocation, invocation._execute_effect(
+                None, target=None, action=None, point=None))
+        for case in ("target", "action", "point", "operation"):
+            with self.subTest(case=case):
+                self.setUp()
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    if case == "operation":
+                        candidate = _PointerOperation(operation.target, operation.action, operation.point)
+                        receipt = self.execute_effect(invocation, candidate)
+                    else:
+                        value = {"target": lambda: replace(operation.target), "action": _PointerAction,
+                                 "point": lambda: _ProposedPoint(*POINT)}[case]()
+                        receipt = self.execute_effect(invocation, operation, **{case: value})
+                    self.assert_not_attempted(invocation, receipt)
+
+    def test_policy_confirmation_registry_snapshot_service_tamper_blocked(self):
+        for case in ("permission", "policy", "policy_result", "expiry", "binding", "confirmation_result",
+                     "registry_metadata", "registry_implementation", "snapshot", "point",
+                     "target_service", "hit_service", "coordinate_service", "effect_service"):
+            with self.subTest(case=case):
+                self.setUp()
+                with self.invocation() as invocation:
+                    operation, confirmation = self.prepare(invocation)
+                    if case == "permission":
+                        self.permissions.revoke(self.capability.name)
+                    elif case == "policy":
+                        self.policy._blocked_capabilities.add(self.capability.name)
+                    elif case == "policy_result":
+                        self.enterContext(patch.object(self.policy, "evaluate", return_value=Mock()))
+                    elif case == "expiry":
+                        self.confirmation._pending[confirmation.token] = replace(
+                            confirmation, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+                    elif case == "binding":
+                        self.confirmation._bindings[confirmation.token] = object()
+                    elif case == "confirmation_result":
+                        self.enterContext(patch.object(self.confirmation, "approve", return_value=Mock(approved=True)))
+                    elif case.startswith("registry_"):
+                        self.registry.unregister(self.capability.name)
+                        self.registry.register(
+                            replace(self.capability) if case == "registry_metadata" else self.capability,
+                            Mock() if case == "registry_implementation" else self.implementation)
+                    elif case == "snapshot":
+                        invocation._snapshot = ()
+                    elif case == "point":
+                        object.__setattr__(operation.point, "x", operation.point.x + 1)
+                    else:
+                        value = {
+                            "target_service": lambda: _TargetVerificationService(native=self.native, platform="win32"),
+                            "hit_service": lambda: _PointerHitValidationService(native=self.hit_native, platform="win32"),
+                            "coordinate_service": lambda: _PointerCoordinateService(native=self.metric_native, platform="win32"),
+                            "effect_service": lambda: _PointerEffectService(native=self.effect_native, platform="win32"),
+                        }[case]()
+                        setattr(invocation, "_service" if case == "target_service" else "_" + case, value)
+                    self.assert_not_attempted(invocation, self.execute_effect(invocation, operation))
+
+    def test_non_verified_or_malformed_eligibility_blocks_mapping_and_effect(self):
+        for result in (_PointerEligibilityResult(VerificationStatus.NOT_VERIFIED),
+                       _PointerEligibilityResult(), Mock(status=VerificationStatus.VERIFIED)):
+            with self.subTest(kind=type(result).__name__):
+                self.setUp()
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    with patch.object(_PointerInvocation, "_eligible_now", return_value=result) as eligible:
+                        receipt = self.execute_effect(invocation, operation)
+                        eligible.assert_called_once_with(operation)
+                    self.assert_not_attempted(invocation, receipt)
+
+    def test_non_verified_malformed_or_wrong_point_mapping_blocks_effect(self):
+        for case in ("unknown", "duck", "wrong_point", "tampered", "wrong_status", "exception"):
+            with self.subTest(case=case):
+                self.setUp()
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    if case == "unknown":
+                        mapped = _CoordinateResult()
+                    elif case == "duck":
+                        mapped = Mock(status=VerificationStatus.VERIFIED)
+                    else:
+                        point = _ProposedPoint(*POINT) if case == "wrong_point" else self.point
+                        evidence = _CoordinateEvidence(point, 30000, 26000, 4000, 4000,
+                            ((point.x - 30000) * 65535) // 3999, ((point.y - 26000) * 65535) // 3999)
+                        mapped = _CoordinateResult(VerificationStatus.VERIFIED, evidence)
+                        if case == "tampered":
+                            object.__setattr__(evidence, "normalized_x", True)
+                        elif case == "wrong_status":
+                            object.__setattr__(mapped, "status", VerificationStatus.NOT_VERIFIED)
+                    with patch.object(_PointerCoordinateService, "normalize", return_value=mapped,
+                                      side_effect=RuntimeError("PRIVATE_MAPPING") if case == "exception" else None) as normalize:
+                        receipt = self.execute_effect(invocation, operation)
+                        normalize.assert_called_once_with(self.point)
+                    self.assert_not_attempted(invocation, receipt)
+
+    def test_receipts_preserved_once_no_retry_no_undo_sanitized_audit(self):
+        for count, status in ((3, _EffectStatus.INSERTED), (1, _EffectStatus.PARTIAL),
+                              (2, _EffectStatus.PARTIAL), (0, _EffectStatus.INDETERMINATE),
+                              (None, _EffectStatus.INDETERMINATE)):
+            with self.subTest(count=count):
+                self.setUp()
+                self.effect_native._send_input.return_value = count
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    receipt = self.execute_effect(invocation, operation)
+                    self.assertEqual(receipt, _PointerEffectReceipt(status, True, count))
+                    self.assertEqual(self.execute_effect(invocation, operation), _PointerEffectReceipt())
+                    self.assert_cleared(invocation)
+                self.effect_native._send_input.assert_called_once()
+                events = [e for e in self.audit.all() if e.event_type is AuditEventType.POINTER_EFFECT_OUTCOME]
+                self.assertEqual([e.outcome for e in events], [status.value, "not_attempted"])
+                for event in self.audit.all():
+                    self.assertEqual(event.details, {})
+                    text = event.message + repr(event.details)
+                    for private in (str(POINT[0]), str(POINT[1]), repr(I), I.executable,
+                                    "PRIVATE_MAPPING", "PRIVATE_NATIVE"):
+                        self.assertNotIn(private, text)
+                    self.assertNotIn(event.event_type, (AuditEventType.EXECUTION_SUCCEEDED, AuditEventType.UNDO_REGISTERED))
+
+    def test_effect_exception_or_invalid_receipt_is_indeterminate_no_retry(self):
+        for case in ("exception", "duck", "tampered"):
+            with self.subTest(case=case):
+                self.setUp()
+                receipt = _PointerEffectReceipt(_EffectStatus.INSERTED, True, 3)
+                if case == "tampered":
+                    object.__setattr__(receipt, "inserted", True)
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    with patch.object(_PointerEffectService, "_insert",
+                                      return_value=Mock() if case == "duck" else receipt,
+                                      side_effect=RuntimeError("PRIVATE_NATIVE") if case == "exception" else None) as insert:
+                        result = self.execute_effect(invocation, operation)
+                        self.assertEqual(result, _PointerEffectReceipt(_EffectStatus.INDETERMINATE, True))
+                        self.execute_effect(invocation, operation)
+                        insert.assert_called_once()
+                    self.assert_cleared(invocation)
+                self.effect_native._send_input.assert_not_called()
+                self.assertNotIn("PRIVATE_NATIVE", repr(self.audit.all()))
+
+    def test_audit_failure_after_insertion_preserves_receipt(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            original_record = self.audit.record
+
+            def record(event, **kwargs):
+                if event in (AuditEventType.VERIFICATION_OUTCOME, AuditEventType.POINTER_EFFECT_OUTCOME):
+                    raise OSError("PRIVATE_AUDIT_FAILURE")
+                return original_record(event, **kwargs)
+
+            with patch.object(self.audit, "record", side_effect=record):
+                receipt = self.execute_effect(invocation, operation)
+            self.assertEqual(receipt, _PointerEffectReceipt(_EffectStatus.INSERTED, True, 3))
+            self.assert_cleared(invocation)
+        self.effect_native._send_input.assert_called_once()
+
+    def test_existing_approve_remains_read_only_in_effect_mode(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            self.assertEqual(self.approve(invocation, operation),
+                             _PointerEligibilityResult(VerificationStatus.VERIFIED))
+            self.assertEqual(self.execute_effect(invocation, operation), _PointerEffectReceipt())
+            self.assert_cleared(invocation)
+        self.metric_native.metric.assert_not_called()
+        self.effect_native._send_input.assert_not_called()
+
+    def test_fake_and_subclass_services_rejected_before_native_reads(self):
+        class EffectSubclass(_PointerEffectService):
+            pass
+
+        class CoordinateSubclass(_PointerCoordinateService):
+            pass
+
+        for effect, coordinate in ((Mock(), self.coordinate_service),
+                (object.__new__(EffectSubclass), self.coordinate_service),
+                (self.effect_service, Mock()),
+                (self.effect_service, CoordinateSubclass(native=self.metric_native, platform="win32"))):
+            with self.subTest(effect=type(effect).__name__, coordinate=type(coordinate).__name__):
+                with self.assertRaises(TypeError):
+                    with self.executor._pointer_invocation(
+                        self.capability, service=self.service, hit_service=self.hit_service,
+                        effect_service=effect, coordinate_service=coordinate):
+                        self.fail("Untrusted service accepted")
+        self.native.foreground.assert_not_called()
+        self.metric_native.metric.assert_not_called()
+        self.effect_native._send_input.assert_not_called()
+
+
+
+class PointerEffectBoundaryTests(unittest.TestCase):
+    """Additional Phase 6.11 boundaries, injected fakes only."""
+    prepare = PointerBindingTests.prepare
+
+    def setUp(self):
+        PointerBindingTests.setUp(self)
+        self.metrics = Mock(spec=['metric'])
+        self.metrics.metric.side_effect = [0, 0, 65536, 65536]
+        self.coordinates = _PointerCoordinateService(native=self.metrics, platform='win32')
+        self.effect_native = Mock(spec=['_send_input'])
+        self.effect_native._send_input.return_value = 3
+        self.effect_service = _PointerEffectService(native=self.effect_native, platform='win32')
+        for module, factory in (('pointer_effect', '_PointerEffectNative'),
+                                ('pointer_coordinates', '_CoordinateNative')):
+            guard = patch('nayeon.services.' + module + '.' + factory,
+                          side_effect=AssertionError('NO LIVE NATIVE'))
+            guarded = guard.start()
+            self.addCleanup(guard.stop)
+            self.addCleanup(guarded.assert_not_called)
+
+    def invocation(self):
+        return self.executor._pointer_invocation(
+            self.capability, service=self.service, hit_service=self.hit_service,
+            coordinate_service=self.coordinates, effect_service=self.effect_service)
+
+    def effect(self, invocation, operation):
+        return invocation._execute_effect(
+            operation, target=operation.target, action=operation.action, point=operation.point)
+
+    def assert_cleared(self, invocation):
+        PointerBindingTests.assert_cleared(self, invocation)
+        for name in ('_coordinate_service', '_effect_service', '_services',
+                     '_registered', '_implementation'):
+            self.assertIsNone(getattr(invocation, name))
+
+    def assert_blocked(self, invocation, operation):
+        result = self.effect(invocation, operation)
+        self.assertIs(result.status, _EffectStatus.NOT_ATTEMPTED)
+        self.assertFalse(result.attempted)
+        self.effect_native._send_input.assert_not_called()
+        self.assert_cleared(invocation)
+
+    def test_replaced_services_including_same_exact_types_block_before_fresh_reads(self):
+        for name in ('_service', '_hit_service', '_coordinate_service', '_effect_service'):
+            for same_type in (False, True):
+                with self.subTest(name=name, same_type=same_type):
+                    self.setUp()
+                    with self.invocation() as invocation:
+                        operation, _ = self.prepare(invocation)
+                        original = getattr(invocation, name)
+                        replacement = type(original)(native=Mock(), platform='win32') if same_type else Mock()
+                        setattr(invocation, name, replacement)
+                        self.assert_blocked(invocation, operation)
+                    self.metrics.metric.assert_not_called()
+                    self.assertEqual(self.native.foreground.call_count, 2)
+
+    def test_service_replacement_during_fresh_eligibility_blocks_mapping(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            original = self.service.acquire_target
+            def acquire():
+                fresh = original()
+                invocation._coordinate_service = _PointerCoordinateService(native=Mock(), platform='win32')
+                return fresh
+            with patch.object(self.service, 'acquire_target', side_effect=acquire):
+                self.assert_blocked(invocation, operation)
+        self.metrics.metric.assert_not_called()
+
+    def test_equal_registry_metadata_replacement_blocks_execution(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            self.registry.unregister(self.capability.name)
+            self.registry.register(replace(self.capability), self.implementation)
+            self.assert_blocked(invocation, operation)
+        self.metrics.metric.assert_not_called()
+
+    def test_malformed_policy_decisions_and_allow_block_before_fresh_reads(self):
+        from nayeon.policy.service import PolicyAction, PolicyDecision
+        for value in (None, Mock(action=PolicyAction.CONFIRM, reason='PRIVATE_POLICY'),
+                      PolicyDecision('confirm', 'PRIVATE_POLICY'),
+                      PolicyDecision(PolicyAction.ALLOW, 'PRIVATE_POLICY')):
+            with self.subTest(value=type(value).__name__):
+                self.setUp()
+                with self.invocation() as invocation:
+                    operation, _ = self.prepare(invocation)
+                    with patch.object(self.policy, 'evaluate', return_value=value):
+                        self.assert_blocked(invocation, operation)
+                self.metrics.metric.assert_not_called()
+                self.assertEqual(self.native.foreground.call_count, 2)
+                self.assertNotIn('PRIVATE_POLICY', repr(self.audit.all()))
+
+    def test_malformed_confirmation_results_and_exception_block_before_policy(self):
+        from nayeon.policy.confirmation import ConfirmationResult
+        for value in (None, Mock(approved=True, reason='PRIVATE_CONFIRM'),
+                      ConfirmationResult(1, 'PRIVATE_CONFIRM'), OSError('PRIVATE_CONFIRM')):
+            self.setUp()
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                kwargs = {'side_effect': value} if isinstance(value, Exception) else {'return_value': value}
+                with patch.object(self.confirmation, 'approve', **kwargs), \
+                     patch.object(self.policy, 'evaluate', wraps=self.policy.evaluate) as policy:
+                    self.assert_blocked(invocation, operation)
+                    policy.assert_not_called()
+            self.metrics.metric.assert_not_called()
+            self.assertNotIn('PRIVATE_CONFIRM', repr(self.audit.all()))
+
+    def test_confirmation_request_and_capability_mismatch_block(self):
+        for field in ('request', 'capability'):
+            self.setUp()
+            with self.invocation() as invocation:
+                operation, confirmation = self.prepare(invocation)
+                self.confirmation._pending[confirmation.token] = replace(confirmation, **{field: 'changed'})
+                self.assert_blocked(invocation, operation)
+            self.metrics.metric.assert_not_called()
+            self.assertEqual(self.native.foreground.call_count, 2)
+
+    def test_effect_missing_and_verified_eligibility_cannot_be_promoted(self):
+        with self.executor._pointer_invocation(
+                self.capability, service=self.service, hit_service=self.hit_service) as invocation:
+            operation, _ = self.prepare(invocation)
+            self.assert_blocked(invocation, operation)
+        self.setUp()
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            eligibility = invocation.approve(operation, target=operation.target,
+                                             action=operation.action, point=operation.point)
+            self.assertIs(eligibility.status, VerificationStatus.VERIFIED)
+            self.assert_blocked(invocation, operation)
+            result = invocation._execute_effect(eligibility, target=operation.target,
+                                                action=operation.action, point=operation.point)
+            self.assertFalse(result.attempted)
+        self.metrics.metric.assert_not_called()
+        self.assertFalse(hasattr(_PointerInvocation, '_effect_now'))
+
+    def test_native_invalid_counts_and_seam_exception_are_indeterminate_without_retry(self):
+        for returned in (True, False, -1, 4, 3.0, '3', None):
+            self.setUp()
+            self.effect_native._send_input.return_value = returned
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                result = self.effect(invocation, operation)
+                self.assertIs(result.status, _EffectStatus.INDETERMINATE)
+                self.assertTrue(result.attempted)
+                self.assertIsNone(result.inserted)
+                self.assert_cleared(invocation)
+            self.effect_native._send_input.assert_called_once()
+        self.setUp()
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            with patch.object(_PointerEffectService, '_insert', side_effect=OSError('PRIVATE_SEAM')) as insert:
+                result = self.effect(invocation, operation)
+                self.assertIs(result.status, _EffectStatus.INDETERMINATE)
+                self.assertTrue(result.attempted)
+                insert.assert_called_once()
+            self.assert_cleared(invocation)
+        self.assertNotIn('PRIVATE_SEAM', repr(self.audit.all()))
+
+    def test_service_subclasses_rejected_without_native_construction(self):
+        class Coordinates(_PointerCoordinateService):
+            pass
+        class Effect(_PointerEffectService):
+            pass
+        for coordinates, effect in ((Coordinates(native=Mock()), self.effect_service),
+                                    (self.coordinates, object.__new__(Effect))):
+            with self.assertRaises(TypeError):
+                with self.executor._pointer_invocation(
+                        self.capability, service=self.service, hit_service=self.hit_service,
+                        coordinate_service=coordinates, effect_service=effect):
+                    self.fail('Service subclass accepted')
+        self.metrics.metric.assert_not_called()
+        self.effect_native._send_input.assert_not_called()
+
+    def test_malformed_fresh_service_results_block_execution(self):
+        for kind in ('target', 'hit'):
+            self.setUp()
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                if kind == 'target':
+                    with patch.object(self.service, 'acquire_target', return_value=Mock(identity=I, context=C)):
+                        self.assert_blocked(invocation, operation)
+                else:
+                    with patch.object(_PointerHitValidationService, 'validate_hit',
+                                      return_value=Mock(status=VerificationStatus.VERIFIED)):
+                        self.assert_blocked(invocation, operation)
+            self.metrics.metric.assert_not_called()
+
+    def test_abandoned_and_cross_invocation_operations_have_no_effect(self):
+        with self.assertRaisesRegex(RuntimeError, 'caller'):
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                raise RuntimeError('caller')
+        self.assert_cleared(invocation)
+        self.setUp()
+        with self.invocation() as next_invocation:
+            self.prepare(next_invocation)
+            self.assert_blocked(next_invocation, operation)
+        self.metrics.metric.assert_not_called()
+
+    def test_cleanup_exception_after_insertion_preserves_receipt_and_clears(self):
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            with patch.object(self.confirmation, 'reject', side_effect=OSError('PRIVATE_CLEANUP')):
+                result = self.effect(invocation, operation)
+            self.assertIs(result.status, _EffectStatus.INSERTED)
+            self.assertEqual(result.inserted, 3)
+            self.assert_cleared(invocation)
+        self.effect_native._send_input.assert_called_once()
+        self.assertNotIn('PRIVATE_CLEANUP', repr(self.audit.all()))
+        failures = [e for e in self.audit.all()
+                    if e.message == 'Private pointer binding cleanup failed.']
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].outcome, 'indeterminate')
+
+    def test_effect_eligibility_and_coordinate_subclasses_are_rejected(self):
+        from nayeon.services.pointer_coordinates import _CoordinateResult
+        class Eligibility(_PointerEligibilityResult):
+            pass
+        class Coordinates(_CoordinateResult):
+            pass
+        # Use uninitialized subclasses only to exercise exact-type rejection;
+        # no native or trusted result construction takes place here.
+        for kind, result in (('eligibility', Eligibility(VerificationStatus.VERIFIED)),
+                             ('coordinate', object.__new__(Coordinates))):
+            self.setUp()
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                cls, method = ((_PointerInvocation, '_eligible_now') if kind == 'eligibility'
+                               else (_PointerCoordinateService, 'normalize'))
+                with patch.object(cls, method, return_value=result):
+                    self.assert_blocked(invocation, operation)
+            self.metrics.metric.assert_not_called()
+
+    def test_audit_does_not_run_between_geometry_and_effect(self):
+        calls = Mock()
+        calls.attach_mock(self.metrics.metric, 'metric')
+        calls.attach_mock(self.effect_native._send_input, 'effect')
+        with self.invocation() as invocation:
+            operation, _ = self.prepare(invocation)
+            with patch.object(self.audit, 'record', wraps=self.audit.record) as audit:
+                calls.attach_mock(audit, 'audit')
+                self.effect(invocation, operation)
+        names = [c[0] for c in calls.mock_calls]
+        first_metric = names.index('metric')
+        self.assertEqual(names[first_metric:first_metric + 5], ['metric'] * 4 + ['effect'])
+        self.assert_cleared(invocation)
 
 
 if __name__ == "__main__":

@@ -80,8 +80,9 @@ class ActionExecutor:
     @contextmanager
     def _pointer_invocation(
         self, capability: Capability, *, service=None, hit_service=None,
+        coordinate_service=None, effect_service=None,
     ):
-        """Private lexical location-bound approval proof; no execution route.
+        """Private lexical approval/eligibility, optionally one bounded effect.
 
         Service injection is a trusted deterministic test seam, never model input.
         Nothing is retained on this executor after the invocation ends.
@@ -89,6 +90,8 @@ class ActionExecutor:
         from nayeon.agent.pointer_binding import _PointerInvocation
         from nayeon.services.pointer_hit_validation import _PointerHitValidationService
         from nayeon.services.target_validation import _TargetVerificationService
+        from nayeon.services.pointer_coordinates import _PointerCoordinateService
+        from nayeon.services.pointer_effect import _PointerEffectService
 
         if type(capability) is not Capability:
             raise TypeError("Exact registered capability metadata required.")
@@ -100,8 +103,18 @@ class ActionExecutor:
             raise TypeError("Trusted target service required.")
         if type(hit_service) is not _PointerHitValidationService:
             raise TypeError("Trusted pointer hit validation service required.")
+        if effect_service is not None:
+            if type(effect_service) is not _PointerEffectService:
+                raise TypeError("Trusted pointer effect service required.")
+            if coordinate_service is None:
+                coordinate_service = _PointerCoordinateService()
+            if type(coordinate_service) is not _PointerCoordinateService:
+                raise TypeError("Trusted coordinate service required.")
+        elif coordinate_service is not None:
+            raise TypeError("Coordinate mapping requires bounded effect mode.")
         invocation = _PointerInvocation(
             self, capability, service, hit_service,
+            coordinate_service=coordinate_service, effect_service=effect_service,
         )
         try:
             yield invocation
