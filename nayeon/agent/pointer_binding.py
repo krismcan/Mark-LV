@@ -14,6 +14,7 @@ from nayeon.services.pointer_hit_validation import (
 )
 from nayeon.services.target_validation import (
     _TargetBinding,
+    _TargetVerificationResult,
     _TargetVerificationService,
     _valid_target_binding,
 )
@@ -83,6 +84,17 @@ class _PointerEligibilityResult(_LocalOnly):
             raise TypeError("Exact private eligibility status required.")
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _PointerPostObservationResult(_LocalOnly):
+    """Original-target sampled equality only; no effect or semantic authority."""
+    status: VerificationStatus = VerificationStatus.INDETERMINATE
+
+    def __post_init__(self):
+        if (type(self) is not _PointerPostObservationResult
+                or type(self.status) is not VerificationStatus):
+            raise TypeError("Exact private post-observation status required.")
+
+
 def _snapshot(operation):
     # Independent immutable scalar snapshot also detects accidental frozen bypass.
     operation.__post_init__()
@@ -118,6 +130,7 @@ class _PointerInvocation(_LocalOnly):
         "_confirmation", "_closed", "_started",
         "_coordinate_service", "_effect_service",
         "_services", "_registered", "_implementation",
+        "_post_observation",
     )
 
     def __init__(self, executor, capability, service, hit_service, *,
@@ -144,6 +157,7 @@ class _PointerInvocation(_LocalOnly):
         self._operation = self._target = self._action = self._point = self._snapshot = None
         self._confirmation = None
         self._closed = self._started = False
+        self._post_observation = None
 
     def _record(self, event, outcome, message):
         self._executor._audit.record(
@@ -267,6 +281,22 @@ class _PointerInvocation(_LocalOnly):
         """Consume approval and assess fresh eligibility; always read-only."""
         return self._consume(operation, target=target, action=action, point=point, effect=False)
 
+    def _observe_after_effect(self, operation):
+        """One fresh verification of the original target, never a new baseline."""
+        unknown = _PointerPostObservationResult()
+        try:
+            if not self._bound(operation):
+                return unknown
+            observed = self._service.verify_target(operation.target)
+            if type(observed) is not _TargetVerificationResult:
+                return unknown
+            observed.__post_init__()
+            if not self._bound(operation):
+                return unknown
+            return _PointerPostObservationResult(observed.status)
+        except Exception:
+            return unknown
+
     def _execute_effect(self, operation, *, target, action, point):
         """Consume exact approval for one effect; accept no VERIFIED authority."""
         return self._consume(operation, target=target, action=action, point=point, effect=True)
@@ -348,6 +378,26 @@ class _PointerInvocation(_LocalOnly):
         except Exception:
             return completed
         finally:
+            # Only after the effect seam has returned/raised and a conservative
+            # receipt exists. No post work enters the final pre-insertion gap.
+            # Retain only a separate status, never raw target evidence/authority.
+            if effect and completed.attempted:
+                self._post_observation = _PointerPostObservationResult()
+                try:
+                    observed = self._observe_after_effect(operation)
+                    if type(observed) is _PointerPostObservationResult:
+                        observed.__post_init__()
+                        self._post_observation = observed
+                except Exception:
+                    pass  # Observation failure cannot change the effect receipt.
+                try:
+                    self._record(
+                        AuditEventType.POINTER_POST_OBSERVATION_OUTCOME,
+                        self._post_observation.status.value,
+                        "Original target post-effect equality sampled; UI result unverified.",
+                    )
+                except Exception:
+                    pass  # Preserve both evidence categories if auditing fails.
             try:
                 if effect:
                     self._record(

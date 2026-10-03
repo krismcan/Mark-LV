@@ -23,6 +23,7 @@ class AuditEventType(str, Enum):
     UNDO_REGISTRATION_FAILED = "undo_registration_failed"
     VERIFICATION_OUTCOME = "verification_outcome"
     POINTER_EFFECT_OUTCOME = "pointer_effect_outcome"
+    POINTER_POST_OBSERVATION_OUTCOME = "pointer_post_observation_outcome"
 
 @dataclass(frozen=True)
 class AuditEvent:
