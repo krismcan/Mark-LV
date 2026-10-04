@@ -46,6 +46,7 @@ class _ScopedUIElementEvidence(_LocalOnly):
     control_type: int
     enabled: bool
     runtime_id: tuple[int, ...]
+    clickable: bool
 
     def __post_init__(self):
         if type(self) is not _ScopedUIElementEvidence:
@@ -55,6 +56,8 @@ class _ScopedUIElementEvidence(_LocalOnly):
             raise ValueError("Per-monitor awareness required.")
         _sample_valid(self.control_type, self.enabled)
         _runtime_id_valid(self.runtime_id)
+        if type(self.clickable) is not bool:
+            raise TypeError("Exact clickability state required.")
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -77,7 +80,9 @@ class _ScopedUIElementObservationService(_LocalOnly):
     """One joined PMv2/MTA worker; descriptive evidence, never authority.
 
     VERIFIED describes only same-point physical certification and one bounded
-    sample with clean UIA teardown and DPI restoration. Factories are trusted
+    sample of control type, enabled, opaque runtime ID and provider-reported
+    clickability availability with clean UIA teardown and DPI restoration.
+    Either availability value is descriptive only. Factories are trusted
     private test seams. Native calls have no hard deadline.
     """
     __slots__ = ("_scope_factory", "_contract_factory", "_native_factory", "_platform")
@@ -124,10 +129,13 @@ class _ScopedUIElementObservationService(_LocalOnly):
                     control_type = native.control_type()
                     enabled = native.is_enabled()
                     runtime_id = native.runtime_id()
+                    clickable = native.clickable_point_available()
                     _sample_valid(control_type, enabled)
                     _runtime_id_valid(runtime_id)
+                    if type(clickable) is not bool:
+                        raise TypeError("Exact clickability state required.")
                     unchanged()
-                    sample = (control_type, enabled, runtime_id)
+                    sample = (control_type, enabled, runtime_id, clickable)
                 except BaseException:
                     clean = False
                 finally:

@@ -265,5 +265,109 @@ class RuntimeIdTests(unittest.TestCase):
         self.assertEqual(without_native(Path(m.__file__).read_text()), without_native(baseline))
 
 
+class ClickablePointTests(unittest.TestCase):
+    def facade(self, *, available=1, x=123456, y=-654321, hr=0):
+        import ctypes as C
+        from unittest.mock import patch
+        dlls = [Mock(), Mock()]
+        with patch.object(m.ctypes, "WinDLL", side_effect=dlls):
+            native = m._UIANative()
+        calls = []
+
+        def get(this, point_out, available_out):
+            calls.append("get")
+            point_out[0].x = x
+            point_out[0].y = y
+            available_out[0] = available
+            return hr
+
+        callback = C.WINFUNCTYPE(
+            C.c_int32, C.c_void_p, C.POINTER(m._POINT), C.POINTER(C.c_int32))(get)
+        table = (C.c_void_p * 85)()
+        table[84] = C.cast(callback, C.c_void_p).value
+        element = C.pointer(C.cast(table, C.POINTER(C.c_void_p)))
+        native._element = C.cast(element, C.c_void_p)
+        native._initialized = True
+        return native, calls, (callback, table, element)
+
+    def test_exact_slot_signature_once_true_and_false(self):
+        import ctypes as C
+        from unittest.mock import patch
+        for raw, expected in ((0, False), (1, True)):
+            native, calls, keep = self.facade(available=raw)
+            with patch.object(m._UIANative, "_method", autospec=True,
+                              side_effect=m._UIANative._method) as method:
+                result = native.clickable_point_available()
+            self.assertIs(result, expected)
+            method.assert_called_once_with(
+                native, native._element, 84, C.c_int32,
+                C.POINTER(m._POINT), C.POINTER(C.c_int32))
+            self.assertEqual(calls, ["get"])
+
+    def test_malformed_bool_and_hresult_fail_sanitized_no_retry(self):
+        for raw in (-1, 2, 2147483647):
+            native, calls, keep = self.facade(available=raw)
+            with self.assertRaisesRegex(
+                    OSError, r"^Private clickability sample unavailable\.$") as caught:
+                native.clickable_point_available()
+            self.assertTrue(caught.exception.__suppress_context__)
+            self.assertEqual(calls, ["get"])
+        for hr in (-1, 1):
+            native, calls, keep = self.facade(hr=hr)
+            with self.assertRaisesRegex(
+                    OSError, r"^Private clickability sample unavailable\.$"):
+                native.clickable_point_available()
+            self.assertEqual(calls, ["get"])
+
+    def test_call_exception_sanitized_and_not_retried(self):
+        from unittest.mock import patch
+        native, calls, keep = self.facade()
+        attempts = []
+        def boom(*args):
+            attempts.append(1)
+            raise RuntimeError("PRIVATE_NATIVE_DETAIL")
+        with patch.object(m._UIANative, "_method", return_value=boom):
+            with self.assertRaisesRegex(
+                    OSError, r"^Private clickability sample unavailable\.$") as caught:
+                native.clickable_point_available()
+        self.assertEqual(attempts, [1])
+        self.assertNotIn("PRIVATE_NATIVE_DETAIL", str(caught.exception))
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_owner_thread_and_retained_element_required(self):
+        native, calls, keep = self.facade()
+        errors = []
+        def wrong_thread():
+            try:
+                native.clickable_point_available()
+            except OSError as error:
+                errors.append(str(error))
+        thread = threading.Thread(target=wrong_thread)
+        thread.start()
+        thread.join()
+        self.assertEqual(errors, ["Private clickability sample unavailable."])
+        self.assertEqual(calls, [])
+        native._element.value = None
+        with self.assertRaisesRegex(
+                OSError, r"^Private clickability sample unavailable\.$"):
+            native.clickable_point_available()
+        self.assertEqual(calls, [])
+
+    def test_provider_coordinates_are_validated_locally_and_never_retained(self):
+        for x, y in ((-(2**31), 2**31 - 1), (0, 0), (314159, -271828)):
+            native, calls, keep = self.facade(available=1, x=x, y=y)
+            result = native.clickable_point_available()
+            self.assertIs(result, True)
+            self.assertEqual(calls, ["get"])
+            self.assertFalse(hasattr(native, "__dict__"))
+            self.assertEqual(
+                tuple(m._UIANative.__slots__),
+                ("_owner", "_ole", "_oleaut", "_initialized", "_automation", "_element"))
+            text = repr(native)
+            self.assertNotIn(str(x), text)
+            self.assertNotIn(str(y), text)
+
+
+
 if __name__ == "__main__":
     unittest.main()

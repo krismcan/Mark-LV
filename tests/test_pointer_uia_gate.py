@@ -45,9 +45,10 @@ class GateTests(unittest.TestCase):
             self.addCleanup(guard.stop)
             self.addCleanup(mock.assert_not_called)
 
-    def valid(self, point, *, enabled=True, control_type=50000, runtime_id=(-2147483648, 0, 2147483647)):
+    def valid(self, point, *, enabled=True, control_type=50000,
+              runtime_id=(-2147483648, 0, 2147483647), clickable=True):
         return u._ScopedUIElementResult(V.VERIFIED,
-            u._ScopedUIElementEvidence(point, 2, control_type, enabled, runtime_id))
+            u._ScopedUIElementEvidence(point, 2, control_type, enabled, runtime_id, clickable))
 
     def blocked(self, invocation, operation):
         result = self.effect_once(invocation, operation)

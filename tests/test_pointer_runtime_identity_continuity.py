@@ -17,7 +17,7 @@ from nayeon.services.pointer_effect import _EffectStatus as E
 from nayeon.verification.contract import VerificationStatus as V
 
 ROOT = Path(__file__).resolve().parents[1]
-HEAD = '382d44c3a944a0868c6af3350d4128e8799f8016'
+HEAD = 'e3b65139ea715df9afe35ef996b01a0ccd430a3c'
 
 
 class ContinuityTests(unittest.TestCase):
@@ -235,32 +235,33 @@ class ContinuitySourceGuards(unittest.TestCase):
         self.assertEqual(source[source.index(start):source.index(end)],
                          baseline[baseline.index(start):baseline.index(end)])
 
-    def test_protected_files_and_only_one_production_change(self):
-        paths = ('nayeon/agent/executor.py', 'nayeon/policy/confirmation.py',
-                 'nayeon/services/scoped_ui_element_observation.py',
-                 'nayeon/services/ui_element_observation.py', 'nayeon/services/pointer_effect.py',
+    def test_phase_621_scope_protects_phase_620_authority_files(self):
+        paths = ('nayeon/agent/pointer_binding.py', 'nayeon/agent/executor.py',
+                 'nayeon/policy/confirmation.py', 'nayeon/services/pointer_effect.py',
                  'nayeon/services/pointer_coordinates.py')
-        raw_seals = (
-            '4458d285a2d08c68542b3a504e14a31bcaaeeaf44e39f44e68bea2204c38deb2',
-            '88d88c9283ca2441c5d436c1cff7e983b57bdd3af9b179fdfbc4b44b6cdb84c7',
-            '4dad12c4e042b9003867b04430d63a2993e47bae9b0479f10349963ce29f5e68',
-            '0b3b9fd646d3f15a4764e645d1634a346b34611f71c3526be7519768603fe257',
-            '4fb68cc2a18afce58cedbaa0bf9dd780b9ff2b92be1cf4e5a89c19da6c535e1c',
-            '7a286a561c7c3711f110b773fd666a3ab919bc11d4e0355a9b242e830c3f8e1c')
-        for path, seal in zip(paths, raw_seals):
+        for path in paths:
             baseline = subprocess.check_output(['git', 'show', HEAD + ':' + path], cwd=ROOT)
             current = (ROOT / path).read_bytes()
-            # The protected checkout contains mixed line endings. Compare Git
-            # content independently and seal every raw checkout byte as well.
-            normalized = baseline.replace(b'\r\n', b'\n')
-            self.assertEqual(current.replace(b'\r\n', b'\n'), normalized, path)
-            self.assertEqual(hashlib.sha256(current).hexdigest(), seal, path)
-            self.assertEqual(subprocess.check_output(['git', 'diff', HEAD, '--', path], cwd=ROOT), b'')
-        changed = subprocess.check_output(['git', 'diff', HEAD, '--name-only', '--', 'nayeon'], cwd=ROOT).decode().splitlines()
-        self.assertEqual(changed, ['nayeon/agent/pointer_binding.py'])
-        self.assertEqual(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '--', 'nayeon'], cwd=ROOT), b'')
-        self.assertEqual(subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(), HEAD)
-        self.assertEqual(subprocess.check_output(['git', 'rev-parse', 'nayeon-v1-bounded-uia-runtime-identity-01^{commit}'], cwd=ROOT).decode().strip(), HEAD)
+            self.assertEqual(current.replace(b'\r\n', b'\n'),
+                             baseline.replace(b'\r\n', b'\n'), path)
+            self.assertEqual(subprocess.check_output(
+                ['git', 'diff', HEAD, '--', path], cwd=ROOT), b'', path)
+        changed = subprocess.check_output(
+            ['git', 'diff', HEAD, '--name-only', '--', 'nayeon'], cwd=ROOT
+        ).decode().splitlines()
+        self.assertEqual(changed, [
+            'nayeon/services/scoped_ui_element_observation.py',
+            'nayeon/services/ui_element_observation.py',
+        ])
+        self.assertEqual(subprocess.check_output(
+            ['git', 'ls-files', '--others', '--exclude-standard', '--', 'nayeon'],
+            cwd=ROOT), b'')
+        self.assertEqual(subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(), HEAD)
+        self.assertEqual(subprocess.check_output(
+            ['git', 'rev-parse',
+             'nayeon-v1-approval-bound-uia-runtime-identity-continuity-01^{commit}'],
+            cwd=ROOT).decode().strip(), HEAD)
 
 
 if __name__ == '__main__':

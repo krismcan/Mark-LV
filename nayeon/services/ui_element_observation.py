@@ -96,7 +96,8 @@ class _UIANative(_LocalOnly):
     """One owning MTA thread; only the required COM vtable slots bound.
 
     IUIAutomation: ElementFromPoint=7. IUIAutomationElement:
-    GetRuntimeId=4, CurrentControlType=21, CurrentIsEnabled=28. IUnknown: Release=2.
+    GetRuntimeId=4, CurrentControlType=21, CurrentIsEnabled=28,
+    GetClickablePoint=84. IUnknown: Release=2.
     HRESULT is signed 32-bit; enabled is Windows BOOL, not VARIANT_BOOL.
     """
     __slots__ = ("_owner", "_ole", "_oleaut", "_initialized", "_automation", "_element")
@@ -222,6 +223,24 @@ class _UIANative(_LocalOnly):
             return sample
         except BaseException:
             raise OSError("Private runtime sample unavailable.") from None
+
+    def clickable_point_available(self):
+        """Read availability only; provider coordinates remain local and discarded."""
+        try:
+            self._owned()
+            point, available = _POINT(), ctypes.c_int32()
+            method = self._method(self._element, 84, ctypes.c_int32,
+                                  ctypes.POINTER(_POINT), ctypes.POINTER(ctypes.c_int32))
+            self._ok(method(self._element, ctypes.byref(point), ctypes.byref(available)))
+            if type(available.value) is not int or available.value not in (0, 1):
+                raise ValueError("Invalid private availability.")
+            if available.value == 1:
+                for value in (point.x, point.y):
+                    if type(value) is not int or not -(2**31) <= value < 2**31:
+                        raise ValueError("Invalid private point.")
+            return available.value == 1
+        except BaseException:
+            raise OSError("Private clickability sample unavailable.") from None
 
     def _release(self, pointer):
         self._owned()

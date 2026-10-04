@@ -29,6 +29,7 @@ class Harness:
         self.ct = 50000
         self.enabled = True
         self.runtime = (-2147483648, 0, 2147483647)
+        self.clickable = True
         self.point = Point(-17, 23)
         self.coordinate_override = None
 
@@ -101,6 +102,9 @@ class Harness:
     def runtime_id(self):
         return self.record("runtime_id", self.runtime)
 
+    def clickable_point_available(self):
+        return self.record("clickable", self.clickable)
+
     def release_element(self):
         self.record("release_element")
 
@@ -138,12 +142,14 @@ class Tests(unittest.TestCase):
         self.assertIs(result.status, V.VERIFIED)
         self.assertIs(result.evidence.point, h.point)
         self.assertEqual((result.evidence.awareness, result.evidence.control_type,
-                          result.evidence.enabled, result.evidence.runtime_id), (2, 50000, True, (-2147483648, 0, 2147483647)))
+                          result.evidence.enabled, result.evidence.runtime_id,
+                          result.evidence.clickable),
+                         (2, 50000, True, (-2147483648, 0, 2147483647), True))
         self.assertEqual(h.names(), [
             "scope_factory", "dpi_factory", "context", "awareness", "valid", "enter",
             "equal", "context", "equal", "awareness", "contract_factory", "certify",
             "coordinate_awareness", "coordinate_awareness", "certified", "uia_factory",
-            "initialize", "activate", "element_from_point", "control_type", "is_enabled", "runtime_id",
+            "initialize", "activate", "element_from_point", "control_type", "is_enabled", "runtime_id", "clickable",
             "release_element", "release_automation", "uninitialize", "restore", "equal",
             "context", "equal", "awareness"])
         worker = h.events[1][2]
@@ -178,7 +184,7 @@ class Tests(unittest.TestCase):
 
     def test_every_uia_failure_cleanup_exactly_once(self):
         stages = ("uia_factory", "initialize", "activate", "element_from_point",
-                  "control_type", "is_enabled", "runtime_id", "release_element", "release_automation",
+                  "control_type", "is_enabled", "runtime_id", "clickable", "release_element", "release_automation",
                   "uninitialize")
         for error in (OSError("secret HRESULT"), KeyboardInterrupt("secret")):
             for stage in stages:
@@ -238,7 +244,7 @@ class Tests(unittest.TestCase):
     def test_point_mutation_at_every_lifecycle_stage(self):
         stages = ("scope_factory", "enter", "contract_factory", "certify", "certified",
                   "uia_factory", "initialize", "activate", "element_from_point", "control_type",
-                  "is_enabled", "runtime_id", "release_element", "release_automation", "uninitialize", "restore")
+                  "is_enabled", "runtime_id", "clickable", "release_element", "release_automation", "uninitialize", "restore")
         for field in ("x", "y"):
             for stage in stages:
                 with self.subTest(field=field, stage=stage):
@@ -337,25 +343,25 @@ class Tests(unittest.TestCase):
             self.unknown(h.service(scope_factory=factory).observe(h.point))
 
     def test_evidence_and_result_invariants(self):
-        evidence = m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647))
+        evidence = m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647), True)
         for args in (("verified", evidence), (V.VERIFIED, None),
                      (V.NOT_VERIFIED, None), (V.INDETERMINATE, evidence)):
             with self.assertRaises((TypeError, ValueError)):
                 m._ScopedUIElementResult(*args)
         for key, value in (("awareness", 1), ("awareness", True), ("awareness", Int(2)),
-                           ("control_type", 50041), ("enabled", 1), ("point", (0, 0))):
+                           ("control_type", 50041), ("enabled", 1), ("clickable", 1), ("point", (0, 0))):
             with self.assertRaises((TypeError, ValueError)):
                 replace(evidence, **{key: value})
         class E(m._ScopedUIElementEvidence): pass
         class R(m._ScopedUIElementResult): pass
-        with self.assertRaises(TypeError): E(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647))
+        with self.assertRaises(TypeError): E(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647), True)
         with self.assertRaises(TypeError): R()
 
     def test_private_frozen_slotted_redacted_nonserializable(self):
         h = Harness()
         result = h.service().observe(h.point)
         self.assertEqual([f.name for f in fields(result.evidence)],
-                         ["point", "awareness", "control_type", "enabled", "runtime_id"])
+                         ["point", "awareness", "control_type", "enabled", "runtime_id", "clickable"])
         for value in (result, result.evidence, h.point, h.service(), m._ScopedUIElementResult()):
             self.assertFalse(hasattr(value, "__dict__"))
             self.assertEqual(repr(value), type(value).__name__ + "(<private>)")
@@ -380,7 +386,8 @@ class Tests(unittest.TestCase):
                           "while ", "ThreadPool", "NOT_VERIFIED"):
             self.assertNotIn(forbidden, source)
         for call in (".certify(point)", ".element_from_point(*coordinates)", ".initialize()",
-                     ".activate()", ".control_type()", ".is_enabled()", ".runtime_id()", ".run(task)"):
+                     ".activate()", ".control_type()", ".is_enabled()", ".runtime_id()",
+                     ".clickable_point_available()", ".run(task)"):
             self.assertEqual(source.count(call), 1)
         self.assertEqual({name for name in vars(m._ScopedUIElementObservationService)
                           if not name.startswith("_")}, {"observe"})
@@ -399,6 +406,76 @@ class Tests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(current).digest(), hashlib.sha256(baseline).digest())
 
 
+class ClickabilityEvidenceTests(unittest.TestCase):
+    def test_true_and_false_are_both_verified_descriptive_samples(self):
+        for value in (True, False):
+            h = Harness()
+            h.clickable = value
+            result = h.service().observe(h.point)
+            self.assertIs(result.status, V.VERIFIED)
+            self.assertIs(result.evidence.clickable, value)
+            self.assertEqual(h.names().count("clickable"), 1)
+            self.assertEqual(h.names().index("clickable"), h.names().index("runtime_id") + 1)
+            self.assertLess(h.names().index("clickable"), h.names().index("release_element"))
+
+    def test_exact_bool_invariant_and_malformed_sample_fail_closed(self):
+        for value in (0, 1, Int(1), 1.0, None, "true", Mock()):
+            with self.subTest(value=value):
+                with self.assertRaises((TypeError, ValueError)):
+                    m._ScopedUIElementEvidence(
+                        Point(0, 0), 2, 50000, True, (-1, 0, 1), value)
+                h = Harness()
+                h.clickable = value
+                result = h.service().observe(h.point)
+                self.assertIs(result.status, V.INDETERMINATE)
+                self.assertIsNone(result.evidence)
+                for name in ("clickable", "release_element", "release_automation",
+                             "uninitialize", "restore"):
+                    self.assertEqual(h.names().count(name), 1)
+                self.assertEqual(h.current, 123)
+
+    def test_clickability_failure_and_point_mutation_cleanup_restore_once(self):
+        for failure in (OSError("secret"), KeyboardInterrupt("secret")):
+            h = Harness()
+            h.hooks["clickable"] = failure
+            result = h.service().observe(h.point)
+            self.assertIs(result.status, V.INDETERMINATE)
+            self.assertIsNone(result.evidence)
+            for name in ("clickable", "release_element", "release_automation",
+                         "uninitialize", "restore"):
+                self.assertEqual(h.names().count(name), 1)
+            self.assertEqual(h.current, 123)
+        h = Harness()
+        h.hooks["clickable"] = lambda value: (
+            object.__setattr__(h.point, "x", h.point.x + 1) or value)
+        result = h.service().observe(h.point)
+        self.assertIs(result.status, V.INDETERMINATE)
+        self.assertIsNone(result.evidence)
+        for name in ("release_element", "release_automation", "uninitialize", "restore"):
+            self.assertEqual(h.names().count(name), 1)
+
+    def test_restoration_failure_discards_clickability_sample(self):
+        for available in (True, False):
+            h = Harness()
+            h.clickable = available
+            h.hooks["restore"] = OSError("secret")
+            result = h.service().observe(h.point)
+            self.assertIs(result.status, V.INDETERMINATE)
+            self.assertIsNone(result.evidence)
+            self.assertEqual(h.names().count("clickable"), 1)
+            self.assertEqual(h.names().count("restore"), 1)
+
+    def test_no_provider_click_coordinates_in_scoped_evidence(self):
+        evidence = m._ScopedUIElementEvidence(
+            Point(10, 20), 2, 50000, True, (-1, 0, 1), True)
+        self.assertEqual([f.name for f in fields(evidence)],
+                         ["point", "awareness", "control_type", "enabled",
+                          "runtime_id", "clickable"])
+        for forbidden in ("clickable_x", "clickable_y", "click_point", "provider_point"):
+            self.assertFalse(hasattr(evidence, forbidden))
+
+
+
 
 class RuntimeEvidenceTests(unittest.TestCase):
     def test_exact_tuple_and_int32_invariants_and_fail_closed_cleanup(self):
@@ -408,7 +485,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
         for runtime in invalid:
             with self.subTest(value_type=type(runtime)):
                 with self.assertRaises((TypeError, ValueError)):
-                    m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, runtime)
+                    m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, runtime, True)
                 h = Harness()
                 h.runtime = runtime
                 result = h.service().observe(h.point)
@@ -440,7 +517,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
         for module in (m, native):
             source = Path(module.__file__).read_text()
             for forbidden in ('CompareElements', 'CompareRuntimeIds', 'AutomationId', 'ClassName',
-                              'ProcessId', 'NativeWindowHandle', 'BoundingRectangle', 'ClickablePoint',
+                              'ProcessId', 'NativeWindowHandle', 'BoundingRectangle',
                               'SafeArrayAccessData', 'SetFocus', 'SetValue', 'FindFirst', 'FindAll',
                               'hash(', 'hashlib', 'json', 'cache', 'nayeon.memory', 'nayeon.audit'):
                 self.assertNotIn(forbidden, source)
