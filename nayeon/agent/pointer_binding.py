@@ -25,7 +25,7 @@ from nayeon.services.pointer_effect import (
 )
 from nayeon.services.scoped_ui_element_observation import (
     _ScopedUIElementObservationService, _ScopedUIElementResult,
-    _ScopedUIElementEvidence,
+    _ScopedUIElementEvidence, _runtime_id_valid,
 )
 
 __all__ = ()
@@ -66,6 +66,7 @@ class _PointerOperation(_LocalOnly):
     target: _TargetBinding
     action: _PointerAction
     point: _ProposedPoint
+    runtime_id: tuple[int, ...] | None = None
 
     def __post_init__(self):
         if (type(self.target) is not _TargetBinding
@@ -76,6 +77,8 @@ class _PointerOperation(_LocalOnly):
             raise ValueError("Valid private target required.")
         self.action.__post_init__()
         self.point.__post_init__()
+        if self.runtime_id is not None:
+            _runtime_id_valid(self.runtime_id)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -167,6 +170,7 @@ def _snapshot(operation):
         operation.action.parameters,
         operation.point.x,
         operation.point.y,
+        operation.runtime_id,
     )
 
 
@@ -266,6 +270,8 @@ class _PointerInvocation(_LocalOnly):
                 and operation.target is self._target
                 and operation.action is self._action
                 and operation.point is self._point
+                and ((self._effect_service is None and operation.runtime_id is None)
+                     or (self._effect_service is not None and operation.runtime_id is not None))
                 and _snapshot(operation) == self._snapshot
                 and self._services_valid() and self._registration_valid())
 
@@ -295,7 +301,28 @@ class _PointerInvocation(_LocalOnly):
                 raise ValueError("Pointer location could not be verified.")
             hit.__post_init__()
 
-            operation = _PointerOperation(target, action, point)
+            runtime_id = None
+            if self._effect_service is not None:
+                if not self._services_valid() or not self._registration_valid():
+                    raise ValueError("Protected observation services required.")
+                observed = self._ui_element_service.observe(point)
+                if type(observed) is not _ScopedUIElementResult:
+                    raise ValueError("Exact scoped observation required.")
+                _ScopedUIElementResult.__post_init__(observed)
+                if observed.status is not VerificationStatus.VERIFIED:
+                    raise ValueError("Scoped observation unavailable.")
+                evidence = observed.evidence
+                if type(evidence) is not _ScopedUIElementEvidence:
+                    raise ValueError("Exact scoped evidence required.")
+                _ScopedUIElementEvidence.__post_init__(evidence)
+                if (evidence.point is not point or evidence.enabled is not True
+                        or not self._services_valid() or not self._registration_valid()):
+                    raise ValueError("Approved point observation unavailable.")
+                runtime_id = evidence.runtime_id
+                # Retain only the bounded opaque tuple, never the observation sample.
+                del observed, evidence
+
+            operation = _PointerOperation(target, action, point, runtime_id)
             self._snapshot = _snapshot(operation)
             self._operation = operation
             self._target = target
@@ -445,6 +472,9 @@ class _PointerInvocation(_LocalOnly):
                 _ScopedUIElementEvidence.__post_init__(evidence)
                 if (evidence.point is not operation.point or evidence.enabled is not True
                         or not self._bound(operation)):
+                    return unknown
+                # Exact local opaque tuple equality only; no native comparison.
+                if evidence.runtime_id != operation.runtime_id:
                     return unknown
                 # Enabled is only a safety prerequisite, never clickability or
                 # semantic authorization. Do not retain this descriptive sample.

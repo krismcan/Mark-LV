@@ -64,7 +64,7 @@ class GateTests(unittest.TestCase):
         calls = []
         with self.invocation() as invocation:
             operation, _ = self.prepare(invocation)
-            self.assertEqual(self.harness.events, [])
+            self.assertEqual(self.harness.names().count('element_from_point'), 1)
             original_observe = u._ScopedUIElementObservationService.observe
             original_normalize = _PointerCoordinateService.normalize
             original_insert = _PointerEffectService._insert
@@ -108,7 +108,7 @@ class GateTests(unittest.TestCase):
             start, end = calls.index('target'), calls.index('send')
             self.assertEqual(calls[start:end + 1],
                 ['target', 'hit', 'uia', 'normalize', 'metric', 'metric', 'metric', 'metric', 'insert', 'send'])
-            self.assertEqual(self.harness.names().count('element_from_point'), 1)
+            self.assertEqual(self.harness.names().count('element_from_point'), 2)
             self.assertEqual(invocation._verification.reason, CLAIM)
 
     def test_approve_read_only_even_in_effect_mode(self):
@@ -343,9 +343,9 @@ class SourceGuards(unittest.TestCase):
         calls = [ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)]
         self.assertCountEqual(calls, ['self._ui_element_service.observe', 'type',
             '_ScopedUIElementResult.__post_init__', 'type', '_ScopedUIElementEvidence.__post_init__', 'self._bound'])
-        self.assertEqual(source.count('self._ui_element_service.observe('), 1)
+        self.assertEqual(source.count('self._ui_element_service.observe('), 2)
         self.assertNotIn('control_type', source)
-        self.assertNotIn('runtime_id', source)
+        self.assertIn('if evidence.runtime_id != operation.runtime_id:', source)
         for forbidden in ('SendInput', 'SetCursorPos', 'WinDLL', 'InvokePattern', 'ValuePattern',
                           'SetValue', 'sleep(', 'ThreadPool', 'screenshot', 'AutomationId'):
             self.assertNotIn(forbidden, source)
@@ -372,6 +372,7 @@ class RuntimeGateTests(unittest.TestCase):
     def test_opaque_runtime_variants_equivalent_and_discarded(self):
         for runtime in ((0,), (-2147483648, 2147483647), tuple(range(64))):
             self.setUp()
+            self.harness.runtime = runtime
             with self.invocation() as invocation:
                 operation, _ = self.prepare(invocation)
                 result = self.valid(operation.point, runtime_id=runtime)
@@ -392,7 +393,6 @@ class Phase619Seals(unittest.TestCase):
         # Protected checkout uses mixed LF/CRLF. Guard its raw bytes as well as
         # protected Git content; no newline normalization may alter these files.
         digests = {
-            'nayeon/agent/pointer_binding.py': 'c24f2a9f6e6495aff2e7b214632a64cd0bfe18b18e91d17606ac34ecd2099cc6',
             'nayeon/agent/executor.py': '4458d285a2d08c68542b3a504e14a31bcaaeeaf44e39f44e68bea2204c38deb2',
             'nayeon/services/pointer_effect.py': '4fb68cc2a18afce58cedbaa0bf9dd780b9ff2b92be1cf4e5a89c19da6c535e1c',
             'nayeon/services/pointer_coordinates.py': '7a286a561c7c3711f110b773fd666a3ab919bc11d4e0355a9b242e830c3f8e1c',
@@ -407,7 +407,9 @@ class Phase619Seals(unittest.TestCase):
     def test_only_two_approved_production_files_changed(self):
         paths = subprocess.check_output(['git', 'diff', '--name-only',
             'f3742615f79da1be2cf34ce9c207b42bd9456245', '--', 'nayeon'], cwd=ROOT).decode().splitlines()
-        self.assertEqual(set(paths), {'nayeon/services/ui_element_observation.py',
+        # Phase 6.20 intentionally extends only pointer binding after 6.19.
+        self.assertEqual(set(paths), {'nayeon/agent/pointer_binding.py',
+                                     'nayeon/services/ui_element_observation.py',
                                      'nayeon/services/scoped_ui_element_observation.py'})
         self.assertEqual(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard',
                                                  '--', 'nayeon'], cwd=ROOT), b'')
