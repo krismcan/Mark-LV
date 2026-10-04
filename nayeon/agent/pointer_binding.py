@@ -476,8 +476,10 @@ class _PointerInvocation(_LocalOnly):
                 # Exact local opaque tuple equality only; no native comparison.
                 if evidence.runtime_id != operation.runtime_id:
                     return unknown
-                # Enabled is only a safety prerequisite, never clickability or
-                # semantic authorization. Do not retain this descriptive sample.
+                # Fresh actionability veto only, never semantic authorization.
+                if evidence.clickable is not True:
+                    return unknown
+                # Do not retain this descriptive sample.
                 del observed, evidence
                 # Only local checks above: normalization remains the final
                 # native desktop sample before the existing insertion path.

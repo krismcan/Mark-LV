@@ -235,13 +235,20 @@ class ContinuitySourceGuards(unittest.TestCase):
         self.assertEqual(source[source.index(start):source.index(end)],
                          baseline[baseline.index(start):baseline.index(end)])
 
-    def test_phase_621_scope_protects_phase_620_authority_files(self):
+    def test_phase_622_scope_preserves_phase_620_authority_except_exact_local_veto(self):
         paths = ('nayeon/agent/pointer_binding.py', 'nayeon/agent/executor.py',
                  'nayeon/policy/confirmation.py', 'nayeon/services/pointer_effect.py',
                  'nayeon/services/pointer_coordinates.py')
         for path in paths:
             baseline = subprocess.check_output(['git', 'show', HEAD + ':' + path], cwd=ROOT)
             current = (ROOT / path).read_bytes()
+            if path == 'nayeon/agent/pointer_binding.py':
+                # Phase 6.22 permits only the reviewed post-runtime local veto.
+                from tests.test_pointer_clickability_execution_gate import OLD, NEW
+                self.assertEqual(baseline.decode().count(OLD), 1)
+                self.assertEqual(current.decode().replace('\r\n', '\n'),
+                                 baseline.decode().replace('\r\n', '\n').replace(OLD, NEW, 1))
+                continue
             self.assertEqual(current.replace(b'\r\n', b'\n'),
                              baseline.replace(b'\r\n', b'\n'), path)
             self.assertEqual(subprocess.check_output(
@@ -250,6 +257,7 @@ class ContinuitySourceGuards(unittest.TestCase):
             ['git', 'diff', HEAD, '--name-only', '--', 'nayeon'], cwd=ROOT
         ).decode().splitlines()
         self.assertEqual(changed, [
+            'nayeon/agent/pointer_binding.py',
             'nayeon/services/scoped_ui_element_observation.py',
             'nayeon/services/ui_element_observation.py',
         ])
@@ -257,7 +265,8 @@ class ContinuitySourceGuards(unittest.TestCase):
             ['git', 'ls-files', '--others', '--exclude-standard', '--', 'nayeon'],
             cwd=ROOT), b'')
         self.assertEqual(subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(), HEAD)
+            ['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(),
+            '0a7f8890f73399ef07c3048c8f19b49b8b1643dc')
         self.assertEqual(subprocess.check_output(
             ['git', 'rev-parse',
              'nayeon-v1-approval-bound-uia-runtime-identity-continuity-01^{commit}'],
