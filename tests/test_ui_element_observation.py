@@ -107,4 +107,163 @@ class Tests(unittest.TestCase):
             self.assertNotIn(x,source)
         self.assertEqual({x for x in vars(m._UIElementObservationService) if not x.startswith("_")},{"observe"})
 
-if __name__=="__main__": unittest.main()
+
+# Phase 6.19: fake COM vtable and OleAut32 only; no native activation.
+class RuntimeIdTests(unittest.TestCase):
+    def facade(self, *, values=(-2147483648, -1, 0, 2147483647), lower=-7,
+               upper=None, dim=1, vt=3, hr=0, null=False, fail=None, raises=False):
+        import ctypes as C
+        from unittest.mock import patch
+        dlls = [Mock(), Mock()]
+        with patch.object(m.ctypes, 'WinDLL', side_effect=dlls):
+            native = m._UIANative()
+        automation = dlls[1]
+        calls = []
+        def record(name, result=0):
+            calls.append(name)
+            if fail == name:
+                if raises: raise RuntimeError('PRIVATE_NATIVE_DETAIL')
+                return -1 if name != 'dim' else 0
+            return result
+        def get(this, out):
+            calls.append('get')
+            C.cast(out, C.POINTER(C.c_void_p))[0] = None if null else 9876
+            return hr
+        callback = C.WINFUNCTYPE(C.c_int32, C.c_void_p, C.POINTER(C.c_void_p))(get)
+        table = (C.c_void_p * 29)()
+        table[4] = C.cast(callback, C.c_void_p).value
+        element = C.pointer(C.cast(table, C.POINTER(C.c_void_p)))
+        native._element = C.cast(element, C.c_void_p)
+        native._initialized = True
+        def output(name, out, value):
+            status = record(name)
+            if status == 0: out._obj.value = value
+            return status
+        automation.SafeArrayGetDim.side_effect = lambda array: record('dim', dim)
+        automation.SafeArrayGetVartype.side_effect = lambda array, out: output('vt', out, vt)
+        automation.SafeArrayGetLBound.side_effect = lambda array, dimension, out: output('lower', out, lower)
+        automation.SafeArrayGetUBound.side_effect = lambda array, dimension, out: output(
+            'upper', out, lower + len(values) - 1 if upper is None else upper)
+        def item(array, index, out):
+            return output('item', out, values[index._obj.value - lower])
+        automation.SafeArrayGetElement.side_effect = item
+        automation.SafeArrayDestroy.side_effect = lambda array: record('destroy')
+        return native, automation, calls, (callback, table, element), dlls
+
+    def test_slot_four_once_signed_values_order_cleanup_no_pointer(self):
+        import ctypes as C
+        from unittest.mock import patch
+        native, dll, calls, keep, _ = self.facade()
+        with patch.object(m._UIANative, '_method', autospec=True,
+                          side_effect=m._UIANative._method) as method:
+            result = native.runtime_id()
+        method.assert_called_once_with(native, native._element, 4, C.c_int32, C.POINTER(C.c_void_p))
+        self.assertIs(type(result), tuple)
+        self.assertEqual(result, (-2147483648, -1, 0, 2147483647))
+        self.assertTrue(all(type(v) is int for v in result))
+        self.assertEqual(calls, ['get', 'dim', 'vt', 'lower', 'upper', 'item', 'item', 'item', 'item', 'destroy'])
+        dll.SafeArrayDestroy.assert_called_once_with(9876)
+        self.assertFalse(hasattr(native, '_runtime_id'))
+
+    def test_explicit_oleaut_abi(self):
+        import ctypes as C
+        native, dll, calls, keep, _ = self.facade()
+        expected = {
+            'SafeArrayGetDim': ([C.c_void_p], C.c_uint32),
+            'SafeArrayGetVartype': ([C.c_void_p, C.POINTER(C.c_uint16)], C.c_int32),
+            'SafeArrayGetLBound': ([C.c_void_p, C.c_uint32, C.POINTER(C.c_int32)], C.c_int32),
+            'SafeArrayGetUBound': ([C.c_void_p, C.c_uint32, C.POINTER(C.c_int32)], C.c_int32),
+            'SafeArrayGetElement': ([C.c_void_p, C.POINTER(C.c_int32), C.c_void_p], C.c_int32),
+            'SafeArrayDestroy': ([C.c_void_p], C.c_int32),
+        }
+        for name, (args, result) in expected.items():
+            self.assertEqual(getattr(dll, name).argtypes, args)
+            self.assertIs(getattr(dll, name).restype, result)
+        self.assertEqual(native.MAX_RUNTIME_ID_INTS, 64)
+        self.assertEqual(calls, [])
+
+    def test_null_and_hresult_partial_array(self):
+        for kwargs in ({'null': True}, {'hr': -1}, {'hr': 1}, {'hr': -1, 'null': True}):
+            native, dll, calls, keep, _ = self.facade(**kwargs)
+            with self.assertRaisesRegex(OSError, '^Private runtime sample unavailable.$'):
+                native.runtime_id()
+            self.assertEqual(calls, ['get'] + ([] if kwargs.get('null') else ['destroy']))
+
+    def test_dimensions_vartype_bounds_reject_before_items(self):
+        for kwargs in ({'dim': 0}, {'dim': 2}, {'dim': True}, {'dim': Int(1)},
+                       {'vt': 2}, {'vt': 0}, {'values': ()}, {'values': tuple(range(65))},
+                       {'lower': 7, 'upper': 6}, {'lower': -(2**31), 'upper': 2**31-1},
+                       {'lower': 2**31-1, 'upper': 2**31}, {'lower': -(2**31)-1, 'upper': 0}):
+            with self.subTest(kwargs=kwargs):
+                native, dll, calls, keep, _ = self.facade(**kwargs)
+                with self.assertRaises(OSError): native.runtime_id()
+                self.assertNotIn('item', calls)
+                self.assertEqual(calls.count('destroy'), 1)
+
+    def test_all_safearray_failures_and_exceptions_destroy_once(self):
+        for fail in ('dim', 'vt', 'lower', 'upper', 'item', 'destroy'):
+            for raises in (False, True):
+                native, dll, calls, keep, _ = self.facade(fail=fail, raises=raises)
+                with self.assertRaises(OSError) as caught: native.runtime_id()
+                self.assertNotIn('PRIVATE_NATIVE_DETAIL', str(caught.exception))
+                self.assertTrue(caught.exception.__suppress_context__)
+                self.assertEqual(calls.count('destroy'), 1)
+                self.assertEqual(calls.count(fail), 1)
+
+    def test_maximum_length_and_extreme_valid_bounds(self):
+        for lower in (-(2**31), 2**31-64):
+            native, dll, calls, keep, _ = self.facade(values=tuple(range(64)), lower=lower)
+            self.assertEqual(native.runtime_id(), tuple(range(64)))
+            self.assertEqual(calls.count('item'), 64)
+            self.assertEqual(calls.count('destroy'), 1)
+
+    def test_owner_thread_and_missing_retained_element(self):
+        native, dll, calls, keep, _ = self.facade()
+        errors = []
+        def wrong_thread():
+            try: native.runtime_id()
+            except OSError as error: errors.append(str(error))
+        thread = threading.Thread(target=wrong_thread)
+        thread.start(); thread.join()
+        self.assertEqual(errors, ['Private runtime sample unavailable.'])
+        self.assertEqual(calls, [])
+        native._element.value = None
+        with self.assertRaises(OSError): native.runtime_id()
+        self.assertEqual(calls, [])
+
+    def test_partial_array_on_call_exception_and_late_item_failure(self):
+        from unittest.mock import patch
+        native, dll, calls, keep, _ = self.facade()
+        def partial(this, out):
+            out._obj.value = 9876
+            raise RuntimeError('PRIVATE_NATIVE_DETAIL')
+        with patch.object(m._UIANative, '_method', return_value=partial):
+            with self.assertRaises(OSError): native.runtime_id()
+        self.assertEqual(calls, ['destroy'])
+        native, dll, calls, keep, _ = self.facade()
+        original = dll.SafeArrayGetElement.side_effect
+        def late(array, index, out):
+            if index._obj.value == -5:
+                calls.append('item'); return -1
+            return original(array, index, out)
+        dll.SafeArrayGetElement.side_effect = late
+        with self.assertRaises(OSError): native.runtime_id()
+        self.assertEqual(calls.count('item'), 3)
+        self.assertEqual(calls.count('destroy'), 1)
+
+    def test_phase_6_14_ast_unchanged_except_native_facade(self):
+        import ast, subprocess
+        root = Path(__file__).resolve().parents[1]
+        path = 'nayeon/services/ui_element_observation.py'
+        baseline = subprocess.check_output(['git', 'show',
+            'f3742615f79da1be2cf34ce9c207b42bd9456245:' + path], cwd=root).decode()
+        def without_native(source):
+            tree = ast.parse(source)
+            tree.body = [node for node in tree.body if not
+                (isinstance(node, ast.ClassDef) and node.name == '_UIANative')]
+            return ast.dump(tree)
+        self.assertEqual(without_native(Path(m.__file__).read_text()), without_native(baseline))
+
+
+if __name__ == "__main__":
+    unittest.main()

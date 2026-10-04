@@ -93,13 +93,14 @@ _IID = _GUID(0x30cbe57d, 0xd9d0, 0x452a,
 
 
 class _UIANative(_LocalOnly):
-    """One owning MTA thread; only the four required COM vtable slots bound.
+    """One owning MTA thread; only the required COM vtable slots bound.
 
     IUIAutomation: ElementFromPoint=7. IUIAutomationElement:
-    CurrentControlType=21, CurrentIsEnabled=28. IUnknown: Release=2.
+    GetRuntimeId=4, CurrentControlType=21, CurrentIsEnabled=28. IUnknown: Release=2.
     HRESULT is signed 32-bit; enabled is Windows BOOL, not VARIANT_BOOL.
     """
-    __slots__ = ("_owner", "_ole", "_initialized", "_automation", "_element")
+    __slots__ = ("_owner", "_ole", "_oleaut", "_initialized", "_automation", "_element")
+    MAX_RUNTIME_ID_INTS = 64
 
     def __init__(self):
         if sys.platform != "win32" or not hasattr(ctypes, "WINFUNCTYPE"):
@@ -116,6 +117,18 @@ class _UIANative(_LocalOnly):
         self._ole.CoCreateInstance.restype = ctypes.c_int32
         self._ole.CoUninitialize.argtypes = []
         self._ole.CoUninitialize.restype = None
+        self._oleaut = ctypes.WinDLL("oleaut32")
+        for name, arguments, result in (
+            ("SafeArrayGetDim", [ctypes.c_void_p], ctypes.c_uint32),
+            ("SafeArrayGetVartype", [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)], ctypes.c_int32),
+            ("SafeArrayGetLBound", [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_int32)], ctypes.c_int32),
+            ("SafeArrayGetUBound", [ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_int32)], ctypes.c_int32),
+            ("SafeArrayGetElement", [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int32), ctypes.c_void_p], ctypes.c_int32),
+            ("SafeArrayDestroy", [ctypes.c_void_p], ctypes.c_int32),
+        ):
+            function = getattr(self._oleaut, name)
+            function.argtypes = arguments
+            function.restype = result
 
     def _owned(self):
         if threading.get_ident() != self._owner:
@@ -167,6 +180,48 @@ class _UIANative(_LocalOnly):
         if value.value not in (0, 1):
             raise ValueError("Private UIA boolean unavailable.")
         return value.value == 1
+
+    def runtime_id(self):
+        """Read opaque signed integers; never publish before owned array cleanup."""
+        array = ctypes.c_void_p()
+        try:
+            self._owned()
+            method = self._method(self._element, 4, ctypes.c_int32,
+                                  ctypes.POINTER(ctypes.c_void_p))
+            try:
+                self._ok(method(self._element, ctypes.byref(array)))
+                if not array.value:
+                    raise ValueError("Private runtime sample unavailable.")
+                dimensions = self._oleaut.SafeArrayGetDim(array)
+                if type(dimensions) is not int or dimensions != 1:
+                    raise ValueError("Private runtime sample unavailable.")
+                vartype = ctypes.c_uint16()
+                self._ok(self._oleaut.SafeArrayGetVartype(array, ctypes.byref(vartype)))
+                if vartype.value != 3:  # VT_I4; no interpretation of integer contents.
+                    raise ValueError("Private runtime sample unavailable.")
+                lower, upper = ctypes.c_int32(), ctypes.c_int32()
+                self._ok(self._oleaut.SafeArrayGetLBound(array, 1, ctypes.byref(lower)))
+                self._ok(self._oleaut.SafeArrayGetUBound(array, 1, ctypes.byref(upper)))
+                first, last = lower.value, upper.value
+                if (type(first) is not int or type(last) is not int
+                        or not -(2**31) <= first <= last < 2**31
+                        or not 1 <= last - first + 1 <= self.MAX_RUNTIME_ID_INTS):
+                    raise ValueError("Private runtime sample unavailable.")
+                values = []
+                for index in range(first, last + 1):
+                    position, value = ctypes.c_int32(index), ctypes.c_int32()
+                    self._ok(self._oleaut.SafeArrayGetElement(
+                        array, ctypes.byref(position), ctypes.byref(value)))
+                    values.append(value.value)
+                sample = tuple(values)
+            finally:
+                if array.value:
+                    address = array.value
+                    array.value = None  # Ownership consumed once; never retry destruction.
+                    self._ok(self._oleaut.SafeArrayDestroy(address))
+            return sample
+        except BaseException:
+            raise OSError("Private runtime sample unavailable.") from None
 
     def _release(self, pointer):
         self._owned()

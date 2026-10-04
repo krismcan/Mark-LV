@@ -45,9 +45,9 @@ class GateTests(unittest.TestCase):
             self.addCleanup(guard.stop)
             self.addCleanup(mock.assert_not_called)
 
-    def valid(self, point, *, enabled=True, control_type=50000):
+    def valid(self, point, *, enabled=True, control_type=50000, runtime_id=(-2147483648, 0, 2147483647)):
         return u._ScopedUIElementResult(V.VERIFIED,
-            u._ScopedUIElementEvidence(point, 2, control_type, enabled))
+            u._ScopedUIElementEvidence(point, 2, control_type, enabled, runtime_id))
 
     def blocked(self, invocation, operation):
         result = self.effect_once(invocation, operation)
@@ -300,6 +300,8 @@ class GateTests(unittest.TestCase):
                 self.assertNotIn('control_type', repr(event))
                 self.assertNotIn('awareness', repr(event))
                 self.assertNotIn('enabled', repr(event))
+                self.assertNotIn('runtime_id', repr(event))
+                self.assertNotIn('2147483647', repr(event))
             self.assertEqual(invocation._verification.reason, CLAIM)
 
 
@@ -343,13 +345,14 @@ class SourceGuards(unittest.TestCase):
             '_ScopedUIElementResult.__post_init__', 'type', '_ScopedUIElementEvidence.__post_init__', 'self._bound'])
         self.assertEqual(source.count('self._ui_element_service.observe('), 1)
         self.assertNotIn('control_type', source)
+        self.assertNotIn('runtime_id', source)
         for forbidden in ('SendInput', 'SetCursorPos', 'WinDLL', 'InvokePattern', 'ValuePattern',
                           'SetValue', 'sleep(', 'ThreadPool', 'screenshot', 'AutomationId'):
             self.assertNotIn(forbidden, source)
 
     def test_sealed_services_byte_identical_to_protected_head(self):
-        for name in ('scoped_ui_element_observation', 'dpi_execution_context',
-                     'pointer_coordinate_contract', 'ui_element_observation',
+        # Phase 6.19 explicitly extends the two observation services only.
+        for name in ('dpi_execution_context', 'pointer_coordinate_contract',
                      'pointer_coordinates', 'pointer_effect', 'target_validation',
                      'pointer_hit_validation'):
             path = 'nayeon/services/' + name + '.py'
@@ -359,5 +362,56 @@ class SourceGuards(unittest.TestCase):
             self.assertEqual(subprocess.check_output(['git', 'diff', HEAD, '--', path], cwd=ROOT), b'')
 
 
-if __name__ == '__main__':
+class RuntimeGateTests(unittest.TestCase):
+    # Reuse only the existing deterministic gate setup/helpers, not test inheritance.
+    setUp = GateTests.setUp
+    invocation = GateTests.invocation
+    prepare = GateTests.prepare
+    effect_once = GateTests.effect_once
+    valid = GateTests.valid
+    def test_opaque_runtime_variants_equivalent_and_discarded(self):
+        for runtime in ((0,), (-2147483648, 2147483647), tuple(range(64))):
+            self.setUp()
+            with self.invocation() as invocation:
+                operation, _ = self.prepare(invocation)
+                result = self.valid(operation.point, runtime_id=runtime)
+                with patch.object(u._ScopedUIElementObservationService, 'observe', return_value=result):
+                    self.assertIs(self.effect_once(invocation, operation).status, E.INSERTED)
+                self.assertEqual(invocation._verification.evidence, {})
+                for slot in invocation.__slots__:
+                    self.assertIsNot(getattr(invocation, slot), result)
+                    self.assertIsNot(getattr(invocation, slot), result.evidence)
+                    self.assertIsNot(getattr(invocation, slot), runtime)
+                self.assertNotIn('runtime_id', repr(self.audit.all()))
+
+
+class Phase619Seals(unittest.TestCase):
+    def test_four_pointer_files_exact_checkout_bytes_at_protected_head(self):
+        import hashlib
+        head = 'f3742615f79da1be2cf34ce9c207b42bd9456245'
+        # Protected checkout uses mixed LF/CRLF. Guard its raw bytes as well as
+        # protected Git content; no newline normalization may alter these files.
+        digests = {
+            'nayeon/agent/pointer_binding.py': 'c24f2a9f6e6495aff2e7b214632a64cd0bfe18b18e91d17606ac34ecd2099cc6',
+            'nayeon/agent/executor.py': '4458d285a2d08c68542b3a504e14a31bcaaeeaf44e39f44e68bea2204c38deb2',
+            'nayeon/services/pointer_effect.py': '4fb68cc2a18afce58cedbaa0bf9dd780b9ff2b92be1cf4e5a89c19da6c535e1c',
+            'nayeon/services/pointer_coordinates.py': '7a286a561c7c3711f110b773fd666a3ab919bc11d4e0355a9b242e830c3f8e1c',
+        }
+        for path, digest in digests.items():
+            baseline = subprocess.check_output(['git', 'show', head + ':' + path], cwd=ROOT)
+            current = (ROOT / path).read_bytes()
+            self.assertIn(current, (baseline, baseline.replace(b'\n', b'\r\n')), path)
+            self.assertEqual(hashlib.sha256(current).hexdigest(), digest, path)
+            self.assertEqual(subprocess.check_output(['git', 'diff', head, '--', path], cwd=ROOT), b'')
+
+    def test_only_two_approved_production_files_changed(self):
+        paths = subprocess.check_output(['git', 'diff', '--name-only',
+            'f3742615f79da1be2cf34ce9c207b42bd9456245', '--', 'nayeon'], cwd=ROOT).decode().splitlines()
+        self.assertEqual(set(paths), {'nayeon/services/ui_element_observation.py',
+                                     'nayeon/services/scoped_ui_element_observation.py'})
+        self.assertEqual(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard',
+                                                 '--', 'nayeon'], cwd=ROOT), b'')
+
+
+if __name__ == "__main__":
     unittest.main()

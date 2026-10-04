@@ -14,6 +14,16 @@ from nayeon.verification.contract import VerificationStatus
 
 __all__ = ()
 _DEFAULT_PLATFORM = object()
+MAX_RUNTIME_ID_INTS = _UIANative.MAX_RUNTIME_ID_INTS
+
+
+def _runtime_id_valid(runtime_id):
+    if (type(runtime_id) is not tuple
+            or not 1 <= len(runtime_id) <= MAX_RUNTIME_ID_INTS):
+        raise ValueError("Exact bounded runtime sample required.")
+    for value in runtime_id:
+        if type(value) is not int or not -(2**31) <= value < 2**31:
+            raise ValueError("Exact runtime integer required.")
 
 
 class _LocalOnly(_Redacted):
@@ -35,6 +45,7 @@ class _ScopedUIElementEvidence(_LocalOnly):
     awareness: int
     control_type: int
     enabled: bool
+    runtime_id: tuple[int, ...]
 
     def __post_init__(self):
         if type(self) is not _ScopedUIElementEvidence:
@@ -43,6 +54,7 @@ class _ScopedUIElementEvidence(_LocalOnly):
         if _awareness(self.awareness) != 2:
             raise ValueError("Per-monitor awareness required.")
         _sample_valid(self.control_type, self.enabled)
+        _runtime_id_valid(self.runtime_id)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -111,9 +123,11 @@ class _ScopedUIElementObservationService(_LocalOnly):
                     native.element_from_point(*coordinates)
                     control_type = native.control_type()
                     enabled = native.is_enabled()
+                    runtime_id = native.runtime_id()
                     _sample_valid(control_type, enabled)
+                    _runtime_id_valid(runtime_id)
                     unchanged()
-                    sample = (control_type, enabled)
+                    sample = (control_type, enabled, runtime_id)
                 except BaseException:
                     clean = False
                 finally:

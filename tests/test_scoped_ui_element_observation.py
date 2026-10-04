@@ -28,6 +28,7 @@ class Harness:
         self.current = 123
         self.ct = 50000
         self.enabled = True
+        self.runtime = (-2147483648, 0, 2147483647)
         self.point = Point(-17, 23)
         self.coordinate_override = None
 
@@ -97,6 +98,9 @@ class Harness:
     def is_enabled(self):
         return self.record("is_enabled", self.enabled)
 
+    def runtime_id(self):
+        return self.record("runtime_id", self.runtime)
+
     def release_element(self):
         self.record("release_element")
 
@@ -134,12 +138,12 @@ class Tests(unittest.TestCase):
         self.assertIs(result.status, V.VERIFIED)
         self.assertIs(result.evidence.point, h.point)
         self.assertEqual((result.evidence.awareness, result.evidence.control_type,
-                          result.evidence.enabled), (2, 50000, True))
+                          result.evidence.enabled, result.evidence.runtime_id), (2, 50000, True, (-2147483648, 0, 2147483647)))
         self.assertEqual(h.names(), [
             "scope_factory", "dpi_factory", "context", "awareness", "valid", "enter",
             "equal", "context", "equal", "awareness", "contract_factory", "certify",
             "coordinate_awareness", "coordinate_awareness", "certified", "uia_factory",
-            "initialize", "activate", "element_from_point", "control_type", "is_enabled",
+            "initialize", "activate", "element_from_point", "control_type", "is_enabled", "runtime_id",
             "release_element", "release_automation", "uninitialize", "restore", "equal",
             "context", "equal", "awareness"])
         worker = h.events[1][2]
@@ -174,7 +178,7 @@ class Tests(unittest.TestCase):
 
     def test_every_uia_failure_cleanup_exactly_once(self):
         stages = ("uia_factory", "initialize", "activate", "element_from_point",
-                  "control_type", "is_enabled", "release_element", "release_automation",
+                  "control_type", "is_enabled", "runtime_id", "release_element", "release_automation",
                   "uninitialize")
         for error in (OSError("secret HRESULT"), KeyboardInterrupt("secret")):
             for stage in stages:
@@ -234,7 +238,7 @@ class Tests(unittest.TestCase):
     def test_point_mutation_at_every_lifecycle_stage(self):
         stages = ("scope_factory", "enter", "contract_factory", "certify", "certified",
                   "uia_factory", "initialize", "activate", "element_from_point", "control_type",
-                  "is_enabled", "release_element", "release_automation", "uninitialize", "restore")
+                  "is_enabled", "runtime_id", "release_element", "release_automation", "uninitialize", "restore")
         for field in ("x", "y"):
             for stage in stages:
                 with self.subTest(field=field, stage=stage):
@@ -333,7 +337,7 @@ class Tests(unittest.TestCase):
             self.unknown(h.service(scope_factory=factory).observe(h.point))
 
     def test_evidence_and_result_invariants(self):
-        evidence = m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True)
+        evidence = m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647))
         for args in (("verified", evidence), (V.VERIFIED, None),
                      (V.NOT_VERIFIED, None), (V.INDETERMINATE, evidence)):
             with self.assertRaises((TypeError, ValueError)):
@@ -344,14 +348,14 @@ class Tests(unittest.TestCase):
                 replace(evidence, **{key: value})
         class E(m._ScopedUIElementEvidence): pass
         class R(m._ScopedUIElementResult): pass
-        with self.assertRaises(TypeError): E(Point(0, 0), 2, 50000, True)
+        with self.assertRaises(TypeError): E(Point(0, 0), 2, 50000, True, (-2147483648, 0, 2147483647))
         with self.assertRaises(TypeError): R()
 
     def test_private_frozen_slotted_redacted_nonserializable(self):
         h = Harness()
         result = h.service().observe(h.point)
         self.assertEqual([f.name for f in fields(result.evidence)],
-                         ["point", "awareness", "control_type", "enabled"])
+                         ["point", "awareness", "control_type", "enabled", "runtime_id"])
         for value in (result, result.evidence, h.point, h.service(), m._ScopedUIElementResult()):
             self.assertFalse(hasattr(value, "__dict__"))
             self.assertEqual(repr(value), type(value).__name__ + "(<private>)")
@@ -376,7 +380,7 @@ class Tests(unittest.TestCase):
                           "while ", "ThreadPool", "NOT_VERIFIED"):
             self.assertNotIn(forbidden, source)
         for call in (".certify(point)", ".element_from_point(*coordinates)", ".initialize()",
-                     ".activate()", ".control_type()", ".is_enabled()", ".run(task)"):
+                     ".activate()", ".control_type()", ".is_enabled()", ".runtime_id()", ".run(task)"):
             self.assertEqual(source.count(call), 1)
         self.assertEqual({name for name in vars(m._ScopedUIElementObservationService)
                           if not name.startswith("_")}, {"observe"})
@@ -385,14 +389,61 @@ class Tests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         # Phase 6.18 explicitly integrates the private pointer binding. Its
         # new gate/final-gap guards live in test_pointer_uia_gate; services stay sealed.
-        for path in ("nayeon/services/ui_element_observation.py",
-                     "nayeon/services/pointer_coordinate_contract.py",
+        # Phase 6.19 permits only the two observation service changes.
+        for path in ("nayeon/services/pointer_coordinate_contract.py",
                      "nayeon/services/dpi_execution_context.py",
                      "nayeon/services/pointer_effect.py"):
             baseline = subprocess.check_output(
                 ["git", "show", f"ab646bc51f34d9fd4a7ee747671465c92c0aada5:{path}"], cwd=root)
             current = (root / path).read_bytes().replace(b"\r\n", b"\n")
             self.assertEqual(hashlib.sha256(current).digest(), hashlib.sha256(baseline).digest())
+
+
+
+class RuntimeEvidenceTests(unittest.TestCase):
+    def test_exact_tuple_and_int32_invariants_and_fail_closed_cleanup(self):
+        class Tuple(tuple): pass
+        invalid = [[], [1], Tuple((1,)), (), (1,) * 65, (True,), (Int(1),),
+                   (1.0,), (None,), (2**31,), (-(2**31)-1,), Mock()]
+        for runtime in invalid:
+            with self.subTest(value_type=type(runtime)):
+                with self.assertRaises((TypeError, ValueError)):
+                    m._ScopedUIElementEvidence(Point(0, 0), 2, 50000, True, runtime)
+                h = Harness()
+                h.runtime = runtime
+                result = h.service().observe(h.point)
+                self.assertIs(result.status, V.INDETERMINATE)
+                self.assertIsNone(result.evidence)
+                for name in ('runtime_id', 'release_element', 'release_automation', 'uninitialize', 'restore'):
+                    self.assertEqual(h.names().count(name), 1)
+                self.assertEqual(h.current, 123)
+
+    def test_runtime_is_frozen_redacted_ephemeral_and_restoration_failure_discards(self):
+        h = Harness()
+        result = h.service().observe(h.point)
+        self.assertIs(result.evidence.runtime_id, h.runtime)
+        self.assertNotIn('2147483647', repr(result))
+        self.assertNotIn('2147483647', repr(result.evidence))
+        for operation in (copy, deepcopy, pickle.dumps):
+            for value in (result, result.evidence):
+                with self.assertRaises(TypeError): operation(value)
+        with self.assertRaises(FrozenInstanceError): result.evidence.runtime_id = (1,)
+        h = Harness()
+        h.hooks['restore'] = OSError('secret')
+        result = h.service().observe(h.point)
+        self.assertIs(result.status, V.INDETERMINATE)
+        self.assertIsNone(result.evidence)
+        self.assertEqual(h.names().count('runtime_id'), 1)
+
+    def test_no_runtime_interpretation_comparison_or_persistence_routes(self):
+        from nayeon.services import ui_element_observation as native
+        for module in (m, native):
+            source = Path(module.__file__).read_text()
+            for forbidden in ('CompareElements', 'CompareRuntimeIds', 'AutomationId', 'ClassName',
+                              'ProcessId', 'NativeWindowHandle', 'BoundingRectangle', 'ClickablePoint',
+                              'SafeArrayAccessData', 'SetFocus', 'SetValue', 'FindFirst', 'FindAll',
+                              'hash(', 'hashlib', 'json', 'cache', 'nayeon.memory', 'nayeon.audit'):
+                self.assertNotIn(forbidden, source)
 
 
 if __name__ == "__main__":
