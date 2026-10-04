@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import pickle
 import unittest
+from tests.test_scoped_ui_element_observation import Harness as _UIAHarness
 from unittest.mock import Mock, patch
 
 from nayeon.agent.executor import ActionExecutor
@@ -701,6 +702,7 @@ class PointerEffectIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         PointerBindingTests.setUp(self)
+        self.ui_element_service = _UIAHarness().service()
         self.native_guard = self.enterContext(patch.object(
             _PointerEffectNative, "__init__", side_effect=AssertionError("Live input forbidden")))
         self.coordinate_guard = self.enterContext(patch.object(
@@ -719,7 +721,7 @@ class PointerEffectIntegrationTests(unittest.TestCase):
     def invocation(self):
         return self.executor._pointer_invocation(
             self.capability, service=self.service, hit_service=self.hit_service,
-            coordinate_service=self.coordinate_service, effect_service=self.effect_service)
+            coordinate_service=self.coordinate_service, effect_service=self.effect_service, ui_element_service=self.ui_element_service)
 
     def execute_effect(self, invocation, operation, **overrides):
         args = dict(target=operation.target, action=operation.action, point=operation.point)
@@ -951,7 +953,7 @@ class PointerEffectIntegrationTests(unittest.TestCase):
                 with self.assertRaises(TypeError):
                     with self.executor._pointer_invocation(
                         self.capability, service=self.service, hit_service=self.hit_service,
-                        effect_service=effect, coordinate_service=coordinate):
+                        effect_service=effect, coordinate_service=coordinate, ui_element_service=self.ui_element_service):
                         self.fail("Untrusted service accepted")
         self.native.foreground.assert_not_called()
         self.metric_native.metric.assert_not_called()
@@ -965,6 +967,7 @@ class PointerEffectBoundaryTests(unittest.TestCase):
 
     def setUp(self):
         PointerBindingTests.setUp(self)
+        self.ui_element_service = _UIAHarness().service()
         self.metrics = Mock(spec=['metric'])
         self.metrics.metric.side_effect = [0, 0, 65536, 65536]
         self.coordinates = _PointerCoordinateService(native=self.metrics, platform='win32')
@@ -982,7 +985,7 @@ class PointerEffectBoundaryTests(unittest.TestCase):
     def invocation(self):
         return self.executor._pointer_invocation(
             self.capability, service=self.service, hit_service=self.hit_service,
-            coordinate_service=self.coordinates, effect_service=self.effect_service)
+            coordinate_service=self.coordinates, effect_service=self.effect_service, ui_element_service=self.ui_element_service)
 
     def effect(self, invocation, operation):
         return invocation._execute_effect(
@@ -1126,7 +1129,7 @@ class PointerEffectBoundaryTests(unittest.TestCase):
             with self.assertRaises(TypeError):
                 with self.executor._pointer_invocation(
                         self.capability, service=self.service, hit_service=self.hit_service,
-                        coordinate_service=coordinates, effect_service=effect):
+                        coordinate_service=coordinates, effect_service=effect, ui_element_service=self.ui_element_service):
                     self.fail('Service subclass accepted')
         self.metrics.metric.assert_not_called()
         self.effect_native._send_input.assert_not_called()

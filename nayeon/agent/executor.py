@@ -80,7 +80,7 @@ class ActionExecutor:
     @contextmanager
     def _pointer_invocation(
         self, capability: Capability, *, service=None, hit_service=None,
-        coordinate_service=None, effect_service=None,
+        coordinate_service=None, effect_service=None, ui_element_service=None,
     ):
         """Private lexical approval/eligibility, optionally one bounded effect.
 
@@ -92,6 +92,7 @@ class ActionExecutor:
         from nayeon.services.target_validation import _TargetVerificationService
         from nayeon.services.pointer_coordinates import _PointerCoordinateService
         from nayeon.services.pointer_effect import _PointerEffectService
+        from nayeon.services.scoped_ui_element_observation import _ScopedUIElementObservationService
 
         if type(capability) is not Capability:
             raise TypeError("Exact registered capability metadata required.")
@@ -106,15 +107,16 @@ class ActionExecutor:
         if effect_service is not None:
             if type(effect_service) is not _PointerEffectService:
                 raise TypeError("Trusted pointer effect service required.")
-            if coordinate_service is None:
-                coordinate_service = _PointerCoordinateService()
             if type(coordinate_service) is not _PointerCoordinateService:
                 raise TypeError("Trusted coordinate service required.")
-        elif coordinate_service is not None:
-            raise TypeError("Coordinate mapping requires bounded effect mode.")
+            if type(ui_element_service) is not _ScopedUIElementObservationService:
+                raise TypeError("Trusted scoped element service required.")
+        elif coordinate_service is not None or ui_element_service is not None:
+            raise TypeError("Coordinate mapping and scoped element gate require bounded effect mode.")
         invocation = _PointerInvocation(
             self, capability, service, hit_service,
             coordinate_service=coordinate_service, effect_service=effect_service,
+            ui_element_service=ui_element_service,
         )
         try:
             yield invocation

@@ -383,10 +383,12 @@ class Tests(unittest.TestCase):
 
     def test_sealed_production_files_equal_protected_checkpoint(self):
         root = Path(__file__).resolve().parents[1]
+        # Phase 6.18 explicitly integrates the private pointer binding. Its
+        # new gate/final-gap guards live in test_pointer_uia_gate; services stay sealed.
         for path in ("nayeon/services/ui_element_observation.py",
                      "nayeon/services/pointer_coordinate_contract.py",
                      "nayeon/services/dpi_execution_context.py",
-                     "nayeon/agent/pointer_binding.py", "nayeon/services/pointer_effect.py"):
+                     "nayeon/services/pointer_effect.py"):
             baseline = subprocess.check_output(
                 ["git", "show", f"ab646bc51f34d9fd4a7ee747671465c92c0aada5:{path}"], cwd=root)
             current = (root / path).read_bytes().replace(b"\r\n", b"\n")

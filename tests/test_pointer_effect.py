@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError, replace
 import json
 import pickle
 import unittest
+from tests.test_scoped_ui_element_observation import Harness as _UIAHarness
 from unittest.mock import Mock, patch
 from nayeon.services import pointer_effect as m
 from nayeon.services.pointer_coordinates import _CoordinateEvidence
@@ -153,6 +154,7 @@ _HIT = _PointerHitValidationService.validate_hit
 class EffectIntegrationTests(unittest.TestCase):
     def setUp(self):
         b.PointerBindingTests.setUp(self)
+        self.ui_element_service = _UIAHarness().service()
         self.metrics = Mock(spec=['metric'])
         self.metrics.metric.side_effect = [30000, 26000, 2000, 2000]
         self.coordinates = _PointerCoordinateService(native=self.metrics, platform='win32')
@@ -165,7 +167,7 @@ class EffectIntegrationTests(unittest.TestCase):
 
     def invocation(self):
         return self.executor._pointer_invocation(self.capability, service=self.service,
-            hit_service=self.hit_service, coordinate_service=self.coordinates, effect_service=self.effect)
+            hit_service=self.hit_service, coordinate_service=self.coordinates, effect_service=self.effect, ui_element_service=self.ui_element_service)
 
     def prepare(self, invocation):
         return invocation.prepare(self.action, self.point)
@@ -427,7 +429,7 @@ class EffectIntegrationTests(unittest.TestCase):
     def test_untrusted_services_and_metadata(self):
         for coordinates, effect in ((Mock(), self.effect), (self.coordinates, Mock()), (self.coordinates, None)):
             with self.assertRaises(TypeError):
-                with self.executor._pointer_invocation(self.capability, service=self.service, hit_service=self.hit_service, coordinate_service=coordinates, effect_service=effect):
+                with self.executor._pointer_invocation(self.capability, service=self.service, hit_service=self.hit_service, coordinate_service=coordinates, effect_service=effect, ui_element_service=self.ui_element_service):
                     pass
         for changes in ({'reversible': True}, {'requires_confirmation': False}):
             self.setUp()

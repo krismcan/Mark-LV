@@ -23,6 +23,10 @@ from nayeon.services.pointer_coordinates import _CoordinateResult, _PointerCoord
 from nayeon.services.pointer_effect import (
     _EffectStatus, _PointerEffectReceipt, _PointerEffectService,
 )
+from nayeon.services.scoped_ui_element_observation import (
+    _ScopedUIElementObservationService, _ScopedUIElementResult,
+    _ScopedUIElementEvidence,
+)
 
 __all__ = ()
 _REQUEST = "Prepare future single left click at the approved native screen point."
@@ -183,31 +187,33 @@ class _PointerInvocation(_LocalOnly):
         "_executor", "_capability", "_service", "_hit_service",
         "_operation", "_target", "_action", "_point", "_snapshot",
         "_confirmation", "_closed", "_started",
-        "_coordinate_service", "_effect_service",
+        "_coordinate_service", "_effect_service", "_ui_element_service",
         "_services", "_registered", "_implementation",
         "_post_observation",
         "_verification",
     )
 
     def __init__(self, executor, capability, service, hit_service, *,
-                 coordinate_service=None, effect_service=None):
+                 coordinate_service=None, effect_service=None, ui_element_service=None):
         if type(service) is not _TargetVerificationService:
             raise TypeError("Trusted target service required.")
         if type(hit_service) is not _PointerHitValidationService:
             raise TypeError("Trusted pointer hit validation service required.")
         if effect_service is not None:
             if (type(effect_service) is not _PointerEffectService
-                    or type(coordinate_service) is not _PointerCoordinateService):
-                raise TypeError("Trusted effect and coordinate services required.")
-        elif coordinate_service is not None:
-            raise TypeError("Coordinate mapping requires bounded effect mode.")
+                    or type(coordinate_service) is not _PointerCoordinateService
+                    or type(ui_element_service) is not _ScopedUIElementObservationService):
+                raise TypeError("Trusted effect, coordinate, and scoped element services required.")
+        elif coordinate_service is not None or ui_element_service is not None:
+            raise TypeError("Coordinate mapping and scoped element gate require bounded effect mode.")
         self._executor = executor
         self._capability = deepcopy(capability)
         self._service = service
         self._hit_service = hit_service
         self._coordinate_service = coordinate_service
         self._effect_service = effect_service
-        self._services = (service, hit_service, coordinate_service, effect_service)
+        self._ui_element_service = ui_element_service
+        self._services = (service, hit_service, coordinate_service, effect_service, ui_element_service)
         self._registered = executor._registry.get(capability.name)
         self._implementation = executor._registry.get_implementation(capability.name)
         self._operation = self._target = self._action = self._point = self._snapshot = None
@@ -237,14 +243,16 @@ class _PointerInvocation(_LocalOnly):
 
     def _services_valid(self):
         current = (self._service, self._hit_service,
-                   self._coordinate_service, self._effect_service)
+                   self._coordinate_service, self._effect_service, self._ui_element_service)
         if self._services is None or any(a is not b for a, b in zip(current, self._services)):
             return False
         return (type(self._service) is _TargetVerificationService
                 and type(self._hit_service) is _PointerHitValidationService
-                and ((self._coordinate_service is None and self._effect_service is None)
+                and ((self._coordinate_service is None and self._effect_service is None
+                      and self._ui_element_service is None)
                      or (type(self._coordinate_service) is _PointerCoordinateService
-                         and type(self._effect_service) is _PointerEffectService)))
+                         and type(self._effect_service) is _PointerEffectService
+                         and type(self._ui_element_service) is _ScopedUIElementObservationService)))
 
     def _registration_valid(self):
         return (self._executor._registry.get(self._capability.name) is self._registered
@@ -425,6 +433,24 @@ class _PointerInvocation(_LocalOnly):
                     return unknown
                 if not self._bound(operation):
                     return unknown
+                observed = self._ui_element_service.observe(operation.point)
+                if type(observed) is not _ScopedUIElementResult:
+                    return unknown
+                _ScopedUIElementResult.__post_init__(observed)
+                if observed.status is not VerificationStatus.VERIFIED:
+                    return unknown
+                evidence = observed.evidence
+                if type(evidence) is not _ScopedUIElementEvidence:
+                    return unknown
+                _ScopedUIElementEvidence.__post_init__(evidence)
+                if (evidence.point is not operation.point or evidence.enabled is not True
+                        or not self._bound(operation)):
+                    return unknown
+                # Enabled is only a safety prerequisite, never clickability or
+                # semantic authorization. Do not retain this descriptive sample.
+                del observed, evidence
+                # Only local checks above: normalization remains the final
+                # native desktop sample before the existing insertion path.
                 mapped = self._coordinate_service.normalize(operation.point)
                 if type(mapped) is not _CoordinateResult:
                     return unknown
@@ -540,4 +566,5 @@ class _PointerInvocation(_LocalOnly):
             self._hit_service = None
             self._coordinate_service = None
             self._effect_service = None
+            self._ui_element_service = None
             self._services = self._registered = self._implementation = None
