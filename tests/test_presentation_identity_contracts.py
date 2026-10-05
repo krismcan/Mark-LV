@@ -10,13 +10,14 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 7.2 permits exactly the pure document consumer. Protect the sealed
-# Phase 7.1 contents (including presentation.py), not its historical candidate.
-CHECKPOINT = "0527a0201fad1bd284d03292a43d6b3365c16af3"
-TAG = "nayeon-v1-presentation-identity-contracts-01"
-STARTING_HEAD = "ae1a1ca290b389d9f300c6f8e9f6c076f09ef2af"
+# Phase 7.3 permits exactly the bounded persistence consumer of the sealed
+# Phase 7.2 document. Protect the sealed Phase 7.2 production contents.
+CHECKPOINT = "9b210b6e7fb4d355a10dcd29d3f480fd4062f71c"
+TAG = "nayeon-v1-presentation-configuration-document-01"
+STARTING_HEAD = "cc4e9147cf2222dcd7bd1c7c29f3eb6a3643aea2"
 MODULE = "nayeon/config/presentation.py"
 DOCUMENT_MODULE = "nayeon/config/document.py"
+PERSISTENCE_MODULE = "nayeon/config/persistence.py"
 CONTRACTS = (
     (m.AssistantPresentationIdentity, ("display_name", "wake_name")),
     (m.UserPresentationProfile, ("display_name",)),
@@ -198,14 +199,14 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {DOCUMENT_MODULE})
-        self.assertEqual(changed - {DOCUMENT_MODULE}, set())
-        self.assertEqual(untracked - {DOCUMENT_MODULE}, set())
+        self.assertEqual(changed | untracked, {PERSISTENCE_MODULE})
+        self.assertEqual(changed - {PERSISTENCE_MODULE}, set())
+        self.assertEqual(untracked - {PERSISTENCE_MODULE}, set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {DOCUMENT_MODULE})
+        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {PERSISTENCE_MODULE})
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
