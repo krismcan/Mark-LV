@@ -209,11 +209,14 @@ class ClickabilitySourceGuards(unittest.TestCase):
         self.assertNotIn('(', gap)  # No call between the local gate and normalization.
 
     def test_production_scope_and_all_protected_content(self):
-        changed = subprocess.check_output(['git', 'diff', HEAD, '--name-only', '--', 'nayeon'],
-                                          cwd=ROOT).decode().splitlines()
+        changed = subprocess.check_output([
+            'git', 'diff', HEAD, '--name-only', '--', 'nayeon/agent', 'nayeon/services'
+        ], cwd=ROOT).decode().splitlines()
         self.assertEqual(changed, ['nayeon/agent/pointer_binding.py'])
-        self.assertEqual(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard',
-                                                 '--', 'nayeon'], cwd=ROOT), b'')
+        self.assertEqual(subprocess.check_output([
+            'git', 'ls-files', '--others', '--exclude-standard', '--',
+            'nayeon/agent', 'nayeon/services', 'nayeon/capabilities', 'nayeon/policy'
+        ], cwd=ROOT), b'')
         paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', HEAD, '--', 'nayeon'],
                                         cwd=ROOT).decode().splitlines()
         for path in paths:

@@ -254,7 +254,7 @@ class ContinuitySourceGuards(unittest.TestCase):
             self.assertEqual(subprocess.check_output(
                 ['git', 'diff', HEAD, '--', path], cwd=ROOT), b'', path)
         changed = subprocess.check_output(
-            ['git', 'diff', HEAD, '--name-only', '--', 'nayeon'], cwd=ROOT
+            ['git', 'diff', HEAD, '--name-only', '--', 'nayeon/agent', 'nayeon/services'], cwd=ROOT
         ).decode().splitlines()
         self.assertEqual(changed, [
             'nayeon/agent/pointer_binding.py',
@@ -262,10 +262,13 @@ class ContinuitySourceGuards(unittest.TestCase):
             'nayeon/services/ui_element_observation.py',
         ])
         self.assertEqual(subprocess.check_output(
-            ['git', 'ls-files', '--others', '--exclude-standard', '--', 'nayeon'],
+            ['git', 'ls-files', '--others', '--exclude-standard', '--',
+             'nayeon/agent', 'nayeon/services', 'nayeon/capabilities', 'nayeon/policy'],
             cwd=ROOT), b'')
         self.assertEqual(subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(),
+            ['git', 'rev-parse',
+             'nayeon-v1-fresh-uia-clickability-execution-gate-01^{commit}'],
+            cwd=ROOT).decode().strip(),
             '797ed334f4256d2e05de6605d7ceb9f4bd96a57e')
         self.assertEqual(subprocess.check_output(
             ['git', 'rev-parse',

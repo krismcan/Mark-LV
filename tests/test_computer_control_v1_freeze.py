@@ -15,6 +15,22 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT = "797ed334f4256d2e05de6605d7ceb9f4bd96a57e"
 TAG = "nayeon-v1-fresh-uia-clickability-execution-gate-01"
+CLOSURE = "59d6b341ffe67b86e7f0555e50be074ecfd31f4a"
+CLOSURE_TAG = "nayeon-v1-bounded-computer-control-v1-closure-01"
+PROTECTED_FILES = (
+    "nayeon/agent/executor.py", "nayeon/agent/pointer_binding.py",
+    "nayeon/capabilities/observe_foreground_window.py",
+    "nayeon/capabilities/observe_pointer.py", "nayeon/capabilities/focus_window.py",
+    "nayeon/capabilities/type_text.py", "nayeon/services/computer_control.py",
+    "nayeon/services/window_focus.py", "nayeon/services/windows_focus.py",
+    "nayeon/services/keyboard_text.py", "nayeon/services/windows_keyboard.py",
+    "nayeon/services/pointer_observation.py", "nayeon/services/windows_pointer.py",
+    "nayeon/services/target_validation.py", "nayeon/services/pointer_hit_validation.py",
+    "nayeon/services/pointer_coordinate_contract.py", "nayeon/services/pointer_coordinates.py",
+    "nayeon/services/pointer_effect.py", "nayeon/services/dpi_execution_context.py",
+    "nayeon/services/ui_element_observation.py",
+    "nayeon/services/scoped_ui_element_observation.py",
+)
 EXECUTOR = "nayeon/agent/executor.py"
 BINDING = "nayeon/agent/pointer_binding.py"
 EFFECT = "nayeon/services/pointer_effect.py"
@@ -93,18 +109,18 @@ class ComputerControlV1FreezeTests(unittest.TestCase):
             for path in sorted((ROOT / "nayeon").rglob("*.py"))
         }
 
-    def test_protected_candidate_head_branch_tag_and_zero_production_drift(self):
-        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), CHECKPOINT)
+    def test_phase6_closure_tags_and_computer_control_files_remain_frozen(self):
+        # HEAD may advance after Phase 6.23. Freeze the Computer Control trust
+        # surface and historical milestones, not unrelated future subsystems.
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
-        self.assertEqual(git("diff", CHECKPOINT, "--", "nayeon"), b"")
-        self.assertEqual(git("ls-files", "--others", "--exclude-standard", "--", "nayeon"), b"")
-        # Git filters can hide worktree content differences: compare every tracked
-        # file as well, allowing only checkout CRLF/LF representation differences.
-        for path in git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines():
+        self.assertEqual(git("rev-parse", CLOSURE_TAG + "^{commit}").decode().strip(), CLOSURE)
+        for path in PROTECTED_FILES:
             with self.subTest(path=path):
-                self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
-                                 git("show", CHECKPOINT + ":" + path).replace(b"\r\n", b"\n"))
+                current = (ROOT / path).read_bytes().replace(b"\r\n", b"\n")
+                protected = git("show", CHECKPOINT + ":" + path).replace(b"\r\n", b"\n")
+                self.assertEqual(current, protected)
+
 
     def test_every_capability_module_excludes_pointer_authority_and_deferred_surface(self):
         for path, tree in self.trees.items():

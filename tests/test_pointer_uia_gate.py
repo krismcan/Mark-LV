@@ -407,13 +407,16 @@ class Phase619Seals(unittest.TestCase):
 
     def test_only_two_approved_production_files_changed(self):
         paths = subprocess.check_output(['git', 'diff', '--name-only',
-            'f3742615f79da1be2cf34ce9c207b42bd9456245', '--', 'nayeon'], cwd=ROOT).decode().splitlines()
+            'f3742615f79da1be2cf34ce9c207b42bd9456245', '--',
+            'nayeon/agent', 'nayeon/services'], cwd=ROOT).decode().splitlines()
         # Phase 6.20 intentionally extends only pointer binding after 6.19.
         self.assertEqual(set(paths), {'nayeon/agent/pointer_binding.py',
                                      'nayeon/services/ui_element_observation.py',
                                      'nayeon/services/scoped_ui_element_observation.py'})
-        self.assertEqual(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard',
-                                                 '--', 'nayeon'], cwd=ROOT), b'')
+        self.assertEqual(subprocess.check_output([
+            'git', 'ls-files', '--others', '--exclude-standard', '--',
+            'nayeon/agent', 'nayeon/services'
+        ], cwd=ROOT), b'')
 
 
 if __name__ == "__main__":
