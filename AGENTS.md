@@ -1,15 +1,13 @@
 # Nayeon v1 engineering instructions
 
-## Scope and session startup
+## Start here
 
-- Read the relevant architecture, implementation, and existing tests before making decisions or edits.
-- Check the branch, latest commit, milestone tags, and working tree against the user's expected checkpoint. Report discrepancies; do not reset, discard, or overwrite existing work to make them match.
-- The verified starting checkpoint for this document was branch `nayeon-v1`, commit `b10480f` (`feat: add structured capability contract`), tag `nayeon-v1-structured-capability-01`, with a clean working tree. This is historical context, not a requirement to reset future sessions to that commit.
-- Make the smallest safe change. Do not redesign unrelated components. Preserve backward compatibility unless explicitly approved otherwise.
-- Stop and ask for review before a decision materially changes the agreed architecture.
-- Respect the current task's scope. Documentation-only tasks must not change application code.
+- Read `.codex/CURRENT_STATE.md` for the latest completed phase, regression baseline, and restart point.
+- Inspect branch, HEAD, milestone tags, and working tree before editing. Git is authoritative; report any mismatch with the state file.
+- Read only the implementation/tests/latest phase review relevant to the task. Do not rely on the legacy root README as current Nayeon status.
+- Never reset, discard, overwrite, or hide unrelated user work to force a checkpoint match.
 
-## Architecture and execution boundaries
+## Architecture contract
 
 ```text
 MODEL decides WHAT
@@ -20,54 +18,96 @@ VERIFICATION proves RESULT
 MEMORY retains appropriate context
 ```
 
-- Preserve Permission -> Policy -> Confirmation -> Execution boundaries.
-- Never let an LLM directly control the computer. Models may interpret natural language semantically, but resulting actions must become structured, validated, deterministic requests before side effects.
-- Prefer reliable local, deterministic execution. Model output is untrusted input, not authorization or proof of success.
-- Keep validation separate from execution: argument validation must not perform the capability's side effect.
-- Preserve central policy evaluation, confirmation, audit, and undo paths. Do not bypass them by calling a service directly from model interpretation or dispatch planning.
-- Verification must establish the actual result. An execution attempt, returned object, or model statement alone does not prove that the requested effect occurred.
-- Retain only appropriate context in memory; do not store secrets there.
+- Model output is untrusted input, never authorization or proof.
+- Preserve Permission -> Policy -> Confirmation -> Execution -> Verification.
+- Never give an LLM direct machine authority. Semantic interpretation must become typed, bounded, deterministic requests before side effects.
+- Validation must not perform the action.
+- Do not bypass policy, confirmation, audit, undo/resource cleanup, or verification by calling lower-level services from interpretation/dispatch.
+- Make the smallest safe change and stop for human review before material architecture/scope changes, destructive/live actions, credentials, or established seal gates.
 
-## Repository map and current implementation
+## Repository boundaries
 
-These observations are grounded in the starting checkpoint. Reinspect the implementation as it evolves.
+- `nayeon/` is the Nayeon v1 implementation.
+- Root-level `main.py`, `ui.py`, `actions/`, `core/`, `dashboard/`, `plugins/`, and `memory/` are legacy MARK code; do not migrate them incidentally.
+- `docs/phase_*_review.md` contains detailed milestone evidence.
+- `.codex/CURRENT_STATE.md` is the concise current Codex handoff.
+- Respect the approved production scope for each phase.
 
-- `nayeon/` contains the Nayeon foundation. The root `readme.md` describes the older MARK LIII application; `main.py`, `ui.py`, `actions/`, `core/`, `dashboard/`, `plugins/`, and `memory/` remain alongside Nayeon. Do not assume the README describes completed Nayeon integration or migrate the legacy application incidentally.
-- `nayeon/brain/service.py` defines the provider-independent `AIService` and `AIProvider` contract. Keep provider details behind this boundary. `brain/fake.py` provides a deterministic fake for local checks; provider adapters live in `brain/providers/`.
-- `nayeon/intent/resolver.py` prefers sufficiently confident local interpretation and applies configured confidence thresholds to semantic fallback. `intent/ai_model.py` parses structured model responses; `intent/semantic.py` restricts intent names to registered capabilities plus supported system controls. Preserve these checks; intent acceptance does not validate capability-specific arguments.
-- `nayeon/agent/dispatch.py` produces plans and does not execute them. `agent/controls.py` distinguishes cancellation of a pending action from undoing a completed action, with pending confirmation taking precedence for contextual reversal.
-- `nayeon/registry.py` stores capability metadata and implementations. `capabilities/base.py` defines `CapabilityModule`; `capabilities/loader.py` discovers concrete subclasses that it can instantiate without arguments. Discovery catches import, construction, and duplicate-registration failures, so verify expected registrations rather than assuming discovery succeeded.
-- `nayeon/capabilities/structured.py` defines the optional `StructuredCapability` protocol and `StructuredCapabilityRequest`. Request construction trims the original request and copies arguments; arguments remain untrusted. `validate_arguments` must reject invalid input with `ValueError` or `TypeError` and perform no side effects.
-- Structured execution is a contract at this checkpoint, not a completed executor integration: `agent/executor.py` still calls `execute(request: str)`, and `capabilities/open_app.py` still uses that string interface. Preserve this compatibility until an explicitly scoped integration changes it. Do not treat the structured protocol as an alternate route around policy or confirmation.
-- `nayeon/policy/service.py` checks permissions before policy blocks and confirmation requirements. `agent/executor.py` reevaluates policy after confirmation approval. `policy/confirmation.py` uses expiring, one-time tokens bound to the capability and exact request. Preserve these bindings and rechecks; an LLM must not approve its own action.
-- `nayeon/audit/service.py` records structured events, optionally as JSONL. Keep policy, confirmation, execution, and undo-registration outcomes observable without disclosing secrets.
-- Reversible capabilities must implement `UndoProvider` in `nayeon/undo/contract.py` and supply a concrete `UndoRegistration`. The executor rejects reversible metadata without this contract and reports undo-registration failure separately after execution. Do not falsely promise undo or hide partial outcomes.
-- `nayeon/services/applications.py` owns platform-specific application launching. Keep OS effects in service implementations and use fakes or mocks for checks that would otherwise launch programs.
-- No dedicated Nayeon verification or memory package exists at this checkpoint. The architectural responsibilities above are requirements, not claims that all layers are implemented.
+## Frozen Computer Control v1 boundary
 
-## Secrets and runtime data
+Computer Control v1 is a completed bounded foundation.
 
-- Never expose or commit secrets or API keys, including in logs, audit details, fixtures, screenshots, or command output.
-- `nayeon/secrets/store.py` reads environment-backed secrets. `nayeon/config/config.py` handles non-secret settings separately and defaults to `data/config.json`. Keep that separation.
-- Use temporary paths and fake credentials for checks. Do not inspect real credentials or initialize live providers merely to validate documentation.
-- Review staged paths explicitly. Do not rely solely on `.gitignore` to protect credentials, sessions, user memory, or runtime data; the default Nayeon `data/` directory is not listed there at this checkpoint.
+Public surface:
+- foreground observation;
+- pointer observation;
+- identity-bound focus;
+- bounded keyboard text.
 
-## Validation and checkpoints
+The single-left-click path remains a trusted private primitive. Do not expose generic/raw coordinate click authority without a new approved architecture phase.
 
-- Run focused tests after each change and regression tests before a checkpoint. Use deterministic fakes or mocks to avoid real model calls, desktop actions, and writes to personal data during baseline checks.
-- At the starting checkpoint there are no checked-in test files or configured test runner. Standard-library discovery reports zero tests; this is a coverage gap, not a passing regression suite. Recheck available tests in future sessions and report unavailable coverage honestly.
-- From the repository root, the existing Windows virtual environment supports these baseline commands:
+Preserve the Phase 6 trust invariants: approved point authority, fresh target/hit/UIA evidence, Runtime-ID continuity, enabled/clickable prerequisites, final coordinate normalization before bounded insertion, and reviewed SendInput boundaries.
 
-  ```powershell
-  .\.venv\Scripts\python.exe -m unittest discover -v
-  .\.venv\Scripts\python.exe -m nayeon.environment
-  .\.venv\Scripts\python.exe -m compileall -q nayeon
-  git diff --check
-  ```
+Semantic/visual targeting, public click, right/double click, drag/drop, scroll/wheel, autonomous GUI sequences, and semantic task-success understanding are deferred to later Vision/Perception/Autonomy work.
 
-- Discovery only exercises tests if present. Environment diagnostics check platform support and report Python; compilation checks syntax. Neither proves application behavior. The documentation baseline used Python 3.12.10 on Windows 11.
-- If that virtual environment is unavailable, use a verified compatible Python interpreter and report the difference. `setup.py` is an installation script that installs dependencies and Playwright browsers, not a test runner; do not run it for routine baseline validation.
-- Never claim success when tests fail. Report exact commands, outcomes, skipped or missing tests, and environmental blockers. Do not declare a verified milestone while relevant failures remain unresolved.
-- Make one coherent commit per verified milestone. Review the staged diff and commit only intended files. Tag meaningful verified milestones with descriptive `nayeon-v1-...` names; never move an existing milestone tag to disguise a different checkpoint.
-- Keep the working tree clean at checkpoints without deleting unrelated user work. Do not push to any remote unless explicitly requested.
-- At handoff, report files changed, tests and results, commit hash, git status, and discrepancies from the expected checkpoint. Stop for review when the user requests it.
+Historical Phase 6 tests should freeze these authority surfaces, not all future `nayeon/` growth or future HEADs.
+
+## Presentation identity / configuration boundary
+
+Current presentation contracts are in `nayeon/config/presentation.py`.
+
+- Assistant defaults to display/wake name `Nayeon`, but users may rename it.
+- User display name defaults to `None`.
+- Personality/voice references are presentation preferences only.
+
+Presentation identity must never alter capability identity, permission/policy decisions, confirmation binding, audit action identity, execution authority, trusted object identity, or secrets.
+
+Legacy `nayeon/config/config.py` is intentionally isolated and is not authoritative Phase 7 configuration unless an approved migration phase changes that.
+
+Do not create a generic settings God object. Permission defaults, secrets, Voice listening behavior, and Proactive/event behavior require explicit subsystem ownership.
+
+## Secrets
+
+- Never expose or commit keys, credentials, tokens, or private user data.
+- Keep secrets separate from non-secret configuration.
+- Do not inspect live credentials merely to validate code.
+- Prefer deterministic fakes/mocks and temporary data.
+
+## Validation
+
+Authoritative host Python:
+`C:\Users\krist\AppData\Local\Python\pythoncore-3.12-64\python.exe`
+
+Codex sandbox may be unable to access it. If blocked:
+- do not download/install/copy Python or packages;
+- do not use a network workaround;
+- perform bounded static work and leave authoritative runtime validation to host orchestration.
+
+For milestones run focused tests, relevant affected/trust-path tests, full `unittest` discovery, `python -m compileall -q nayeon tests`, and `git diff --check`.
+
+Never claim a verified milestone while relevant failures remain unresolved.
+
+## Phase workflow
+
+Architecture audit -> approved bounded implementation -> independent validation -> justified smoke -> human seal review -> exact staging -> seal-time regression -> milestone commit -> annotated tag -> approved push -> remote verification -> master workbook update.
+
+### Mandatory Codex context refresh
+
+Before starting the next product phase, refresh `.codex/CURRENT_STATE.md` for the phase just completed using `scripts/update_codex_context.py` or an equivalent exact edit.
+
+Record only:
+- latest completed product phase;
+- milestone tag;
+- full regression baseline;
+- next restart point;
+- one concise current architecture invariant;
+- date.
+
+Detailed history belongs in Git, phase review docs, and the master workbook.
+
+## Git discipline
+
+- Keep sealed checkpoints clean.
+- Review staged paths before committing.
+- One coherent commit per verified product milestone.
+- Never move an existing milestone tag.
+- Do not push without user approval.
