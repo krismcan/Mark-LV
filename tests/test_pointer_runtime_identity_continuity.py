@@ -266,7 +266,7 @@ class ContinuitySourceGuards(unittest.TestCase):
             cwd=ROOT), b'')
         self.assertEqual(subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip(),
-            '0a7f8890f73399ef07c3048c8f19b49b8b1643dc')
+            '797ed334f4256d2e05de6605d7ceb9f4bd96a57e')
         self.assertEqual(subprocess.check_output(
             ['git', 'rev-parse',
              'nayeon-v1-approval-bound-uia-runtime-identity-continuity-01^{commit}'],
