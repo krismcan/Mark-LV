@@ -10,9 +10,13 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKPOINT = "59d6b341ffe67b86e7f0555e50be074ecfd31f4a"
-TAG = "nayeon-v1-bounded-computer-control-v1-closure-01"
+# Phase 7.2 permits exactly the pure document consumer. Protect the sealed
+# Phase 7.1 contents (including presentation.py), not its historical candidate.
+CHECKPOINT = "0527a0201fad1bd284d03292a43d6b3365c16af3"
+TAG = "nayeon-v1-presentation-identity-contracts-01"
+STARTING_HEAD = "ae1a1ca290b389d9f300c6f8e9f6c076f09ef2af"
 MODULE = "nayeon/config/presentation.py"
+DOCUMENT_MODULE = "nayeon/config/document.py"
 CONTRACTS = (
     (m.AssistantPresentationIdentity, ("display_name", "wake_name")),
     (m.UserPresentationProfile, ("display_name",)),
@@ -171,11 +175,11 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, {"dataclass", "type", "len", "value.strip", "any", "ord",
                                  "TypeError", "ValueError", "_validate_string", "_validate_optional_string"})
 
-    def test_no_other_production_module_references_presentation(self):
+    def test_only_approved_document_consumer_references_presentation(self):
         targets = {"AssistantPresentationIdentity", "UserPresentationProfile", "PresentationPreferences",
                    "presentation", "nayeon.config.presentation"}
         for path in (ROOT / "nayeon").rglob("*.py"):
-            if path == ROOT / MODULE:
+            if path in (ROOT / MODULE, ROOT / DOCUMENT_MODULE):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
@@ -189,19 +193,19 @@ class PresentationBoundaryTests(unittest.TestCase):
                     self.assertNotIn(node.value, targets, str(path))
 
     def test_protected_checkpoint_branch_tag_and_exact_production_scope(self):
-        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), CHECKPOINT)
+        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {MODULE})
-        self.assertEqual(changed - {MODULE}, set())
-        self.assertEqual(untracked - {MODULE}, set())
+        self.assertEqual(changed | untracked, {DOCUMENT_MODULE})
+        self.assertEqual(changed - {DOCUMENT_MODULE}, set())
+        self.assertEqual(untracked - {DOCUMENT_MODULE}, set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {MODULE})
+        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {DOCUMENT_MODULE})
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
