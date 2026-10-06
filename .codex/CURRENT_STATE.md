@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 7.3 - Bounded Presentation Configuration File Persistence
-- **Latest milestone tag:** `nayeon-v1-presentation-configuration-persistence-01`
-- **Full regression baseline:** **1,588 / 1,588**
-- **Last updated:** 5 Oct 2026
-- **Next restart point:** Phase 7.4 - Architecture audit for bounded presentation-configuration runtime ownership and legacy migration/disposition; scope not yet approved
+- **Latest completed product phase:** Phase 7.4 - Bounded Presentation Configuration Runtime Ownership
+- **Latest milestone tag:** `nayeon-v1-presentation-configuration-runtime-ownership-01`
+- **Full regression baseline:** **1,608 / 1,608**
+- **Last updated:** 6 Oct 2026
+- **Next restart point:** Phase 7.5 - Architecture audit for bounded presentation-configuration composition/bootstrap wiring; scope not yet approved
 
 ## Latest architecture invariant
 
-Presentation configuration may now be persisted only through the sealed strict schema-v1 document and bounded explicit-Path file store; persistence remains presentation-only and unwired, while legacy ConfigService, secrets, permission/policy authority, Voice/Proactive behavior, capability identity and trusted execution remain outside this boundary.
+Presentation configuration now has one strict process-local owner above the sealed schema-v1 document and explicit-Path file store: initialization is lazy/fail-closed, first-run defaults remain in memory only, replacement persists before swapping ownership, and the owner remains unwired while legacy ConfigService, trusted action identity, permissions/policy, secrets, Voice/Proactive behavior and root MARK runtime stay outside the boundary.
 
 ## Required startup behavior
 
