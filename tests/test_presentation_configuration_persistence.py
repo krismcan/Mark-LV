@@ -19,9 +19,10 @@ from nayeon.config.document import (
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = "nayeon/config/persistence.py"
-STARTING_HEAD = "cc4e9147cf2222dcd7bd1c7c29f3eb6a3643aea2"
-PRODUCT_COMMIT = "9b210b6e7fb4d355a10dcd29d3f480fd4062f71c"
-TAG = "nayeon-v1-presentation-configuration-document-01"
+SERVICE_MODULE = "nayeon/config/service.py"
+STARTING_HEAD = "78c01f7d52f956785ec659812415e9ebd8f8e8e7"
+PRODUCT_COMMIT = "1d43dcfe7405033e67c9afb4cd7108fb0da14d4e"
+TAG = "nayeon-v1-presentation-configuration-persistence-01"
 LIMIT = 65536
 PRIVATE_VALUE = "PrivatePersonalValueMarker"
 PRIVATE_KEY = "PrivateUnknownKeyMarker"
@@ -399,11 +400,11 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
         self.assertEqual([node.name for node in tree.body if isinstance(node, ast.ClassDef)],
                          ["PresentationConfigurationPersistenceError", "PresentationConfigurationFileStore"])
 
-    def test_no_other_production_consumer_or_runtime_wiring(self):
+    def test_only_approved_service_consumer_without_runtime_wiring(self):
         targets = {"persistence", "nayeon.config.persistence", "PresentationConfigurationFileStore",
                    "PresentationConfigurationPersistenceError", "MAX_PRESENTATION_CONFIGURATION_FILE_BYTES"}
         for path in (ROOT / "nayeon").rglob("*.py"):
-            if path == ROOT / MODULE:
+            if path in (ROOT / MODULE, ROOT / SERVICE_MODULE):
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.ImportFrom):
@@ -421,12 +422,12 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)
         changed = set(git("diff", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {MODULE})
-        self.assertEqual(changed - {MODULE}, set())
-        self.assertEqual(untracked - {MODULE}, set())
+        self.assertEqual(changed | untracked, {SERVICE_MODULE})
+        self.assertEqual(changed - {SERVICE_MODULE}, set())
+        self.assertEqual(untracked - {SERVICE_MODULE}, set())
         tracked = git("ls-tree", "-r", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines()
         actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | {MODULE})
+        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | {SERVICE_MODULE})
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

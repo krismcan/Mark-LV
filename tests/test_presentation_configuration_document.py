@@ -267,12 +267,12 @@ class PresentationDocumentBoundaryTests(unittest.TestCase):
                          ["_validate_mapping", "parse_presentation_configuration_document",
                           "presentation_configuration_document_to_mapping"])
 
-    def test_only_approved_persistence_consumer_of_document(self):
+    def test_only_approved_persistence_and_service_consumers_of_document(self):
         targets = {"document", "nayeon.config.document", "PresentationConfigurationDocumentV1",
                    "PRESENTATION_CONFIGURATION_SCHEMA_VERSION", "parse_presentation_configuration_document",
                    "presentation_configuration_document_to_mapping"}
         for path in (ROOT / "nayeon").rglob("*.py"):
-            if path in (MODULE, ROOT / "nayeon/config/persistence.py"):
+            if path in (MODULE, ROOT / "nayeon/config/persistence.py", ROOT / "nayeon/config/service.py"):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
