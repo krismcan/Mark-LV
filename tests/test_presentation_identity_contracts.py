@@ -10,13 +10,13 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 7.4 permits exactly service.py while freezing sealed Phase 7.3 contents.
-CHECKPOINT = "1d43dcfe7405033e67c9afb4cd7108fb0da14d4e"
-TAG = "nayeon-v1-presentation-configuration-persistence-01"
-STARTING_HEAD = "78c01f7d52f956785ec659812415e9ebd8f8e8e7"
+# Phase 7.5 permits exactly bootstrap.py while freezing sealed Phase 7.4 contents.
+CHECKPOINT = "1cf34c9ad0ab02e86c859f4539afda5d265bfa81"
+TAG = "nayeon-v1-presentation-configuration-runtime-ownership-01"
+STARTING_HEAD = "c6c3d7436cc39470ee9d23e0e5c7fed05c3e0afd"
 MODULE = "nayeon/config/presentation.py"
 DOCUMENT_MODULE = "nayeon/config/document.py"
-SERVICE_MODULE = "nayeon/config/service.py"
+BOOTSTRAP_MODULE = "nayeon/config/bootstrap.py"
 CONTRACTS = (
     (m.AssistantPresentationIdentity, ("display_name", "wake_name")),
     (m.UserPresentationProfile, ("display_name",)),
@@ -198,14 +198,14 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {SERVICE_MODULE})
-        self.assertEqual(changed - {SERVICE_MODULE}, set())
-        self.assertEqual(untracked - {SERVICE_MODULE}, set())
+        self.assertEqual(changed | untracked, {BOOTSTRAP_MODULE})
+        self.assertEqual(changed - {BOOTSTRAP_MODULE}, set())
+        self.assertEqual(untracked - {BOOTSTRAP_MODULE}, set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {SERVICE_MODULE})
+        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {BOOTSTRAP_MODULE})
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
