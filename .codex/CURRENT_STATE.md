@@ -3,15 +3,22 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 7.5 - Bounded Presentation Configuration Bootstrap Composition
-- **Latest milestone tag:** `nayeon-v1-presentation-configuration-bootstrap-composition-01`
-- **Full regression baseline:** **1,625 / 1,625**
+- **Latest completed product phase:** Phase 7.6 - Bounded Presentation Read Model & Phase 7 Foundation Closure
+- **Latest milestone tag:** `nayeon-v1-presentation-read-model-foundation-closure-01`
+- **Full regression baseline:** **1,645 / 1,645**
 - **Last updated:** 7 Oct 2026
-- **Next restart point:** Phase 7.6 - Architecture audit for a bounded presentation-configuration consumer boundary / read-only presentation view; scope not yet approved
+- **Phase 7 status:** User Identity & Configuration **FOUNDATION COMPLETE**
+- **Next restart point:** Phase 8 - Architecture audit for Secure Secrets & BYOK Onboarding; scope not yet approved
 
 ## Latest architecture invariant
 
-Presentation configuration now has a strict dependency-ordered stack: immutable presentation contracts -> strict schema-v1 document -> bounded explicit-Path file store -> process-local configuration owner -> one tiny explicit-path bootstrap composition seam. The bootstrap constructs exactly one store and one service, initializes once, and returns that initialized service; it derives no path, has no production consumer, and introduces no runtime/container authority. Persistence load/save ownership remains in the service layer. Legacy ConfigService, trusted action identity, permissions/policy, secrets, Voice/Proactive behavior, model/runtime wiring and root MARK remain outside the boundary.
+The Phase 7 presentation/configuration foundation is closed as a strict dependency-ordered stack: immutable presentation contracts -> strict schema-v1 document -> bounded explicit-Path file store -> process-local configuration owner -> tiny explicit-path bootstrap composition seam -> immutable presentation read model. The read model is a fresh-copy, presentation-only projection with zero production consumers and no schema, path, persistence, bootstrap, service, write or trusted-action authority. Bootstrap also remains without a production consumer; persistence load/save ownership remains in PresentationConfigurationService. Actual UI, Voice and conversational/runtime consumption is intentionally deferred to those subsystem phases.
+
+Presentation identity remains separate from capability identity, permissions/policy, confirmation binding, audit action identity, execution authority, trusted object identity and secrets. Legacy ConfigService remains isolated, unused and non-authoritative. Root MARK remains outside the Nayeon v1 composition boundary.
+
+## Next architecture question
+
+Phase 8 should begin with an architecture audit for Secure Secrets & BYOK Onboarding. Do not expand the legacy environment-backed SecretStore or add provider credentials, plaintext secret persistence, UI onboarding, provider selection, migration or runtime composition until that architecture gate is explicitly approved. Preserve the provider abstraction and ensure secrets never become model-visible, log-visible, presentation configuration, or generic settings.
 
 ## Required startup behavior
 
