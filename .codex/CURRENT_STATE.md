@@ -3,26 +3,29 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 7.6 - Bounded Presentation Read Model & Phase 7 Foundation Closure
-- **Latest milestone tag:** `nayeon-v1-presentation-read-model-foundation-closure-01`
-- **Full regression baseline:** **1,645 / 1,645**
+- **Latest completed product phase:** Phase 8.1 - Secure Secret Contract & Windows Credential Storage Foundation
+- **Latest milestone tag:** `nayeon-v1-secure-secret-windows-credential-storage-01`
+- **Full regression baseline:** **1,681 / 1,681**
 - **Last updated:** 7 Oct 2026
 - **Phase 7 status:** User Identity & Configuration **FOUNDATION COMPLETE**
-- **Next restart point:** Phase 8 - Architecture audit for Secure Secrets & BYOK Onboarding; scope not yet approved
+- **Phase 8 status:** Secure Secrets & BYOK **IN PROGRESS**
+- **Next restart point:** Phase 8.2 - Architecture audit for bounded secret ownership/resolution and OpenAI provider migration; scope not yet approved
 
 ## Latest architecture invariant
 
-The Phase 7 presentation/configuration foundation is closed as a strict dependency-ordered stack: immutable presentation contracts -> strict schema-v1 document -> bounded explicit-Path file store -> process-local configuration owner -> tiny explicit-path bootstrap composition seam -> immutable presentation read model. The read model is a fresh-copy, presentation-only projection with zero production consumers and no schema, path, persistence, bootstrap, service, write or trusted-action authority. Bootstrap also remains without a production consumer; persistence load/save ownership remains in PresentationConfigurationService. Actual UI, Voice and conversational/runtime consumption is intentionally deferred to those subsystem phases.
+Phase 8.1 adds a provider-neutral secure-secret foundation without changing any existing production consumer. `SecretIdentifier` is safe metadata, `SecretValue` is an opaque redacted holder with one explicit plaintext reveal boundary, and `SecretBackend` exposes only exact get/put/delete/is_available operations. `WindowsCredentialBackend` stores only Nayeon-namespaced Generic Credentials under `nayeon-v1/secret/<identifier>` using Windows Credential Manager with local-machine persistence for the current Windows user, strict UTF-8 blobs, the 2,560-byte limit, fixed safe error messages, no enumeration and no arbitrary-target API.
 
-Presentation identity remains separate from capability identity, permissions/policy, confirmation binding, audit action identity, execution authority, trusted object identity and secrets. Legacy ConfigService remains isolated, unused and non-authoritative. Root MARK remains outside the Nayeon v1 composition boundary.
+The existing environment-backed `nayeon/secrets/store.py` and `OpenAIProvider` remain frozen and unchanged; OpenAIProvider remains the sole production consumer of the legacy SecretStore. The new contracts/backend have no production consumers yet. Secrets remain separate from presentation configuration, generic settings, prompts/model context, memory, audit/log output, capability identity and trusted action/security authority.
+
+Independent validation passed 36/36 dedicated Phase 8.1 tests, 148/148 Phase 7 + Phase 8.1 suites, 280/280 affected configuration/secrets + trust/orchestration tests and 1,681/1,681 full regression. A controlled disposable native Windows Credential Manager smoke passed absent -> put -> available -> exact Unicode round-trip -> delete -> absent, with cleanup confirmed and no real provider credential used.
 
 ## Next architecture question
 
-Phase 8 should begin with an architecture audit for Secure Secrets & BYOK Onboarding. Do not expand the legacy environment-backed SecretStore or add provider credentials, plaintext secret persistence, UI onboarding, provider selection, migration or runtime composition until that architecture gate is explicitly approved. Preserve the provider abstraction and ensure secrets never become model-visible, log-visible, presentation configuration, or generic settings.
+Phase 8.2 should define the smallest secure ownership/resolution boundary that allows provider code to obtain one exact secret while preventing UI, model, memory, audit and generic runtime components from receiving raw secret authority. It should also decide the bounded migration of `OpenAIProvider` away from the legacy environment `SecretStore` without introducing provider selection, onboarding UI, plaintext persistence, environment fallback, or broad secret enumeration. Scope is not yet approved.
 
 ## Required startup behavior
 
-Inspect current HEAD/tag/status and read the latest relevant phase review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
+Inspect current HEAD/tag/status and read the Phase 8.1 review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
 
 ## Close-out rule
 
