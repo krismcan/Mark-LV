@@ -18,13 +18,17 @@ from nayeon.config.document import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Phase 8.1 permits only these additions; sealed Phase 7.6 stays frozen.
+PHASE_8_ADDITIONS = {
+    "nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
+}
 MODULE = "nayeon/config/persistence.py"
 SERVICE_MODULE = "nayeon/config/service.py"
 BOOTSTRAP_MODULE = "nayeon/config/bootstrap.py"
 VIEW_MODULE = "nayeon/config/view.py"
-STARTING_HEAD = "0e6bb866356df126d4a899ace54d988237850c00"
-PRODUCT_COMMIT = "704abff2db9d78c0955ffde7692055f1968c2bd7"
-TAG = "nayeon-v1-presentation-configuration-bootstrap-composition-01"
+STARTING_HEAD = "e50a0e24289d9ab4452ad9e34c8bee1408db851a"
+PRODUCT_COMMIT = "a39d06409e1a602c0fd0cfa605aac89e24505aab"
+TAG = "nayeon-v1-presentation-read-model-foundation-closure-01"
 LIMIT = 65536
 PRIVATE_VALUE = "PrivatePersonalValueMarker"
 PRIVATE_KEY = "PrivateUnknownKeyMarker"
@@ -426,12 +430,12 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)
         changed = set(git("diff", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {VIEW_MODULE})
-        self.assertEqual(changed - {VIEW_MODULE}, set())
-        self.assertEqual(untracked - {VIEW_MODULE}, set())
+        self.assertEqual(changed | untracked, PHASE_8_ADDITIONS)
+        self.assertEqual(changed - PHASE_8_ADDITIONS, set())
+        self.assertEqual(untracked - PHASE_8_ADDITIONS, set())
         tracked = git("ls-tree", "-r", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines()
         actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | {VIEW_MODULE})
+        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_ADDITIONS)
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

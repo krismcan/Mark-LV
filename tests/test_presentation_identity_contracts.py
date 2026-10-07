@@ -10,10 +10,14 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 7.6 permits exactly view.py while freezing sealed Phase 7.5 contents.
-CHECKPOINT = "704abff2db9d78c0955ffde7692055f1968c2bd7"
-TAG = "nayeon-v1-presentation-configuration-bootstrap-composition-01"
-STARTING_HEAD = "0e6bb866356df126d4a899ace54d988237850c00"
+# Phase 8.1 permits only these additions; sealed Phase 7.6 stays frozen.
+PHASE_8_ADDITIONS = {
+    "nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
+}
+# Phase 8.1 freezes all sealed Phase 7.6 contents.
+CHECKPOINT = "a39d06409e1a602c0fd0cfa605aac89e24505aab"
+TAG = "nayeon-v1-presentation-read-model-foundation-closure-01"
+STARTING_HEAD = "e50a0e24289d9ab4452ad9e34c8bee1408db851a"
 MODULE = "nayeon/config/presentation.py"
 DOCUMENT_MODULE = "nayeon/config/document.py"
 VIEW_MODULE = "nayeon/config/view.py"
@@ -198,14 +202,14 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, {VIEW_MODULE})
-        self.assertEqual(changed - {VIEW_MODULE}, set())
-        self.assertEqual(untracked - {VIEW_MODULE}, set())
+        self.assertEqual(changed | untracked, PHASE_8_ADDITIONS)
+        self.assertEqual(changed - PHASE_8_ADDITIONS, set())
+        self.assertEqual(untracked - PHASE_8_ADDITIONS, set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | {VIEW_MODULE})
+        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | PHASE_8_ADDITIONS)
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
