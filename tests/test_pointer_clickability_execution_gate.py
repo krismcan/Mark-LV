@@ -220,7 +220,10 @@ class ClickabilitySourceGuards(unittest.TestCase):
         paths = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', HEAD, '--', 'nayeon'],
                                         cwd=ROOT).decode().splitlines()
         for path in paths:
-            if path == 'nayeon/agent/pointer_binding.py':
+            # Phase 8.2 intentionally migrates OpenAIProvider's secret dependency;
+            # its new exact boundary is frozen by the Phase 8.2 security guards.
+            if path in ('nayeon/agent/pointer_binding.py',
+                        'nayeon/brain/providers/openai.py'):
                 continue
             baseline = subprocess.check_output(['git', 'show', HEAD + ':' + path], cwd=ROOT)
             self.assertEqual((ROOT / path).read_bytes().replace(b'\r\n', b'\n'),

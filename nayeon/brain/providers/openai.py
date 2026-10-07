@@ -7,7 +7,12 @@ from typing import Any
 from openai import OpenAI
 
 from nayeon.brain.service import AIMessage, AIResponse
-from nayeon.secrets.store import SecretStore
+from nayeon.secrets.contracts import SecretIdentifier
+from nayeon.secrets.resolver import BoundSecretResolver
+
+
+class OpenAIProviderInitializationError(RuntimeError):
+    """Client construction failed without disclosing credential details."""
 
 
 class OpenAIProvider:
@@ -17,11 +22,15 @@ class OpenAIProvider:
 
     def __init__(
         self,
-        secrets: SecretStore,
+        api_key: BoundSecretResolver,
         *,
         model: str = "gpt-5.6",
     ) -> None:
-        self._secrets = secrets
+        if type(api_key) is not BoundSecretResolver:
+            raise TypeError("API key must be an exact BoundSecretResolver")
+        if api_key.identifier != SecretIdentifier("openai.api_key"):
+            raise ValueError("API key resolver has an invalid identifier")
+        self._api_key: BoundSecretResolver | None = api_key
         self._model = model
         self._client: OpenAI | None = None
 
@@ -35,8 +44,15 @@ class OpenAIProvider:
         """Create the OpenAI client when it is first needed."""
 
         if self._client is None:
-            api_key = self._secrets.require("OPENAI_API_KEY")
-            self._client = OpenAI(api_key=api_key)
+            secret = self._api_key.resolve()
+            try:
+                client = OpenAI(api_key=secret.reveal())
+            except Exception:
+                raise OpenAIProviderInitializationError(
+                    "OpenAI provider initialization failed"
+                ) from None
+            self._client = client
+            self._api_key = None
 
         return self._client
 
