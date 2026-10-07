@@ -17,10 +17,11 @@ from nayeon.secrets.contracts import SecretIdentifier, SecretValue, SecretNotFou
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = "09d576adcfc25cbf08ea62b558ccc16c0edc5012"
-SEALED = "d620dd6fb67bfed24f5c33b4f3aa9583f3d7f418"
-TAG = "nayeon-v1-bound-secret-resolver-openai-provider-migration-01"
-PHASE_8_3_DELTA = {"nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py"}
+START = "e809cd70f445dc77e8eab6187dd18635b438632a"
+SEALED = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
+TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
+PHASE_8_4_DELTA = {"nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
+         "nayeon/brain/providers/openai.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -347,17 +348,19 @@ class ScopeGuards(unittest.TestCase):
         for baseline in (START, SEALED):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_3_DELTA)
+            self.assertEqual(changed | untracked, PHASE_8_4_DELTA)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_3_DELTA)
+            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | (PHASE_8_4_DELTA - {"nayeon/brain/providers/openai.py"}))
             for path in tracked:
+                if path == "nayeon/brain/providers/openai.py":
+                    continue
                 with self.subTest(baseline=baseline, path=path):
                     self.assert_frozen(path, baseline)
 
     def test_protected_files_dependencies_and_legacy_unchanged(self):
         for path in ("AGENTS.md", ".codex/CURRENT_STATE.md", "scripts/update_codex_context.py",
-                     "requirements.txt", "setup.py", "main.py", "ui.py"):
+                     "setup.py", "main.py", "ui.py"):
             self.assert_frozen(path, START)
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             for path in git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines():
@@ -393,7 +396,7 @@ class ScopeGuards(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module == "nayeon.secrets.store":
                     old_consumers.add(relative)
-                if relative in PHASE_8_3_DELTA | {"nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
+                if relative in PHASE_8_4_DELTA | {"nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py", "nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
                                                    "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"}:
                     continue
                 if isinstance(node, ast.ImportFrom):

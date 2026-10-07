@@ -10,14 +10,15 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 8.3 permits only two new modules; every sealed Phase 8.2 file stays frozen.
-PHASE_8_3_DELTA = {
-    "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py",
+# Phase 8.4 permits two new modules and the shared-factory provider migration.
+PHASE_8_4_DELTA = {
+    "nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
+    "nayeon/brain/providers/openai.py",
 }
-# Phase 8.3 freezes all sealed Phase 8.2 production files.
-CHECKPOINT = "d620dd6fb67bfed24f5c33b4f3aa9583f3d7f418"
-TAG = "nayeon-v1-bound-secret-resolver-openai-provider-migration-01"
-STARTING_HEAD = "09d576adcfc25cbf08ea62b558ccc16c0edc5012"
+# All other sealed Phase 8.3 production files stay frozen.
+CHECKPOINT = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
+TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
+STARTING_HEAD = "e809cd70f445dc77e8eab6187dd18635b438632a"
 MODULE = "nayeon/config/presentation.py"
 DOCUMENT_MODULE = "nayeon/config/document.py"
 VIEW_MODULE = "nayeon/config/view.py"
@@ -202,15 +203,17 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, PHASE_8_3_DELTA)
-        self.assertEqual(changed - PHASE_8_3_DELTA, set())
-        self.assertEqual(untracked - PHASE_8_3_DELTA, set())
+        self.assertEqual(changed | untracked, PHASE_8_4_DELTA)
+        self.assertEqual(changed - PHASE_8_4_DELTA, set())
+        self.assertEqual(untracked - PHASE_8_4_DELTA, set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | PHASE_8_3_DELTA)
+        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | (PHASE_8_4_DELTA - {"nayeon/brain/providers/openai.py"}))
         for path in tracked:
+            if path == "nayeon/brain/providers/openai.py":
+                continue
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                  git("show", CHECKPOINT + ":" + path).replace(b"\r\n", b"\n"))

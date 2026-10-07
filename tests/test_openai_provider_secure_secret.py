@@ -1,19 +1,15 @@
-"""Phase 8.2 provider tests: patched SDK only, no credentials or network."""
+"""Sealed provider authority tests: patched factory only, no network."""
 
 import ast
 import inspect
 import os
 from pathlib import Path
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 import traceback
 import unittest
 from unittest.mock import Mock, patch
 
-_fake_openai = ModuleType("openai")
-_fake_openai.OpenAI = type("ImportOnlyOpenAI", (), {})
-with patch.dict(sys.modules, {"openai": _fake_openai}):
-    from nayeon.brain.providers import openai as m
+from nayeon.brain.providers import openai as m
 from nayeon.brain.service import AIMessage
 from nayeon.secrets.contracts import (
     SecretIdentifier, SecretNotFoundError, SecretStorageError, SecretValue,
@@ -32,7 +28,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.backend = Mock()
         self.backend.get.return_value = self.secret
         self.resolver = BoundSecretResolver(self.backend, SecretIdentifier("openai.api_key"))
-        self.sdk_patch = patch.object(m, "OpenAI")
+        self.sdk_patch = patch.object(m, "create_openai_client")
         self.sdk = self.sdk_patch.start()
         self.addCleanup(self.sdk_patch.stop)
 
@@ -72,14 +68,15 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.assertEqual(self.backend.mock_calls, [])
         self.sdk.assert_not_called()
 
-    def test_lazy_exact_plaintext_caching_and_authority_release(self):
+    def test_lazy_exact_holder_client_caching_and_authority_release(self):
         provider = self.provider()
         with patch.object(BoundSecretResolver, "resolve", autospec=True,
-                          return_value=self.secret) as resolve:
+                          return_value=self.secret) as resolve, \
+             patch.object(SecretValue, "reveal", side_effect=AssertionError("provider must not reveal")):
             self.assertIs(provider._get_client(), self.sdk.return_value)
             resolve.assert_called_once_with(self.resolver)
-            self.sdk.assert_called_once_with(api_key=self.plaintext)
-            self.assertIs(self.sdk.call_args.kwargs["api_key"], self.plaintext)
+            self.sdk.assert_called_once_with(self.secret)
+            self.assertIs(self.sdk.call_args.args[0], self.secret)
             self.assertIsNone(provider._api_key)
             self.assertIs(provider._get_client(), self.sdk.return_value)
             resolve.assert_called_once()
@@ -131,6 +128,17 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.assertEqual(self.backend.get.call_count, 2)
         self.assertIsNone(provider._api_key)
 
+    def test_construction_process_control_propagates_and_retains_resolver(self):
+        for error_type in (KeyboardInterrupt, SystemExit):
+            provider = self.provider()
+            error = error_type()
+            self.sdk.side_effect = error
+            with self.assertRaises(error_type) as caught:
+                provider._get_client()
+            self.assertIs(caught.exception, error)
+            self.assertIs(provider._api_key, self.resolver)
+            self.assertIsNone(provider._client)
+
     def test_generate_preserves_input_usage_normalization_and_cached_client(self):
         provider = self.provider(model="synthetic-model")
         response = SimpleNamespace(output_text="synthetic-answer", usage=SimpleNamespace(
@@ -152,7 +160,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
             self.assertEqual(provider.generate(messages, system_prompt=prompt).usage, {})
             self.assertNotIn("instructions", create.call_args.kwargs)
         self.backend.get.assert_called_once()
-        self.sdk.assert_called_once_with(api_key=self.plaintext)
+        self.sdk.assert_called_once_with(self.secret)
 
     def test_empty_messages_fail_before_secret_or_sdk(self):
         with self.assertRaisesRegex(ValueError, "^At least one message is required\\.$"):
@@ -174,7 +182,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         with patch.object(os, "getenv", side_effect=AssertionError("no environment")), \
              patch.dict(os.environ, {}, clear=True):
             self.provider()._get_client()
-        self.sdk.assert_called_once_with(api_key=self.plaintext)
+        self.sdk.assert_called_once_with(self.secret)
 
     def test_production_import_and_consumer_boundaries(self):
         root = Path(__file__).resolve().parents[1]
@@ -214,7 +222,9 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.assertEqual(backend_consumers, set())
         self.assertEqual(contract_consumers, {"nayeon/secrets/windows_credential.py",
                          "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py",
-                         "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py"})
+                         "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py",
+                         "nayeon/brain/providers/openai_client.py",
+                         "nayeon/brain/providers/openai_validation.py"})
 
     def test_provider_exact_imports_and_no_environment_operations(self):
         root = Path(__file__).resolve().parents[1]
@@ -222,7 +232,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
         self.assertTrue(all(isinstance(node, ast.ImportFrom) and node.level == 0 for node in imports))
         self.assertEqual([(node.module, [alias.name for alias in node.names]) for node in imports], [
-            ("__future__", ["annotations"]), ("typing", ["Any"]), ("openai", ["OpenAI"]),
+            ("__future__", ["annotations"]), ("typing", ["Any"]), ("nayeon.brain.providers.openai_client", ["create_openai_client"]),
             ("nayeon.brain.service", ["AIMessage", "AIResponse"]),
             ("nayeon.secrets.contracts", ["SecretIdentifier"]),
             ("nayeon.secrets.resolver", ["BoundSecretResolver"]),
@@ -231,7 +241,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
             if isinstance(node, (ast.Name, ast.Attribute)):
                 self.assertNotIn(node.id if isinstance(node, ast.Name) else node.attr,
                                  {"environ", "getenv", "SecretStore", "SecretBackend",
-                                  "WindowsCredentialBackend", "__import__", "eval", "exec"})
+                                  "WindowsCredentialBackend", "__import__", "eval", "exec", "reveal"})
 
 
 if __name__ == "__main__":

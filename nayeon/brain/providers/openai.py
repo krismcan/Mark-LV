@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openai import OpenAI
+from nayeon.brain.providers.openai_client import create_openai_client
 
 from nayeon.brain.service import AIMessage, AIResponse
 from nayeon.secrets.contracts import SecretIdentifier
@@ -32,7 +32,7 @@ class OpenAIProvider:
             raise ValueError("API key resolver has an invalid identifier")
         self._api_key: BoundSecretResolver | None = api_key
         self._model = model
-        self._client: OpenAI | None = None
+        self._client: Any | None = None
 
     @property
     def model(self) -> str:
@@ -40,13 +40,13 @@ class OpenAIProvider:
 
         return self._model
 
-    def _get_client(self) -> OpenAI:
+    def _get_client(self) -> Any:
         """Create the OpenAI client when it is first needed."""
 
         if self._client is None:
             secret = self._api_key.resolve()
             try:
-                client = OpenAI(api_key=secret.reveal())
+                client = create_openai_client(secret)
             except Exception:
                 raise OpenAIProviderInitializationError(
                     "OpenAI provider initialization failed"

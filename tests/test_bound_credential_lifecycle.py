@@ -22,10 +22,11 @@ from nayeon.secrets.lifecycle import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = "09d576adcfc25cbf08ea62b558ccc16c0edc5012"
-SEALED = "d620dd6fb67bfed24f5c33b4f3aa9583f3d7f418"
-TAG = "nayeon-v1-bound-secret-resolver-openai-provider-migration-01"
-DELTA = {"nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py"}
+START = "e809cd70f445dc77e8eab6187dd18635b438632a"
+SEALED = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
+TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
+DELTA = {"nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
+         "nayeon/brain/providers/openai.py"}
 FAILURE = "Credential lifecycle operation failed"
 
 
@@ -398,20 +399,22 @@ class Phase83ScopeGuards(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), SEALED)
         for baseline in (START, SEALED):
             tracked = set(git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines())
-            self.assertFalse(tracked & DELTA)
+            self.assertEqual(tracked & DELTA, {"nayeon/brain/providers/openai.py"})
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
             self.assertEqual(changed | untracked, DELTA)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA)
+            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | (DELTA - {"nayeon/brain/providers/openai.py"}))
             for path in tracked:
+                if path == "nayeon/brain/providers/openai.py":
+                    continue
                 with self.subTest(baseline=baseline, path=path):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                      git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_protected_context_dependencies_and_legacy_frozen(self):
         paths = {"AGENTS.md", ".codex/CURRENT_STATE.md", "scripts/update_codex_context.py",
-                 "requirements.txt", "setup.py", "main.py", "ui.py"}
+                 "setup.py", "main.py", "ui.py"}
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             paths.update(git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines())
         for path in paths:
@@ -433,6 +436,13 @@ class Phase83ScopeGuards(unittest.TestCase):
                     names = {a.name for a in node.names}
                     for module, symbol in targets.items():
                         if node.module == module or symbol in names:
+                            # Only this exact enum consumer is approved; importing
+                            # the lifecycle module still counts as authority elsewhere.
+                            if (module == "nayeon.secrets.lifecycle"
+                                    and node.module == module
+                                    and relative == "nayeon/brain/providers/openai_validation.py"
+                                    and names == {"CredentialValidationStatus"}):
+                                continue
                             consumers[symbol].add(relative)
                     if "SecretBackend" in names:
                         backend_consumers.add(relative)

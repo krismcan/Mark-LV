@@ -4,6 +4,9 @@ sounddevice
 numpy
 google-genai>=2.8.0
 
+# Nayeon AI/provider boundary
+openai==3.26.0
+
 # ── Web search & browser control ──────────────────────────────────────────────
 requests
 beautifulsoup4
