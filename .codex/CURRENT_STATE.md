@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 7.4 - Bounded Presentation Configuration Runtime Ownership
-- **Latest milestone tag:** `nayeon-v1-presentation-configuration-runtime-ownership-01`
-- **Full regression baseline:** **1,608 / 1,608**
-- **Last updated:** 6 Oct 2026
-- **Next restart point:** Phase 7.5 - Architecture audit for bounded presentation-configuration composition/bootstrap wiring; scope not yet approved
+- **Latest completed product phase:** Phase 7.5 - Bounded Presentation Configuration Bootstrap Composition
+- **Latest milestone tag:** `nayeon-v1-presentation-configuration-bootstrap-composition-01`
+- **Full regression baseline:** **1,625 / 1,625**
+- **Last updated:** 7 Oct 2026
+- **Next restart point:** Phase 7.6 - Architecture audit for a bounded presentation-configuration consumer boundary / read-only presentation view; scope not yet approved
 
 ## Latest architecture invariant
 
-Presentation configuration now has one strict process-local owner above the sealed schema-v1 document and explicit-Path file store: initialization is lazy/fail-closed, first-run defaults remain in memory only, replacement persists before swapping ownership, and the owner remains unwired while legacy ConfigService, trusted action identity, permissions/policy, secrets, Voice/Proactive behavior and root MARK runtime stay outside the boundary.
+Presentation configuration now has a strict dependency-ordered stack: immutable presentation contracts -> strict schema-v1 document -> bounded explicit-Path file store -> process-local configuration owner -> one tiny explicit-path bootstrap composition seam. The bootstrap constructs exactly one store and one service, initializes once, and returns that initialized service; it derives no path, has no production consumer, and introduces no runtime/container authority. Persistence load/save ownership remains in the service layer. Legacy ConfigService, trusted action identity, permissions/policy, secrets, Voice/Proactive behavior, model/runtime wiring and root MARK remain outside the boundary.
 
 ## Required startup behavior
 
