@@ -213,7 +213,8 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.assertEqual(store_consumers, set())
         self.assertEqual(backend_consumers, set())
         self.assertEqual(contract_consumers, {"nayeon/secrets/windows_credential.py",
-                         "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"})
+                         "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py",
+                         "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py"})
 
     def test_provider_exact_imports_and_no_environment_operations(self):
         root = Path(__file__).resolve().parents[1]

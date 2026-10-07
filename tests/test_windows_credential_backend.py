@@ -17,10 +17,10 @@ from nayeon.secrets.contracts import SecretIdentifier, SecretValue, SecretNotFou
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = "e116eaaa25b34e1af6f74c6b604684b15aad2859"
-SEALED = "5b57221720a298477ef83ef54891c07b7126c496"
-TAG = "nayeon-v1-secure-secret-windows-credential-storage-01"
-PHASE_8_2_DELTA = {"nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"}
+START = "09d576adcfc25cbf08ea62b558ccc16c0edc5012"
+SEALED = "d620dd6fb67bfed24f5c33b4f3aa9583f3d7f418"
+TAG = "nayeon-v1-bound-secret-resolver-openai-provider-migration-01"
+PHASE_8_3_DELTA = {"nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -339,7 +339,7 @@ class ScopeGuards(unittest.TestCase):
         self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                          git("show", baseline + ":" + path).replace(b"\r\n", b"\n"), path)
 
-    def test_exact_phase_8_2_delta_and_other_production_frozen(self):
+    def test_exact_phase_8_3_delta_and_other_production_frozen(self):
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
         self.assertEqual(git("rev-parse", "HEAD").decode().strip(), START)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")
@@ -347,13 +347,11 @@ class ScopeGuards(unittest.TestCase):
         for baseline in (START, SEALED):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_2_DELTA)
+            self.assertEqual(changed | untracked, PHASE_8_3_DELTA)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_2_DELTA)
+            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_3_DELTA)
             for path in tracked:
-                if path == "nayeon/brain/providers/openai.py":
-                    continue
                 with self.subTest(baseline=baseline, path=path):
                     self.assert_frozen(path, baseline)
 
@@ -395,7 +393,8 @@ class ScopeGuards(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module == "nayeon.secrets.store":
                     old_consumers.add(relative)
-                if relative in PHASE_8_2_DELTA | {"nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py"}:
+                if relative in PHASE_8_3_DELTA | {"nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
+                                                   "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"}:
                     continue
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn(node.module, {"nayeon.secrets.contracts", "nayeon.secrets.windows_credential"})
