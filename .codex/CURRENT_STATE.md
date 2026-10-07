@@ -3,29 +3,31 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.1 - Secure Secret Contract & Windows Credential Storage Foundation
-- **Latest milestone tag:** `nayeon-v1-secure-secret-windows-credential-storage-01`
-- **Full regression baseline:** **1,681 / 1,681**
+- **Latest completed product phase:** Phase 8.2 - Bound Secret Resolver & OpenAI Provider Migration
+- **Latest milestone tag:** `nayeon-v1-bound-secret-resolver-openai-provider-migration-01`
+- **Full regression baseline:** **1,707 / 1,707**
 - **Last updated:** 7 Oct 2026
 - **Phase 7 status:** User Identity & Configuration **FOUNDATION COMPLETE**
 - **Phase 8 status:** Secure Secrets & BYOK **IN PROGRESS**
-- **Next restart point:** Phase 8.2 - Architecture audit for bounded secret ownership/resolution and OpenAI provider migration; scope not yet approved
+- **Next restart point:** Phase 8.3 - Architecture audit for bounded credential lifecycle and typed provider connection configuration; scope not yet approved
 
 ## Latest architecture invariant
 
-Phase 8.1 adds a provider-neutral secure-secret foundation without changing any existing production consumer. `SecretIdentifier` is safe metadata, `SecretValue` is an opaque redacted holder with one explicit plaintext reveal boundary, and `SecretBackend` exposes only exact get/put/delete/is_available operations. `WindowsCredentialBackend` stores only Nayeon-namespaced Generic Credentials under `nayeon-v1/secret/<identifier>` using Windows Credential Manager with local-machine persistence for the current Windows user, strict UTF-8 blobs, the 2,560-byte limit, fixed safe error messages, no enumeration and no arbitrary-target API.
+Phase 8.2 introduces a least-authority `BoundSecretResolver` that privately binds one `SecretBackend` to one exact immutable `SecretIdentifier` and publicly exposes only safe identifier metadata plus resolution of that one credential. It has no public backend access, put/delete/is_available, enumeration, rebinding or arbitrary-identifier API. Unexpected backend failures are converted to a fixed safe `SecretStorageError`, and the resolver retains no resolved `SecretValue`.
 
-The existing environment-backed `nayeon/secrets/store.py` and `OpenAIProvider` remain frozen and unchanged; OpenAIProvider remains the sole production consumer of the legacy SecretStore. The new contracts/backend have no production consumers yet. Secrets remain separate from presentation configuration, generic settings, prompts/model context, memory, audit/log output, capability identity and trusted action/security authority.
+`OpenAIProvider` has been migrated completely away from the legacy environment-backed `SecretStore`. It accepts only an exact `BoundSecretResolver` bound to `openai.api_key`, resolves lazily only when constructing the OpenAI client, reveals plaintext only at that SDK boundary, stores neither `SecretValue` nor plaintext itself, and releases its resolver authority after successful client creation. Provider-construction failures are surfaced only as fixed `OpenAIProviderInitializationError("OpenAI provider initialization failed")` with the underlying exception chain suppressed. On resolution or constructor failure, no client is cached and resolver authority is retained for retry.
 
-Independent validation passed 36/36 dedicated Phase 8.1 tests, 148/148 Phase 7 + Phase 8.1 suites, 280/280 affected configuration/secrets + trust/orchestration tests and 1,681/1,681 full regression. A controlled disposable native Windows Credential Manager smoke passed absent -> put -> available -> exact Unicode round-trip -> delete -> absent, with cleanup confirmed and no real provider credential used.
+The legacy `nayeon/secrets/store.py` remains unchanged but now has **zero production consumers**. `WindowsCredentialBackend` remains provider-neutral with **zero direct production consumers**. Only `nayeon/secrets/resolver.py` imports the `SecretBackend` authority contract, and only `nayeon/brain/providers/openai.py` consumes `BoundSecretResolver`. Secrets remain separate from presentation configuration, generic settings, prompts/model context, memory, audit/log output, capability identity and trusted action/security authority.
+
+Independent validation passed 26/26 dedicated Phase 8.2 tests, 174/174 combined Phase 7 + Phase 8 suites, 306/306 affected configuration/secrets + trust/orchestration tests and 1,707/1,707 full regression. No native Credential Manager mutation or real OpenAI network call was required in Phase 8.2; the unchanged Phase 8.1 native backend was already proven separately.
 
 ## Next architecture question
 
-Phase 8.2 should define the smallest secure ownership/resolution boundary that allows provider code to obtain one exact secret while preventing UI, model, memory, audit and generic runtime components from receiving raw secret authority. It should also decide the bounded migration of `OpenAIProvider` away from the legacy environment `SecretStore` without introducing provider selection, onboarding UI, plaintext persistence, environment fallback, or broad secret enumeration. Scope is not yet approved.
+Phase 8.3 should define the bounded credential lifecycle and typed provider-connection configuration needed for BYOK onboarding: connect/store, validate/test, replace and remove a provider credential while keeping raw secret values out of UI read models, generic settings, logs, audit details, prompts/model context and memory. It should also decide the typed non-secret provider/model connection configuration that can refer to a credential identity without exposing credential contents. Do not add onboarding UI, runtime/application composition, provider-selection UX, plaintext persistence, environment fallback, broad secret enumeration or additional provider implementations until that architecture gate is explicitly approved.
 
 ## Required startup behavior
 
-Inspect current HEAD/tag/status and read the Phase 8.1 review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
+Inspect current HEAD/tag/status and read the Phase 8.2 review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
 
 ## Close-out rule
 
