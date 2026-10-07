@@ -3,31 +3,47 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.2 - Bound Secret Resolver & OpenAI Provider Migration
-- **Latest milestone tag:** `nayeon-v1-bound-secret-resolver-openai-provider-migration-01`
-- **Full regression baseline:** **1,707 / 1,707**
+- **Latest completed product phase:** Phase 8.3 - Bounded Credential Lifecycle & Typed Provider Connection Configuration
+- **Latest milestone tag:** `nayeon-v1-bounded-credential-lifecycle-provider-connection-01`
+- **Full regression baseline:** **1,745 / 1,745**
 - **Last updated:** 7 Oct 2026
 - **Phase 7 status:** User Identity & Configuration **FOUNDATION COMPLETE**
 - **Phase 8 status:** Secure Secrets & BYOK **IN PROGRESS**
-- **Next restart point:** Phase 8.3 - Architecture audit for bounded credential lifecycle and typed provider connection configuration; scope not yet approved
+- **Next restart point:** Phase 8.4 - Architecture audit for provider credential validation adapter plus typed connection-configuration ownership/persistence; scope not yet approved
 
 ## Latest architecture invariant
 
-Phase 8.2 introduces a least-authority `BoundSecretResolver` that privately binds one `SecretBackend` to one exact immutable `SecretIdentifier` and publicly exposes only safe identifier metadata plus resolution of that one credential. It has no public backend access, put/delete/is_available, enumeration, rebinding or arbitrary-identifier API. Unexpected backend failures are converted to a fixed safe `SecretStorageError`, and the resolver retains no resolved `SecretValue`.
+Phase 8.3 adds two new provider-neutral contracts without modifying any prior production file.
 
-`OpenAIProvider` has been migrated completely away from the legacy environment-backed `SecretStore`. It accepts only an exact `BoundSecretResolver` bound to `openai.api_key`, resolves lazily only when constructing the OpenAI client, reveals plaintext only at that SDK boundary, stores neither `SecretValue` nor plaintext itself, and releases its resolver authority after successful client creation. Provider-construction failures are surfaced only as fixed `OpenAIProviderInitializationError("OpenAI provider initialization failed")` with the underlying exception chain suppressed. On resolution or constructor failure, no client is cached and resolver authority is retained for retry.
+`BoundCredentialLifecycle` permanently binds one `SecretBackend`, one exact immutable `SecretIdentifier`, and one `CredentialValidator`. Its public surface is limited to safe identifier metadata plus `is_connected()`, `test_candidate()`, `test_stored()`, `connect()`, `replace()`, and `remove()`. It exposes no plaintext read/resolve/get/reveal/export path, no enumeration, no rebinding, and no public backend/validator authority. Candidate validation happens before any write; connect and replace both recheck presence state before storing. Replace never deletes or reads the old credential before validating the candidate. The backend has no compare-and-swap primitive, so an external actor can still race between the final presence check and put; no atomicity or rollback claim is made.
 
-The legacy `nayeon/secrets/store.py` remains unchanged but now has **zero production consumers**. `WindowsCredentialBackend` remains provider-neutral with **zero direct production consumers**. Only `nayeon/secrets/resolver.py` imports the `SecretBackend` authority contract, and only `nayeon/brain/providers/openai.py` consumes `BoundSecretResolver`. Secrets remain separate from presentation configuration, generic settings, prompts/model context, memory, audit/log output, capability identity and trusted action/security authority.
+Credential validation is tri-state: VALID, INVALID, or INDETERMINATE. Ordinary validator exceptions, including secret-contract errors, are contained as INDETERMINATE with no exception text exposed. Process-control exceptions such as KeyboardInterrupt/SystemExit are deliberately not swallowed. Backend storage errors retain their sealed safe semantics; unexpected backend exceptions become a fixed `SecretStorageError("Credential lifecycle operation failed")`.
 
-Independent validation passed 26/26 dedicated Phase 8.2 tests, 174/174 combined Phase 7 + Phase 8 suites, 306/306 affected configuration/secrets + trust/orchestration tests and 1,707/1,707 full regression. No native Credential Manager mutation or real OpenAI network call was required in Phase 8.2; the unchanged Phase 8.1 native backend was already proven separately.
+`ProviderConnectionConfiguration` is immutable, slotted, strictly typed NON-SECRET metadata only: provider identifier, model identifier, and exact `SecretIdentifier` credential reference. It grants no secret-resolution or lifecycle authority and does not enforce provider-to-credential identity mapping. Future trusted composition must independently verify that mapping before constructing a resolver/provider.
+
+The Phase 8.1/8.2 secret contracts, Windows backend, bounded resolver, OpenAI provider migration, legacy environment SecretStore, AIService, Phase 7 presentation/configuration subsystem, runtime and security authority paths remain unchanged. `BoundCredentialLifecycle` and `ProviderConnectionConfiguration` currently have **zero production consumers**. `BoundSecretResolver` is still consumed only by `OpenAIProvider`; legacy `SecretStore` and direct `WindowsCredentialBackend` each have zero production consumers.
+
+Independent validation passed 38/38 dedicated Phase 8.3 tests, 212/212 combined Phase 7 + Phase 8 suites, 344/344 affected configuration/secrets + trust/orchestration tests, and 1,745/1,745 full regression. No native Credential Manager mutation or provider network call was required because this phase adds only deterministic lifecycle/configuration contracts over the already sealed storage boundary.
 
 ## Next architecture question
 
-Phase 8.3 should define the bounded credential lifecycle and typed provider-connection configuration needed for BYOK onboarding: connect/store, validate/test, replace and remove a provider credential while keeping raw secret values out of UI read models, generic settings, logs, audit details, prompts/model context and memory. It should also decide the typed non-secret provider/model connection configuration that can refer to a credential identity without exposing credential contents. Do not add onboarding UI, runtime/application composition, provider-selection UX, plaintext persistence, environment fallback, broad secret enumeration or additional provider implementations until that architecture gate is explicitly approved.
+Phase 8.4 should decide the smallest safe production boundary for:
+1. an OpenAI-specific credential validation adapter that implements the provider-neutral `CredentialValidator` contract without leaking provider/network error content; and
+2. ownership/persistence of `ProviderConnectionConfiguration` as non-secret application metadata.
+
+The architecture should preserve separation between:
+- raw secret storage/lifecycle,
+- one-secret provider resolution,
+- provider credential validation,
+- non-secret provider/model/credential-reference configuration,
+- presentation configuration,
+- runtime/application composition.
+
+Do not add onboarding UI, provider/model selection UX, generic settings, plaintext secret persistence, environment fallback, broad secret enumeration, additional provider implementations, or runtime wiring until the Phase 8.4 architecture gate is explicitly approved.
 
 ## Required startup behavior
 
-Inspect current HEAD/tag/status and read the Phase 8.2 review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
+Inspect current HEAD/tag/status and read the Phase 8.3 review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
 
 ## Close-out rule
 
