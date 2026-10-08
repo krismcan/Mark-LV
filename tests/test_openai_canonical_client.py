@@ -13,12 +13,12 @@ from nayeon.secrets.contracts import SecretValue
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = "e809cd70f445dc77e8eab6187dd18635b438632a"
-SEALED = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
-TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
-NEW = {"nayeon/brain/providers/openai_client.py",
-       "nayeon/brain/providers/openai_validation.py"}
-DELTA = NEW | {"nayeon/brain/providers/openai.py", "requirements.txt"}
+START = "35c0246362fbecc3df8532b63d42087b32b22646"
+SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
+TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
+NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
+       "nayeon/brain/connection_service.py"}
+DELTA = NEW
 
 
 class SecretSubclass(SecretValue):
@@ -199,14 +199,10 @@ class Phase84ScopeGuards(unittest.TestCase):
         active = [line.strip() for line in current.decode("utf-8").splitlines()
                   if line.strip() and not line.lstrip().startswith("#")]
         self.assertEqual([line for line in active if line.lower().startswith("openai")], ["openai==3.26.0"])
-        addition = b"\n\n# Nayeon AI/provider boundary\nopenai==3.26.0"
-        if b"\r\n" in current:
-            addition = addition.replace(b"\n", b"\r\n")
-        self.assertEqual(current.count(addition), 1)
-        baseline = subprocess.check_output(["git", "show", START + ":requirements.txt"], cwd=ROOT)
-        # Permit only ordinary whole-file checkout newline conversion.
-        self.assertIn(current.replace(addition, b"", 1),
-                      (baseline, baseline.replace(b"\n", b"\r\n")))
+        for checkpoint in (START, SEALED):
+            baseline = subprocess.check_output(["git", "show", checkpoint + ":requirements.txt"], cwd=ROOT)
+            # The sealed pin and every other dependency are now frozen.
+            self.assertEqual(current.replace(b"\r\n", b"\n"), baseline.replace(b"\r\n", b"\n"))
 
     def test_exact_factory_and_validator_consumers(self):
         targets = {"create_openai_client": set(), "OpenAICredentialValidator": set()}

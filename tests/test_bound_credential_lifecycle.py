@@ -22,11 +22,11 @@ from nayeon.secrets.lifecycle import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-START = "e809cd70f445dc77e8eab6187dd18635b438632a"
-SEALED = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
-TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
-DELTA = {"nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
-         "nayeon/brain/providers/openai.py"}
+START = "35c0246362fbecc3df8532b63d42087b32b22646"
+SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
+TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
+DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
+         "nayeon/brain/connection_service.py"}
 FAILURE = "Credential lifecycle operation failed"
 
 
@@ -399,15 +399,13 @@ class Phase83ScopeGuards(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), SEALED)
         for baseline in (START, SEALED):
             tracked = set(git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines())
-            self.assertEqual(tracked & DELTA, {"nayeon/brain/providers/openai.py"})
+            self.assertEqual(tracked & DELTA, set())
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
             self.assertEqual(changed | untracked, DELTA)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | (DELTA - {"nayeon/brain/providers/openai.py"}))
+            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA)
             for path in tracked:
-                if path == "nayeon/brain/providers/openai.py":
-                    continue
                 with self.subTest(baseline=baseline, path=path):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                      git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
@@ -450,7 +448,8 @@ class Phase83ScopeGuards(unittest.TestCase):
                     for alias in node.names:
                         if alias.name in targets:
                             consumers[targets[alias.name]].add(relative)
-        self.assertEqual(consumers, {"BoundCredentialLifecycle": set(), "ProviderConnectionConfiguration": set(),
+        self.assertEqual(consumers, {"BoundCredentialLifecycle": set(), "ProviderConnectionConfiguration": {
+            "nayeon/brain/connection_document.py", "nayeon/brain/connection_service.py"},
             "BoundSecretResolver": {"nayeon/brain/providers/openai.py"}, "SecretStore": set(), "WindowsCredentialBackend": set()})
         self.assertEqual(backend_consumers, {"nayeon/secrets/resolver.py", "nayeon/secrets/lifecycle.py"})
 

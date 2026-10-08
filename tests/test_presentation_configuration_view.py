@@ -18,15 +18,15 @@ from nayeon.config.presentation import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 8.4 permits two new modules and the shared-factory provider migration.
-PHASE_8_4_DELTA = {
-    "nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
-    "nayeon/brain/providers/openai.py",
+# Phase 8.5 permits only three new non-secret connection ownership modules.
+PHASE_8_5_DELTA = {
+    "nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
+    "nayeon/brain/connection_service.py",
 }
 MODULE = "nayeon/config/view.py"
-STARTING_HEAD = "e809cd70f445dc77e8eab6187dd18635b438632a"
-PRODUCT_COMMIT = "e59c7588f15547e4f1eb89261dbe8f89e8ef6929"
-TAG = "nayeon-v1-bounded-credential-lifecycle-provider-connection-01"
+STARTING_HEAD = "35c0246362fbecc3df8532b63d42087b32b22646"
+PRODUCT_COMMIT = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
+TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 CONTRACTS = (
     ("assistant", AssistantPresentationIdentity),
     ("user", UserPresentationProfile),
@@ -272,11 +272,19 @@ def presentation_configuration_view(
                                    "presentation_configuration_view"}, {MODULE})
 
     def test_view_is_only_new_document_and_presentation_consumer(self):
-        self.assert_no_references({"document", "nayeon.config.document", "PresentationConfigurationDocumentV1",
+        self.assert_no_references({"nayeon.config.document", "PresentationConfigurationDocumentV1",
                                    "PRESENTATION_CONFIGURATION_SCHEMA_VERSION", "parse_presentation_configuration_document",
                                    "presentation_configuration_document_to_mapping"},
                                   {MODULE, "nayeon/config/document.py", "nayeon/config/persistence.py",
                                    "nayeon/config/service.py"})
+        # `document` alone is a generic local name, not presentation authority.
+        # Permit that lexical name only in the approved connection-document stack
+        # while still scanning those modules above for every presentation-specific
+        # import/type/function identifier.
+        self.assert_no_references({"document"},
+                                  {MODULE, "nayeon/config/document.py", "nayeon/config/persistence.py",
+                                   "nayeon/config/service.py", "nayeon/brain/connection_document.py",
+                                   "nayeon/brain/connection_persistence.py", "nayeon/brain/connection_service.py"})
         self.assert_no_references({"presentation", "nayeon.config.presentation", "AssistantPresentationIdentity",
                                    "UserPresentationProfile", "PresentationPreferences"},
                                   {MODULE, "nayeon/config/presentation.py", "nayeon/config/document.py"})
@@ -308,13 +316,11 @@ def presentation_configuration_view(
         for baseline in (STARTING_HEAD, PRODUCT_COMMIT):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_4_DELTA)
+            self.assertEqual(changed | untracked, PHASE_8_5_DELTA)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | (PHASE_8_4_DELTA - {"nayeon/brain/providers/openai.py"}))
+            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA)
             for path in tracked:
-                if path == "nayeon/brain/providers/openai.py":
-                    continue
                 with self.subTest(baseline=baseline, path=path):
                     self.assert_content_matches(path, baseline)
 

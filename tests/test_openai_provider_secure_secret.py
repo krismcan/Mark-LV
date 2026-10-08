@@ -204,6 +204,8 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
                     if module == "nayeon.secrets.windows_credential" or "WindowsCredentialBackend" in imported:
                         backend_consumers.add(relative)
                     if module == "nayeon.secrets.contracts":
+                        if relative == "nayeon/brain/connection_document.py":
+                            self.assertEqual(imported, {"SecretIdentifier"})
                         contract_consumers.add(relative)
                     if relative == "nayeon/brain/providers/openai.py":
                         self.assertFalse(imported & {"SecretStore", "SecretBackend", "WindowsCredentialBackend"})
@@ -223,6 +225,7 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
         self.assertEqual(contract_consumers, {"nayeon/secrets/windows_credential.py",
                          "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py",
                          "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py",
+                         "nayeon/brain/connection_document.py",
                          "nayeon/brain/providers/openai_client.py",
                          "nayeon/brain/providers/openai_validation.py"})
 
