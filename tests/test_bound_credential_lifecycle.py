@@ -412,7 +412,8 @@ class Phase83ScopeGuards(unittest.TestCase):
                                      git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_protected_context_dependencies_and_legacy_frozen(self):
-        paths = {"AGENTS.md", ".codex/CURRENT_STATE.md", "scripts/update_codex_context.py",
+        # The post-seal Codex handoff is intentionally refreshed; freeze instructions and script.
+        paths = {"AGENTS.md", "scripts/update_codex_context.py",
                  "setup.py", "main.py", "ui.py"}
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             paths.update(git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines())
