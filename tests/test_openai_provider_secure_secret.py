@@ -219,7 +219,8 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
                             backend_consumers.add(relative)
                         if alias.name == "nayeon.secrets.contracts":
                             contract_consumers.add(relative)
-        self.assertEqual(resolver_consumers, {"nayeon/brain/providers/openai.py"})
+        self.assertEqual(resolver_consumers, {"nayeon/brain/providers/openai.py",
+                                              "nayeon/brain/connection_composition.py"})
         self.assertEqual(store_consumers, set())
         self.assertEqual(backend_consumers, set())
         self.assertEqual(contract_consumers, {"nayeon/secrets/windows_credential.py",
@@ -227,7 +228,8 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
                          "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py",
                          "nayeon/brain/connection_document.py",
                          "nayeon/brain/providers/openai_client.py",
-                         "nayeon/brain/providers/openai_validation.py"})
+                         "nayeon/brain/providers/openai_validation.py",
+                         "nayeon/brain/connection_composition.py"})
 
     def test_provider_exact_imports_and_no_environment_operations(self):
         root = Path(__file__).resolve().parents[1]

@@ -18,10 +18,11 @@ from nayeon.config.document import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 8.5 permits only three new non-secret connection ownership modules.
+# Exact permitted Phase 8.5 + Phase 8.6 non-secret connection modules.
 PHASE_8_5_DELTA = {
     "nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
-    "nayeon/brain/connection_service.py",
+    "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
+         "nayeon/brain/connection_composition.py",
 }
 MODULE = "nayeon/config/persistence.py"
 SERVICE_MODULE = "nayeon/config/service.py"

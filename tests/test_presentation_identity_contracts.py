@@ -10,10 +10,11 @@ from nayeon.config import presentation as m
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Phase 8.5 permits only three new non-secret connection ownership modules.
+# Exact permitted Phase 8.5 + Phase 8.6 non-secret connection modules.
 PHASE_8_5_DELTA = {
     "nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
-    "nayeon/brain/connection_service.py",
+    "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
+         "nayeon/brain/connection_composition.py",
 }
 # Every sealed Phase 8.4 production file stays frozen.
 CHECKPOINT = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"

@@ -17,7 +17,8 @@ START = "35c0246362fbecc3df8532b63d42087b32b22646"
 SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
 TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
-       "nayeon/brain/connection_service.py"}
+       "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
+         "nayeon/brain/connection_composition.py"}
 DELTA = NEW
 
 

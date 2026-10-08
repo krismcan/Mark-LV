@@ -20,7 +20,8 @@ START = "35c0246362fbecc3df8532b63d42087b32b22646"
 SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
 TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
-         "nayeon/brain/connection_service.py"}
+         "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
+         "nayeon/brain/connection_composition.py"}
 NOT_INITIALIZED = "Provider connection service is not initialized"
 
 
@@ -262,7 +263,7 @@ class Phase85ScopeGuards(unittest.TestCase):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                      git("show", checkpoint + ":" + path).replace(b"\r\n", b"\n"))
 
-    def test_exact_metadata_consumers_and_no_service_composition(self):
+    def test_exact_metadata_consumers_and_only_approved_composition(self):
         targets = {
             "nayeon.brain.connection": "ProviderConnectionConfiguration",
             "nayeon.brain.connection_document": "ProviderConnectionDocumentV1",
@@ -282,10 +283,16 @@ class Phase85ScopeGuards(unittest.TestCase):
                         if alias.name in targets:
                             consumers[targets[alias.name]].add(relative)
         self.assertEqual(consumers, {
-            "ProviderConnectionConfiguration": {"nayeon/brain/connection_document.py", "nayeon/brain/connection_service.py"},
-            "ProviderConnectionDocumentV1": {"nayeon/brain/connection_persistence.py", "nayeon/brain/connection_service.py"},
-            "ProviderConnectionFileStore": {"nayeon/brain/connection_service.py"},
-            "ProviderConnectionService": set(),
+            "ProviderConnectionConfiguration": {
+                "nayeon/brain/connection_document.py", "nayeon/brain/connection_service.py",
+                "nayeon/brain/connection_composition.py"},
+            "ProviderConnectionDocumentV1": {
+                "nayeon/brain/connection_persistence.py", "nayeon/brain/connection_service.py",
+                "nayeon/brain/connection_composition.py"},
+            "ProviderConnectionFileStore": {
+                "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py"},
+            "ProviderConnectionService": {
+                "nayeon/brain/connection_bootstrap.py", "nayeon/brain/connection_composition.py"},
         })
 
     def test_context_setup_instructions_and_root_legacy_frozen(self):
