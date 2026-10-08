@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.6 - Trusted Provider Connection Composition & Explicit Bootstrap
-- **Latest milestone tag:** `nayeon-v1-trusted-provider-connection-composition-bootstrap-01`
-- **Full regression baseline:** **1,850 / 1,850**
+- **Latest completed product phase:** Phase 8.7 - Metadata-only Provider Connection Readiness & Explicit Startup
+- **Latest milestone tag:** `nayeon-v1-provider-connection-readiness-explicit-startup-01`
+- **Full regression baseline:** **1,880 / 1,880**
 - **Last updated:** 8 Oct 2026
-- **Next restart point:** Phase 8.7 architecture audit - trusted startup orchestration, readiness/validation reporting, and secure BYOK onboarding boundaries; scope not yet approved
+- **Next restart point:** Phase 8.8 architecture audit - trusted BYOK onboarding boundaries, status presentation, credential lifecycle integration and readiness rechecks; implementation not yet approved
 
 ## Latest architecture invariant
 
-Phase 8.6 adds only connection_bootstrap.py (caller-selected exact native Path initializes ProviderConnectionService without activation) and connection_composition.py (explicit fail-closed composition into lazy OpenAIProvider/AIService). Exact initialized service and document, selected provider=openai and credential=openai.api_key are checked before any backend observation; resolver binds a trusted constant, not arbitrary metadata; configured model passes unchanged. No credential read, provider client, SDK/network/native operation, generic registry, ambient path/env fallback, UI/runtime/session wiring, or automatic provider switching. Product commit 059b55efe945a561940f3d7bd9aa7b7d3fc6a971, annotated tag nayeon-v1-trusted-provider-connection-composition-bootstrap-01; staged and postcommit full regression 1850/1850 PASS, 29/29 focused; 98/98 existing Phase 8.5 production modules and requirements frozen, 2 new production modules, 2 new test suites, 10 narrow historical test guard revisions, one review document. Product tag pushed and remotely verified. Next phase requires independent audit and explicit approval.
+Phase 8.7 adds only connection_readiness.py and connection_startup.py. Readiness is a frozen metadata-only status UNCONFIGURED/UNSUPPORTED/READY_FOR_COMPOSITION, never credential presence, validation, model availability or AI usability. Startup initializes the sealed provider metadata owner from a caller-selected exact native Path and assesses cached metadata, without backend reads, SDK clients, network/native calls, fallback paths, automatic provider activation, UI or runtime wiring. Phase 8.6 composition retains the final provider-to-credential authority gate; status is never authorization and can become stale. Two production modules, two new suites, 11 narrow historical guard changes, one review; existing 100 Phase 8.6 production modules and requirements frozen; 1880/1880 full regression at seal and postcommit; product commit cadb399970a6c6bf9e1f937d033b5a7d60010c4d; annotated tag nayeon-v1-provider-connection-readiness-explicit-startup-01 pushed and remotely verified. Next phase requires independent audit and explicit user implementation approval.
 
 ## Required startup behavior
 
