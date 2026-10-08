@@ -21,7 +21,8 @@ SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
 TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
          "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
-         "nayeon/brain/connection_composition.py"}
+         "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
+         "nayeon/brain/connection_startup.py"}
 NOT_INITIALIZED = "Provider connection service is not initialized"
 
 
@@ -285,14 +286,17 @@ class Phase85ScopeGuards(unittest.TestCase):
         self.assertEqual(consumers, {
             "ProviderConnectionConfiguration": {
                 "nayeon/brain/connection_document.py", "nayeon/brain/connection_service.py",
-                "nayeon/brain/connection_composition.py"},
+                "nayeon/brain/connection_composition.py",
+                "nayeon/brain/connection_readiness.py"},
             "ProviderConnectionDocumentV1": {
                 "nayeon/brain/connection_persistence.py", "nayeon/brain/connection_service.py",
-                "nayeon/brain/connection_composition.py"},
+                "nayeon/brain/connection_composition.py",
+                "nayeon/brain/connection_readiness.py"},
             "ProviderConnectionFileStore": {
                 "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py"},
             "ProviderConnectionService": {
-                "nayeon/brain/connection_bootstrap.py", "nayeon/brain/connection_composition.py"},
+                "nayeon/brain/connection_bootstrap.py", "nayeon/brain/connection_composition.py",
+                "nayeon/brain/connection_readiness.py", "nayeon/brain/connection_startup.py"},
         })
 
     def test_context_setup_instructions_and_root_legacy_frozen(self):

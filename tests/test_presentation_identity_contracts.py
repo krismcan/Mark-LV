@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PHASE_8_5_DELTA = {
     "nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
     "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
-         "nayeon/brain/connection_composition.py",
+         "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
+         "nayeon/brain/connection_startup.py",
 }
 # Every sealed Phase 8.4 production file stays frozen.
 CHECKPOINT = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"

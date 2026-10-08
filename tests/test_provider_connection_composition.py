@@ -344,7 +344,7 @@ class ProviderConnectionCompositionTests(unittest.TestCase):
 
 
 class Phase86ProductionScopeGuards(unittest.TestCase):
-    """Freeze the exact 98 sealed Phase 8.5 production files during Phase 8.6."""
+    """Freeze 98 Phase 8.5 modules, allowing only Phase 8.6 and 8.7 additions."""
 
     def test_sealed_98_unchanged_and_only_two_new_production_modules(self):
         root = Path(__file__).resolve().parents[1]
@@ -353,6 +353,8 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
         delta = {
             "nayeon/brain/connection_bootstrap.py",
             "nayeon/brain/connection_composition.py",
+            "nayeon/brain/connection_readiness.py",
+            "nayeon/brain/connection_startup.py",
         }
 
         def git(*args):

@@ -29,7 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PHASE_8_5_DELTA = {
     "nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
     "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
-         "nayeon/brain/connection_composition.py",
+         "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
+         "nayeon/brain/connection_startup.py",
 }
 MODULE = "nayeon/config/bootstrap.py"
 STARTING_HEAD = "35c0246362fbecc3df8532b63d42087b32b22646"

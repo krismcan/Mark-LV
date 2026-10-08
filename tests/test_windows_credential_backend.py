@@ -22,7 +22,8 @@ SEALED = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"
 TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
          "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
-         "nayeon/brain/connection_composition.py"}
+         "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
+         "nayeon/brain/connection_startup.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -402,13 +403,16 @@ class ScopeGuards(unittest.TestCase):
                                "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py", "nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
                                                    "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"}:
                     continue
-                if relative == "nayeon/brain/connection_composition.py":
-                    # Phase 8.6 alone may import read-only SecretBackend metadata
-                    # and the exact identifier. Never permit native/storage authority.
+                if relative in {"nayeon/brain/connection_composition.py",
+                                "nayeon/brain/connection_readiness.py"}:
+                    # Only these approved metadata consumers may import contracts;
+                    # neither can import native or legacy credential storage.
                     if isinstance(node, ast.ImportFrom):
                         if node.module == "nayeon.secrets.contracts":
-                            self.assertEqual({alias.name for alias in node.names},
-                                             {"SecretBackend", "SecretIdentifier"})
+                            approved = ({"SecretBackend", "SecretIdentifier"}
+                                        if relative == "nayeon/brain/connection_composition.py"
+                                        else {"SecretIdentifier"})
+                            self.assertEqual({alias.name for alias in node.names}, approved)
                         self.assertNotIn(node.module, {"nayeon.secrets.windows_credential",
                                                        "nayeon.secrets.store"})
                     elif isinstance(node, ast.Import):
