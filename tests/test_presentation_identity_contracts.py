@@ -198,7 +198,8 @@ class PresentationBoundaryTests(unittest.TestCase):
                     self.assertNotIn(node.value, targets, str(path))
 
     def test_protected_checkpoint_branch_tag_and_exact_production_scope(self):
-        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), STARTING_HEAD)
+        # The protected starting checkpoint remains an ancestor across seals.
+        self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())

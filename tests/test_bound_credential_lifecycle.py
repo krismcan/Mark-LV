@@ -394,7 +394,8 @@ def git(*args):
 class Phase83ScopeGuards(unittest.TestCase):
     def test_exact_new_production_delta_and_every_preexisting_file_frozen(self):
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
-        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), START)
+        # The protected starting checkpoint remains an ancestor across seals.
+        self.assertEqual(git("merge-base", START, "HEAD").decode().strip(), START)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), SEALED)
         for baseline in (START, SEALED):

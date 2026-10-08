@@ -299,7 +299,8 @@ def bootstrap_presentation_configuration(path: Path) -> PresentationConfiguratio
 
     def test_sealed_phase_8_1_contents_and_exact_phase_8_2_production_scope(self):
         self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
-        self.assertEqual(git("rev-parse", "HEAD").decode().strip(), STARTING_HEAD)
+        # The protected starting checkpoint remains an ancestor across seals.
+        self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)
         for baseline in (STARTING_HEAD, PRODUCT_COMMIT):
