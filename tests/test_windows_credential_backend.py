@@ -31,7 +31,8 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/brain/onboarding_status_view.py",
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
-         "nayeon/brain/onboarding_metadata_review.py"}
+         "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 

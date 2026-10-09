@@ -250,7 +250,8 @@ class Phase89ProductionFreeze(unittest.TestCase):
          "nayeon/brain/onboarding_status_view.py",
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
-         "nayeon/brain/onboarding_metadata_review.py"}
+         "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py"}
         def git(*args):
             return subprocess.check_output(["git", *args], cwd=root).decode().strip()
         self.assertEqual(git("branch", "--show-current"), "nayeon-v1")

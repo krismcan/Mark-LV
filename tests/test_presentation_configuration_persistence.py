@@ -32,6 +32,7 @@ PHASE_8_5_DELTA = {
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
          "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py",
 }
 MODULE = "nayeon/config/persistence.py"
 SERVICE_MODULE = "nayeon/config/service.py"

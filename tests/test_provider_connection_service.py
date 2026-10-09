@@ -30,7 +30,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/brain/onboarding_status_view.py",
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
-         "nayeon/brain/onboarding_metadata_review.py"}
+         "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py"}
 NOT_INITIALIZED = "Provider connection service is not initialized"
 
 
@@ -302,7 +303,8 @@ class Phase85ScopeGuards(unittest.TestCase):
                 "nayeon/brain/connection_composition.py",
                 "nayeon/brain/connection_readiness.py",
                 "nayeon/brain/onboarding_metadata_document.py",
-                "nayeon/brain/onboarding_metadata_review.py"},
+                "nayeon/brain/onboarding_metadata_review.py",
+                "nayeon/brain/onboarding_metadata_change_preview.py"},
             "ProviderConnectionFileStore": {
                 "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py"},
             "ProviderConnectionService": {

@@ -36,7 +36,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/brain/onboarding_status_view.py",
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
-         "nayeon/brain/onboarding_metadata_review.py"}
+         "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py"}
 FAILURE = "Credential lifecycle operation failed"
 
 

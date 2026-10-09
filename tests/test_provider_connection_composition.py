@@ -363,6 +363,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
          "nayeon/brain/onboarding_configuration_proposal.py",
          "nayeon/brain/onboarding_metadata_document.py",
          "nayeon/brain/onboarding_metadata_review.py",
+         "nayeon/brain/onboarding_metadata_change_preview.py",
         }
 
         def git(*args):
