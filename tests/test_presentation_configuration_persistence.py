@@ -24,6 +24,8 @@ PHASE_8_5_DELTA = {
     "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
          "nayeon/brain/connection_startup.py",
+         "nayeon/brain/credential_onboarding.py",
+         "nayeon/brain/credential_onboarding_composition.py",
 }
 MODULE = "nayeon/config/persistence.py"
 SERVICE_MODULE = "nayeon/config/service.py"

@@ -28,7 +28,9 @@ TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
          "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
-         "nayeon/brain/connection_startup.py"}
+         "nayeon/brain/connection_startup.py",
+         "nayeon/brain/credential_onboarding.py",
+         "nayeon/brain/credential_onboarding_composition.py"}
 FAILURE = "Credential lifecycle operation failed"
 
 
@@ -452,7 +454,9 @@ class Phase83ScopeGuards(unittest.TestCase):
                     for alias in node.names:
                         if alias.name in targets:
                             consumers[targets[alias.name]].add(relative)
-        self.assertEqual(consumers, {"BoundCredentialLifecycle": set(), "ProviderConnectionConfiguration": {
+        self.assertEqual(consumers, {"BoundCredentialLifecycle": {
+            "nayeon/brain/credential_onboarding.py",
+            "nayeon/brain/credential_onboarding_composition.py"}, "ProviderConnectionConfiguration": {
             "nayeon/brain/connection_document.py", "nayeon/brain/connection_service.py",
             "nayeon/brain/connection_composition.py",
             "nayeon/brain/connection_readiness.py"},
@@ -461,7 +465,8 @@ class Phase83ScopeGuards(unittest.TestCase):
             "SecretStore": set(), "WindowsCredentialBackend": set()})
         self.assertEqual(backend_consumers, {"nayeon/secrets/resolver.py",
                                              "nayeon/secrets/lifecycle.py",
-                                             "nayeon/brain/connection_composition.py"})
+                                             "nayeon/brain/connection_composition.py",
+                                             "nayeon/brain/credential_onboarding_composition.py"})
 
 
 if __name__ == "__main__":

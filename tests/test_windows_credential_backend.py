@@ -23,7 +23,9 @@ TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
          "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
-         "nayeon/brain/connection_startup.py"}
+         "nayeon/brain/connection_startup.py",
+         "nayeon/brain/credential_onboarding.py",
+         "nayeon/brain/credential_onboarding_composition.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -402,6 +404,31 @@ class ScopeGuards(unittest.TestCase):
                                "nayeon/brain/providers/openai_client.py", "nayeon/brain/providers/openai_validation.py",
                                "nayeon/secrets/lifecycle.py", "nayeon/brain/connection.py", "nayeon/secrets/contracts.py", "nayeon/secrets/windows_credential.py",
                                                    "nayeon/secrets/resolver.py", "nayeon/brain/providers/openai.py"}:
+                    continue
+                if relative in {"nayeon/brain/credential_onboarding.py",
+                                "nayeon/brain/credential_onboarding_composition.py"}:
+                    # Phase 8.8 credential onboarding only. Canonical contracts
+                    # and bound lifecycle allowed; no native or legacy store.
+                    if isinstance(node, ast.ImportFrom):
+                        if node.module == "nayeon.secrets.contracts":
+                            expected = ({"SecretBackend", "SecretIdentifier"}
+                                        if relative.endswith("composition.py")
+                                        else {"SecretIdentifier", "SecretNotFoundError",
+                                              "SecretStorageError", "SecretValue"})
+                            self.assertEqual({a.name for a in node.names}, expected)
+                        self.assertNotIn(node.module, {"nayeon.secrets.windows_credential",
+                                                       "nayeon.secrets.store"})
+                    elif isinstance(node, ast.Import):
+                        self.assertFalse({a.name for a in node.names} &
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.store"})
+                    elif isinstance(node, (ast.Name, ast.Attribute)):
+                        forbidden = {"WindowsCredentialBackend", "SecretStore"}
+                        if relative == "nayeon/brain/credential_onboarding_composition.py":
+                            forbidden |= {"SecretValue", "SecretStorageError",
+                                          "SecretNotFoundError"}
+                        self.assertNotIn(node.id if isinstance(node, ast.Name)
+                                         else node.attr, forbidden)
                     continue
                 if relative in {"nayeon/brain/connection_composition.py",
                                 "nayeon/brain/connection_readiness.py"}:

@@ -22,7 +22,9 @@ TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
          "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
-         "nayeon/brain/connection_startup.py"}
+         "nayeon/brain/connection_startup.py",
+         "nayeon/brain/credential_onboarding.py",
+         "nayeon/brain/credential_onboarding_composition.py"}
 NOT_INITIALIZED = "Provider connection service is not initialized"
 
 

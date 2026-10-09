@@ -206,7 +206,9 @@ class Phase87FrozenProductionScope(unittest.TestCase):
         tag = "nayeon-v1-trusted-provider-connection-composition-bootstrap-01"
         product = "059b55efe945a561940f3d7bd9aa7b7d3fc6a971"
         delta = {"nayeon/brain/connection_readiness.py",
-                 "nayeon/brain/connection_startup.py"}
+                 "nayeon/brain/connection_startup.py",
+                 "nayeon/brain/credential_onboarding.py",
+                 "nayeon/brain/credential_onboarding_composition.py"}
         def git(*args):
             return subprocess.check_output(["git", *args], cwd=root).decode().strip()
         self.assertEqual(git("branch", "--show-current"), "nayeon-v1")

@@ -19,7 +19,9 @@ TAG = "nayeon-v1-openai-credential-validation-canonical-routing-01"
 NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persistence.py",
        "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
-         "nayeon/brain/connection_startup.py"}
+         "nayeon/brain/connection_startup.py",
+         "nayeon/brain/credential_onboarding.py",
+         "nayeon/brain/credential_onboarding_composition.py"}
 DELTA = NEW
 
 
@@ -217,7 +219,8 @@ class Phase84ScopeGuards(unittest.TestCase):
                             targets[alias.name].add(path.relative_to(ROOT).as_posix())
         self.assertEqual(targets, {"create_openai_client": {
             "nayeon/brain/providers/openai.py", "nayeon/brain/providers/openai_validation.py"},
-            "OpenAICredentialValidator": set()})
+            "OpenAICredentialValidator": {
+                "nayeon/brain/credential_onboarding_composition.py"}})
 
 
 if __name__ == "__main__":

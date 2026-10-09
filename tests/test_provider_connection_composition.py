@@ -355,6 +355,8 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
             "nayeon/brain/connection_composition.py",
             "nayeon/brain/connection_readiness.py",
             "nayeon/brain/connection_startup.py",
+            "nayeon/brain/credential_onboarding.py",
+            "nayeon/brain/credential_onboarding_composition.py",
         }
 
         def git(*args):
