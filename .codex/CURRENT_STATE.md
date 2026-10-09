@@ -7,7 +7,7 @@
 - **Latest milestone tag:** `nayeon-v1-provider-connection-readiness-explicit-startup-01`
 - **Full regression baseline:** **1,880 / 1,880**
 - **Last updated:** 8 Oct 2026
-- **Next restart point:** Phase 8.8 architecture audit - trusted BYOK onboarding boundaries, status presentation, credential lifecycle integration and readiness rechecks; implementation not yet approved
+- **Next restart point:** Phase 8.8 architecture audit - trusted BYOK onboarding boundaries, status presentation, credential lifecycle integration and readiness rechecks; implementation not yet approved. Before planning, read `docs/formal_readiness_assessment_2026-10-09.md` to distinguish audited phase closure and release gates from historical percentage estimates.
 
 ## Latest architecture invariant
 
