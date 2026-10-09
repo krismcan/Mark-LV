@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.12 - Pure Typed Canonical OpenAI Metadata Document Preview
-- **Latest milestone tag:** `nayeon-v1-typed-openai-onboarding-metadata-preview-01`
-- **Full regression baseline:** **1,958 / 1,958**
+- **Latest completed product phase:** Phase 8.13 - Pure Human OpenAI Metadata Review Projection
+- **Latest milestone tag:** `nayeon-v1-pure-openai-onboarding-metadata-review-01`
+- **Full regression baseline:** **1,963 / 1,963**
 - **Last updated:** 9 Oct 2026
-- **Next restart point:** Phase 8.13 architecture audit and bounded implementation, maintaining metadata-only authority, no automatic persistence, credentials, provider activation, or model-selectable route
+- **Next restart point:** Phase 8.14 bounded architecture audit: pure read-only onboarding metadata change preview against a passed-in typed current document; no storage, credential retrieval, provider activation, consent authority, or model-selectable route
 
 ## Latest architecture invariant
 
-Phase 8.12 adds pure typed compose_onboarding_metadata_document accepting only an exact eligible OpenAIConfigurationProposal and returning a fresh canonical ProviderConnectionDocumentV1 with openai.api_key as a non-secret reference; it neither writes metadata nor acquires credential or connection authority. Reobserve trusted state before any future consent-bound operation. Independent post-seal full regression 1,958/1,958 passed; strict readiness 5/19 planned phases and 0/12 release gates unchanged.
+Phase 8.13 adds only immutable metadata review of exact typed OpenAI proposal and matching canonical Phase 8.12 metadata preview. A review is forgeable and stale, and always requires trusted fresh observation and separate explicit human consent for future mutations. 99 affected trust tests and 1,963/1,963 full tests passed; product annotated tag pushed and peeled verified. Strict formal readiness remains 5/19 planned exits and 0/12 release gates.
 
 ## Required startup behavior
 
