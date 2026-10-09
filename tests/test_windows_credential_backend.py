@@ -29,7 +29,8 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/brain/connection_reconciliation.py",
          "nayeon/brain/connection_recovery_advice.py",
          "nayeon/brain/onboarding_status_view.py",
-         "nayeon/brain/onboarding_configuration_proposal.py"}
+         "nayeon/brain/onboarding_configuration_proposal.py",
+         "nayeon/brain/onboarding_metadata_document.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -433,6 +434,21 @@ class ScopeGuards(unittest.TestCase):
                                           "SecretNotFoundError"}
                         self.assertNotIn(node.id if isinstance(node, ast.Name)
                                          else node.attr, forbidden)
+                    continue
+                if relative == "nayeon/brain/onboarding_metadata_document.py":
+                    # Phase 8.12 pure typed metadata construction only.
+                    if isinstance(node, ast.ImportFrom):
+                        if node.module == "nayeon.secrets.contracts":
+                            self.assertEqual({a.name for a in node.names},
+                                             {"SecretIdentifier"})
+                        self.assertNotIn(node.module,
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.store"})
+                    elif isinstance(node, (ast.Name, ast.Attribute)):
+                        self.assertNotIn(node.id if isinstance(node, ast.Name) else node.attr,
+                                         {"SecretValue", "SecretBackend", "SecretStorageError",
+                                          "WindowsCredentialBackend", "SecretStore",
+                                          "get", "put", "delete", "reveal"})
                     continue
                 if relative == "nayeon/brain/connection_reconciliation.py":
                     # Phase 8.9: only safe identifier availability checks.

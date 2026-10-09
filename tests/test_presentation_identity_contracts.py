@@ -22,6 +22,7 @@ PHASE_8_5_DELTA = {
          "nayeon/brain/connection_recovery_advice.py",
          "nayeon/brain/onboarding_status_view.py",
          "nayeon/brain/onboarding_configuration_proposal.py",
+         "nayeon/brain/onboarding_metadata_document.py",
 }
 # Every sealed Phase 8.4 production file stays frozen.
 CHECKPOINT = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"

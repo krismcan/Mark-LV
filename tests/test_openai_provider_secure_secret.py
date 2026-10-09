@@ -233,7 +233,8 @@ class OpenAIProviderSecureSecretTests(unittest.TestCase):
                          "nayeon/brain/connection_readiness.py",
                          "nayeon/brain/credential_onboarding.py",
                          "nayeon/brain/credential_onboarding_composition.py",
-                         "nayeon/brain/connection_reconciliation.py"})
+                         "nayeon/brain/connection_reconciliation.py",
+                         "nayeon/brain/onboarding_metadata_document.py"})
 
     def test_provider_exact_imports_and_no_environment_operations(self):
         root = Path(__file__).resolve().parents[1]
