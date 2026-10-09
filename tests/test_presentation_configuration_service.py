@@ -33,6 +33,7 @@ PHASE_8_5_DELTA = {
          "nayeon/brain/connection_reconciliation.py",
          "nayeon/brain/connection_recovery_advice.py",
          "nayeon/brain/onboarding_status_view.py",
+         "nayeon/brain/onboarding_configuration_proposal.py",
 }
 MODULE = "nayeon/config/service.py"
 BOOTSTRAP_MODULE = "nayeon/config/bootstrap.py"
