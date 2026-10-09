@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.11 - Pure Canonical OpenAI Configuration Proposal
-- **Latest milestone tag:** `nayeon-v1-canonical-openai-configuration-proposal-01`
-- **Full regression baseline:** **1,954 / 1,954**
+- **Latest completed product phase:** Phase 8.12 - Pure Typed Canonical OpenAI Metadata Document Preview
+- **Latest milestone tag:** `nayeon-v1-typed-openai-onboarding-metadata-preview-01`
+- **Full regression baseline:** **1,958 / 1,958**
 - **Last updated:** 9 Oct 2026
-- **Next restart point:** Phase 8.12 architecture and bounded implementation - canonical typed provider connection metadata-document preview, no storage or SDK authority, under user five-phase approval
+- **Next restart point:** Phase 8.13 architecture audit and bounded implementation, maintaining metadata-only authority, no automatic persistence, credentials, provider activation, or model-selectable route
 
 ## Latest architecture invariant
 
-Phase 8.11 adds exactly onboarding_configuration_proposal.py: validates fixed OpenAI metadata provider and bounded model string using eligible Phase 8.10 presentation states, with immutable slotted preview and mandatory reobservation; refuses unknown/changed/unsupported. Model name is not entitled or provider-tested; no credential/store/UI/model-callable route or connection mutation. Phase 8.11 1,954/1,954 tests passed pre/post seal after resolving a local view-name guard collision. Strict readiness 5/19 planned exits and 0/12 release gates unchanged.
+Phase 8.12 adds pure typed compose_onboarding_metadata_document accepting only an exact eligible OpenAIConfigurationProposal and returning a fresh canonical ProviderConnectionDocumentV1 with openai.api_key as a non-secret reference; it neither writes metadata nor acquires credential or connection authority. Reobserve trusted state before any future consent-bound operation. Independent post-seal full regression 1,958/1,958 passed; strict readiness 5/19 planned phases and 0/12 release gates unchanged.
 
 ## Required startup behavior
 
