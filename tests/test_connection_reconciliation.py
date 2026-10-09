@@ -246,7 +246,8 @@ class Phase89ProductionFreeze(unittest.TestCase):
         tag = "nayeon-v1-trusted-credential-onboarding-explicit-operations-01"
         sealed = "eeb85d5e85fefa6abb37cfedef6c956954b41a0b"
         delta = {"nayeon/brain/connection_reconciliation.py",
-                 "nayeon/brain/connection_recovery_advice.py"}
+                 "nayeon/brain/connection_recovery_advice.py",
+         "nayeon/brain/onboarding_status_view.py"}
         def git(*args):
             return subprocess.check_output(["git", *args], cwd=root).decode().strip()
         self.assertEqual(git("branch", "--show-current"), "nayeon-v1")

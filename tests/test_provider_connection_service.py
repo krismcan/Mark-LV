@@ -26,7 +26,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/brain/credential_onboarding.py",
          "nayeon/brain/credential_onboarding_composition.py",
          "nayeon/brain/connection_reconciliation.py",
-         "nayeon/brain/connection_recovery_advice.py"}
+         "nayeon/brain/connection_recovery_advice.py",
+         "nayeon/brain/onboarding_status_view.py"}
 NOT_INITIALIZED = "Provider connection service is not initialized"
 
 

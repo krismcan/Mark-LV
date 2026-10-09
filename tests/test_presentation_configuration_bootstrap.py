@@ -35,6 +35,7 @@ PHASE_8_5_DELTA = {
          "nayeon/brain/credential_onboarding_composition.py",
          "nayeon/brain/connection_reconciliation.py",
          "nayeon/brain/connection_recovery_advice.py",
+         "nayeon/brain/onboarding_status_view.py",
 }
 MODULE = "nayeon/config/bootstrap.py"
 STARTING_HEAD = "35c0246362fbecc3df8532b63d42087b32b22646"
