@@ -21,7 +21,9 @@ NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persisten
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
          "nayeon/brain/connection_startup.py",
          "nayeon/brain/credential_onboarding.py",
-         "nayeon/brain/credential_onboarding_composition.py"}
+         "nayeon/brain/credential_onboarding_composition.py",
+         "nayeon/brain/connection_reconciliation.py",
+         "nayeon/brain/connection_recovery_advice.py"}
 DELTA = NEW
 
 

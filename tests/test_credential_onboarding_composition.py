@@ -142,6 +142,8 @@ class Phase88FrozenProductionScope(unittest.TestCase):
         delta = {
             "nayeon/brain/credential_onboarding.py",
             "nayeon/brain/credential_onboarding_composition.py",
+            "nayeon/brain/connection_reconciliation.py",
+            "nayeon/brain/connection_recovery_advice.py",
         }
 
         def git(*args):

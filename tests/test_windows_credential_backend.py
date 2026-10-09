@@ -25,7 +25,9 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/brain/connection_composition.py", "nayeon/brain/connection_readiness.py",
          "nayeon/brain/connection_startup.py",
          "nayeon/brain/credential_onboarding.py",
-         "nayeon/brain/credential_onboarding_composition.py"}
+         "nayeon/brain/credential_onboarding_composition.py",
+         "nayeon/brain/connection_reconciliation.py",
+         "nayeon/brain/connection_recovery_advice.py"}
 TARGET = "nayeon-v1/secret/openai.api_key"
 FAILURE = "Secret storage operation failed"
 
@@ -429,6 +431,26 @@ class ScopeGuards(unittest.TestCase):
                                           "SecretNotFoundError"}
                         self.assertNotIn(node.id if isinstance(node, ast.Name)
                                          else node.attr, forbidden)
+                    continue
+                if relative == "nayeon/brain/connection_reconciliation.py":
+                    # Phase 8.9: only safe identifier availability checks.
+                    if isinstance(node, ast.ImportFrom):
+                        if node.module == "nayeon.secrets.contracts":
+                            self.assertEqual({a.name for a in node.names},
+                                             {"SecretIdentifier"})
+                        self.assertNotIn(node.module,
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.store"})
+                    elif isinstance(node, ast.Import):
+                        self.assertFalse({a.name for a in node.names} &
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.store"})
+                    elif isinstance(node, (ast.Name, ast.Attribute)):
+                        self.assertNotIn(node.id if isinstance(node, ast.Name)
+                                         else node.attr,
+                                         {"SecretValue", "SecretBackend",
+                                          "SecretStorageError", "WindowsCredentialBackend",
+                                          "SecretStore", "reveal", "get", "put", "delete"})
                     continue
                 if relative in {"nayeon/brain/connection_composition.py",
                                 "nayeon/brain/connection_readiness.py"}:
