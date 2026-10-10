@@ -39,6 +39,7 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/brain/first_run_summary.py",
          "nayeon/brain/first_run_refresh.py",
          "nayeon/desktop_alpha/first_run_status_window.py",
+         "nayeon/desktop_alpha/first_run_review_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
