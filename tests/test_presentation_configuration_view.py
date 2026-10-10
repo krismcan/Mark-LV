@@ -33,6 +33,10 @@ PHASE_8_5_DELTA = {
          "nayeon/brain/onboarding_metadata_document.py",
          "nayeon/brain/onboarding_metadata_review.py",
          "nayeon/brain/onboarding_metadata_change_preview.py",
+         "nayeon/desktop_alpha/__init__.py",
+         "nayeon/desktop_alpha/__main__.py",
+         "nayeon/desktop_alpha/controller.py",
+         "nayeon/desktop_alpha/window.py",
 }
 MODULE = "nayeon/config/view.py"
 STARTING_HEAD = "35c0246362fbecc3df8532b63d42087b32b22646"
