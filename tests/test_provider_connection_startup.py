@@ -219,7 +219,8 @@ class Phase87FrozenProductionScope(unittest.TestCase):
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
-         "nayeon/desktop_alpha/window.py"}
+         "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py"}
         def git(*args):
             return subprocess.check_output(["git", *args], cwd=root).decode().strip()
         self.assertEqual(git("branch", "--show-current"), "nayeon-v1")

@@ -41,7 +41,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
-         "nayeon/desktop_alpha/window.py"}
+         "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py"}
 FAILURE = "Credential lifecycle operation failed"
 
 

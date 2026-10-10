@@ -368,6 +368,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
          "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py",
         }
 
         def git(*args):

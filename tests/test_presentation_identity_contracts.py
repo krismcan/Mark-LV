@@ -29,6 +29,7 @@ PHASE_8_5_DELTA = {
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
          "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py",
 }
 # Every sealed Phase 8.4 production file stays frozen.
 CHECKPOINT = "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7"

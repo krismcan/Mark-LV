@@ -37,6 +37,7 @@ PHASE_8_5_DELTA = {
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
          "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py",
 }
 MODULE = "nayeon/config/view.py"
 STARTING_HEAD = "35c0246362fbecc3df8532b63d42087b32b22646"

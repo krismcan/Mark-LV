@@ -37,6 +37,7 @@ PHASE_8_5_DELTA = {
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
          "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py",
 }
 MODULE = "nayeon/config/persistence.py"
 SERVICE_MODULE = "nayeon/config/service.py"

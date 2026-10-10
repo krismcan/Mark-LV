@@ -32,7 +32,8 @@ NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persisten
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
-         "nayeon/desktop_alpha/window.py"}
+         "nayeon/desktop_alpha/window.py",
+         "nayeon/desktop_alpha/notepad.py"}
 DELTA = NEW
 
 
