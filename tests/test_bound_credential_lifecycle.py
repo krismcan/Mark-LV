@@ -40,6 +40,7 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/brain/onboarding_metadata_change_preview.py",
          "nayeon/brain/onboarding_operation_advice.py",
          "nayeon/brain/onboarding_review_session.py",
+         "nayeon/brain/credential_operation_host.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
@@ -454,11 +455,15 @@ class Phase83ScopeGuards(unittest.TestCase):
                     names = {a.name for a in node.names}
                     for module, symbol in targets.items():
                         if node.module == module or symbol in names:
-                            # Only this exact enum consumer is approved; importing
-                            # the lifecycle module still counts as authority elsewhere.
+                            # Exact enum-only imports do not grant lifecycle authority.
+                            # Phase 8.18's host may classify a delegated result,
+                            # but may not import BoundCredentialLifecycle itself.
                             if (module == "nayeon.secrets.lifecycle"
                                     and node.module == module
-                                    and relative == "nayeon/brain/providers/openai_validation.py"
+                                    and relative in {
+                                        "nayeon/brain/providers/openai_validation.py",
+                                        "nayeon/brain/credential_operation_host.py",
+                                    }
                                     and names == {"CredentialValidationStatus"}):
                                 continue
                             consumers[symbol].add(relative)
