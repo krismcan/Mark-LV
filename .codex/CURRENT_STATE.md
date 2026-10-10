@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.17 - Single Pending Host-owned Human Onboarding Review
-- **Latest milestone tag:** `nayeon-v1-phase-8-17-host-review-session-01`
-- **Full regression baseline:** **1,998 / 1,998**
+- **Latest completed product phase:** Phase 8.18 - Trusted Credential Host
+- **Latest milestone tag:** `nayeon-v1-phase-8-18-trusted-credential-operation-host-01`
+- **Full regression baseline:** **2,009 / 2,009**
 - **Last updated:** 10 Oct 2026
-- **Next restart point:** Phase 8.18: strictly bounded trusted-operation host adapter injected with an exact credential lifecycle and a fresh state observer, fake-backend tests only. Do not create model-callable credential routes, ambient key lookup, cross-store atomic claims or real user approval.
+- **Next restart point:** Phase 8.19: fake-backend integrated onboarding verification and readiness reassessment.
 
 ## Latest architecture invariant
 
-Phase 8.17 adds one host-only, single-use in-memory review state machine; approvals, rejection and expiry are in-process events, retain no credential candidate, and yield non-authorizing receipts. 48 focused and 1998 full pre/post tests pass. Formal readiness remains 5/19 and 0/12.
+Exact SecretValue boundary; no direct backend or reveal. One-time approval and status recheck. Pre/post-commit full regression 2009/2009. Formal readiness 5/19, gates 0/12.
 
 ## Required startup behavior
 
