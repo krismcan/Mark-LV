@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.15 - Consumer Onboarding Readiness and Concurrency Threat Audit
-- **Latest milestone tag:** `nayeon-v1-phase-8-15-consumer-threat-audit-01`
-- **Full regression baseline:** **1,988 / 1,988**
+- **Latest completed product phase:** Phase 8.16 - Pure Human Credential Operation Eligibility Advice
+- **Latest milestone tag:** `nayeon-v1-phase-8-16-operation-advice-01`
+- **Full regression baseline:** **1,992 / 1,992**
 - **Last updated:** 10 Oct 2026
-- **Next restart point:** Phase 8.16: pure typed, non-authorizing human onboarding operation admission rules; full regression and scoped review before seal. Preserve no-CAS, no transaction and no credential/SDK/live-operation boundaries.
+- **Next restart point:** Phase 8.17: one in-memory, host-only pending human review session; no credentials held, model route or execution authority. Preserve architecture audit/security and no-CAS limits.
 
 ## Latest architecture invariant
 
-Phase 8.15 independently audits Phase 8 first-run gaps and cross-store non-atomicity; no production mutation or credential calls, test-only guard checks 3/3, full regression 1988/1988 pre and post commit. Formal phase closure 5/19 and release gates 0/12 unchanged.
+Phase 8.16 adds exactly one immutable pure advice module for six credential operations and seven observations; unknown/changed/unsupported states block test and mutation suggestions. Suggestions never authorize effects. 49 focused and 1992 full pre/post tests pass, product tag remotely verified. Formal readiness still 5/19 and 0/12.
 
 ## Required startup behavior
 
