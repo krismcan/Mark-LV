@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Personal Alpha Milestone 2 - Offline Tkinter Desktop Chat Preview
-- **Latest milestone tag:** `nayeon-v1-personal-alpha-offline-desktop-ui-01`
-- **Full regression baseline:** **1,975 / 1,975**
+- **Latest completed product phase:** Personal Alpha Milestone 3 - Approval-bound Verified Notepad
+- **Latest milestone tag:** `nayeon-v1-personal-alpha-verified-notepad-01`
+- **Full regression baseline:** **1,985 / 1,985**
 - **Last updated:** 10 Oct 2026
-- **Next restart point:** Personal Alpha Milestone 3: explicit Notepad-only and App Paths-pinned controller factory through existing ConversationSession approval and verification; no other target, no implicit approval, no provider or secrets.
+- **Next restart point:** Three authorized Personal Alpha milestones complete. Await separately approved next product scope. Live human UI acceptance not performed; formal release gates remain open.
 
 ## Latest architecture invariant
 
-Offline standard-library Tkinter desktop shell has bounded ephemeral chat, preview-only controller and disabled approval buttons; no runtime/executor import, no capability/policy/secret/LLM authority. 99/99 affected and 1,975/1,975 pre/post-seal regressions passed. Phase 15 still in progress; formal 5/19 planned exits and 0/12 release gates.
+Only exact local open notepad command can reach existing ConversationSession. GUI controller enforces default-deny permission with open_app only, mandatory saved-token explicit approval, App Paths-pinned Windows launch, independent matching executable identity verification. No real Notepad clicked during tests. 109/109 affected and 1,985/1,985 pre/postcommit full regressions pass; product annotated tag and peeled remote commit verified. Formal readiness 5/19 planned exits, 0/12 verified release gates.
 
 ## Required startup behavior
 
