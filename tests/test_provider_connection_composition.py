@@ -365,6 +365,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
          "nayeon/brain/onboarding_metadata_review.py",
          "nayeon/brain/onboarding_metadata_change_preview.py",
          "nayeon/brain/onboarding_operation_advice.py",
+         "nayeon/brain/onboarding_review_session.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
