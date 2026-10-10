@@ -369,6 +369,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
          "nayeon/brain/credential_operation_host.py",
          "nayeon/brain/first_run_summary.py",
          "nayeon/brain/first_run_refresh.py",
+         "nayeon/desktop_alpha/first_run_status_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
