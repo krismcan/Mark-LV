@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.23 - Trusted credential-operation review panel
-- **Latest milestone tag:** `nayeon-v1-phase-8-23-credential-review-panel-01`
-- **Full regression baseline:** **2,042 / 2,042**
+- **Latest completed product phase:** Phase 8.24 - Synthetic GUI onboarding acceptance and closure review
+- **Latest milestone tag:** `nayeon-v1-phase-8-24-synthetic-onboarding-ui-acceptance-01`
+- **Full regression baseline:** **2,054 / 2,054**
 - **Last updated:** 10 Oct 2026
-- **Next restart point:** Phase 8.24: independent end-to-end simulated GUI review rejection and failure testing with temporary metadata and fake credential lifecycle; no live operations or new execution authority.
+- **Next restart point:** Five approved Phase 8.20-8.24 increments complete. Await explicit new approval and formal Phase 8 first-run consent, secure secret entry, credential CAS/transaction design, full end-user acceptance. Do not claim Phase 8 complete.
 
 ## Latest architecture invariant
 
-Exact injected trusted host; explicit per-operation review only, reject pending, no credential entry, no approve, no direct backend or model route. 89/89 focused and 2042/2042 full pre/postcommit. Formal readiness 5/19, gates 0/12.
+Only synthetic Tk UI and fake-backend integration tests plus audit docs; no production changes, real secrets or network. 28/28 focused 2054/2054 pre- and postcommit full regressions passed. Annotated tag pushed and remote peeled verified. Formal phase readiness 5/19 and release gates 0/12.
 
 ## Required startup behavior
 
