@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.24 - Synthetic GUI onboarding acceptance and closure review
-- **Latest milestone tag:** `nayeon-v1-phase-8-24-synthetic-onboarding-ui-acceptance-01`
-- **Full regression baseline:** **2,054 / 2,054**
-- **Last updated:** 10 Oct 2026
-- **Next restart point:** Five approved Phase 8.20-8.24 increments complete. Await explicit new approval and formal Phase 8 first-run consent, secure secret entry, credential CAS/transaction design, full end-user acceptance. Do not claim Phase 8 complete.
+- **Latest completed product phase:** Phase 8.25 - Explicit trusted candidate validation entry with real-Tk fake-backed acceptance
+- **Latest milestone tag:** `nayeon-v1-phase-8-25-real-tk-acceptance-maintenance-01`
+- **Full regression baseline:** **2,070 / 2,070**
+- **Last updated:** 11 Oct 2026
+- **Next restart point:** Phase 8.26 trusted concurrency and operation ownership. Never use live credentials or real provider calls without separate user approval; formal Phase 8 and gates remain open.
 
 ## Latest architecture invariant
 
-Only synthetic Tk UI and fake-backend integration tests plus audit docs; no production changes, real secrets or network. 28/28 focused 2054/2054 pre- and postcommit full regressions passed. Annotated tag pushed and remote peeled verified. Formal phase readiness 5/19 and release gates 0/12.
+Human-clicked review and approval support TEST_CANDIDATE only; transient masked Tk entry, no key persistence or model authority. Real Windows Tk widgets tested only with fake backend and validator. 2070/2070 full postcommit tests; 5/19 formal phases, 0/12 release gates.
 
 ## Required startup behavior
 
