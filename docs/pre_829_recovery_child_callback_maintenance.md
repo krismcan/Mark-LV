@@ -26,3 +26,13 @@ After two different trusted metadata windows use a pooled `TrustedOnboardingReco
 ## Security limits and phase gate
 
 No real API key, provider network call, native Windows Credential Manager mutation, additional model-selected capability or release acceptance occurred. Windows named-mutex guarantees are confined to the established cooperating-process/session model. Formal release gates remain open. Phase 8.29 and the five-phase implementation batch remain **HOLD** until this maintenance fix is independently sealed and the pre-phase failure ledger has an explicit GO.
+
+## Verified separate maintenance seal (11 October 2026)
+
+- Product maintenance commit: 4363fd8db28188e61533049058f20a45bd70319a.
+- Annotated tag: nayeon-v1-pre-8-29-recovery-dialog-lifecycle-maintenance-01.
+- GitHub origin/nayeon-v1 and remote peeled tag independently verified at that exact commit after atomic push.
+- Previous maintenance tag remains at e3e5e9605dbb3b09452994a9d042b4b5e0edf34e; prior product tags unchanged.
+- Real Windows Python 3.12 staged and postcommit regressions: 2,235/2,235 passed, 0 failures, 0 skips.
+- Independent Codex Sol High read-only security review CLEAR on the stale-dialog consent isolation. No provider calls or real credentials.
+- Phase 8.29 remains not started; a fresh pre-phase GO/HOLD audit is mandatory.
