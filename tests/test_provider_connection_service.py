@@ -43,6 +43,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/brain/onboarding_coordination.py",
          "nayeon/brain/windows_onboarding_mutex.py",
          "nayeon/desktop_alpha/first_run_credential_management_window.py",
+         "nayeon/brain/onboarding_metadata_commit.py",
+         "nayeon/desktop_alpha/first_run_metadata_management_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
@@ -320,10 +322,12 @@ class Phase85ScopeGuards(unittest.TestCase):
                 "nayeon/brain/connection_readiness.py",
                 "nayeon/brain/onboarding_metadata_document.py",
                 "nayeon/brain/onboarding_metadata_review.py",
-                "nayeon/brain/onboarding_metadata_change_preview.py"},
+                "nayeon/brain/onboarding_metadata_change_preview.py",
+                "nayeon/brain/onboarding_metadata_commit.py"},
             "ProviderConnectionFileStore": {
                 "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
-                "nayeon/brain/onboarding_coordination.py"},
+                "nayeon/brain/onboarding_coordination.py",
+                "nayeon/brain/onboarding_metadata_commit.py"},
             "ProviderConnectionService": {
                 "nayeon/brain/connection_bootstrap.py", "nayeon/brain/connection_composition.py",
                 "nayeon/brain/connection_readiness.py", "nayeon/brain/connection_startup.py"},

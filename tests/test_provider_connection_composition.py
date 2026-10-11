@@ -375,6 +375,8 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
          "nayeon/brain/onboarding_coordination.py",
          "nayeon/brain/windows_onboarding_mutex.py",
          "nayeon/desktop_alpha/first_run_credential_management_window.py",
+         "nayeon/brain/onboarding_metadata_commit.py",
+         "nayeon/desktop_alpha/first_run_metadata_management_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
