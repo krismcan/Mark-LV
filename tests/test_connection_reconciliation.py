@@ -20,6 +20,8 @@ OPENAI = SecretIdentifier("openai.api_key")
 S = m.ConnectionObservationStatus
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class FakeAvailability:
     def __init__(self, answer=False, error=None, on_check=None):
         self.answer = answer
@@ -279,12 +281,12 @@ class Phase89ProductionFreeze(unittest.TestCase):
         production = {x for x in previous if x.endswith(".py")}
         self.assertEqual(len(production), 104)
         actual = {p.relative_to(root).as_posix() for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, production | delta)
+        self.assertEqual(actual, production | delta | APPROVED_RECOVERY_ADDITIONS)
         diff = set(filter(None, git("diff", "--name-only", tag,
                                     "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others", "--exclude-standard",
                                          "--", "nayeon").splitlines()))
-        self.assertEqual(diff | untracked, delta)
+        self.assertEqual(diff | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
         for name in previous | {"requirements.txt"}:
             with self.subTest(file=name):
                 contents = (root / name).read_bytes().replace(b"\r\n", b"\n")

@@ -4,6 +4,7 @@ Metadata only. No key entry, backend, validator, provider SDK, network or model
 route. A trusted parent injects one bounded metadata confirmation host.
 """
 import tkinter as tk
+from nayeon.desktop_alpha.first_run_onboarding_recovery_window import FirstRunOnboardingRecoveryWindow
 
 from nayeon.brain.onboarding_metadata_commit import (
     TrustedMetadataCommitHost, MetadataCommitOutcome, MetadataCommitReceipt,
@@ -51,6 +52,11 @@ class FirstRunMetadataManagementWindow:
         tk.Label(root, bg="#101827", fg="#adc1d6",
                  text="Model identifier (not an API key):").pack(
                      anchor="w", padx=20, pady=(14, 3))
+        self._recovery_dialog = None
+        self._recovery_button = tk.Button(
+            root, text="Inspect and reconcile onboarding safety",
+            command=self.open_reconciliation_from_button)
+        self._recovery_button.pack(anchor="w", padx=20, pady=4)
         self._model = tk.Entry(root, width=52)
         self._model.pack(anchor="w", padx=20, pady=(0, 10))
         self._save = tk.Button(root, text="Review saving OpenAI model settings",
@@ -167,8 +173,34 @@ class FirstRunMetadataManagementWindow:
         self._status.configure(text="Review rejected. No metadata write requested.")
         self._sync()
 
+    def open_reconciliation_from_button(self):
+        """Only a user click opens a fresh trusted recovery review."""
+        if self._busy:
+            return
+        if (self._recovery_dialog is not None and
+                self._recovery_dialog._root.winfo_exists()):
+            return
+        self._recovery_dialog = None
+        ctrl = self._host.recovery_controller
+        if ctrl.ready:
+            self._status.configure(text="This onboarding session is already reconciled.")
+            return
+        try:
+            window = tk.Toplevel(self._root)
+            self._recovery_dialog = FirstRunOnboardingRecoveryWindow(
+                window, controller=ctrl)
+        except Exception:
+            self._recovery_dialog = None
+            self._status.configure(text="Recovery review unavailable. Protected changes remain blocked.")
+
     def close_from_window(self) -> None:
         if self._busy:
             return
         self.reject_from_button()
+        try:
+            recovery = self._host.recovery_controller
+            if recovery._ctx is not None:
+                recovery.close()
+        except Exception:
+            pass
         self._root.destroy()

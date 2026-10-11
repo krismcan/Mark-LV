@@ -40,6 +40,15 @@ class Harness:
         self.coordinator=CooperativeOnboardingCoordinator(
             host=self.host,metadata_path=self.path,availability=self.backend,
             mutex=self.mutex)
+        self.controller=self.coordinator.recovery_controller
+        self.reconcile()
+
+    def reconcile(self):
+        if self.controller._ctx is not None:
+            self.controller.close()
+        review=self.controller.request_reconciliation()
+        assert self.controller.approve_reconciliation(
+            human_approved=True, fingerprint=review.fingerprint)
 
     def configure(self):
         ProviderConnectionFileStore(self.path).save(
@@ -47,6 +56,8 @@ class Harness:
                 "openai","gpt-5.6",SecretIdentifier("openai.api_key"))))
 
     def close(self):
+        if self.controller._ctx is not None:
+            self.controller.close()
         self.temp.cleanup()
 
 
@@ -118,7 +129,7 @@ class ManagementUITests(unittest.TestCase):
         self.assertEqual(self.ui._approve.props["state"],"disabled")
         self.assertEqual((self.h.backend.puts,self.h.backend.deletes,
                           self.h.backend.gets,self.h.validator.calls),(0,0,0,0))
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
         self.root.protocol.assert_called_once()
 
     def test_connect_requires_two_clicks_and_masks_key(self):
@@ -130,8 +141,8 @@ class ManagementUITests(unittest.TestCase):
         self.assertEqual(self.h.backend.puts,1)
         self.assertEqual(self.h.validator.calls,1)
         self.assertEqual(self.ui._entry.value,"")
-        self.assertIn("not confirmed",self.ui._status.props["text"])
-        self.assertEqual(self.h.mutex.entered,self.h.mutex.exited)
+        self.assertIn("recovery required",self.ui._status.props["text"].lower())
+        self.assertEqual((self.h.mutex.entered,self.h.mutex.exited),(1,0))
         self.assertFalse(self.h.coordinator.has_pending)
         self.ui.approve_from_button()
         self.assertEqual(self.h.backend.puts,1)
@@ -140,30 +151,33 @@ class ManagementUITests(unittest.TestCase):
         self.h.configure()
         original=SecretValue("original-key")
         self.h.backend.value=original
+        self.h.reconcile()
         self.review(Op.REPLACE)
         self.ui._entry.value="fixture-bad"
         self.ui.approve_from_button()
         self.assertIs(self.h.backend.value,original)
         self.assertEqual(self.h.backend.puts,0)
         self.assertEqual(self.h.validator.calls,1)
-        self.assertIn("validation failed",self.ui._status.props["text"].lower())
+        self.assertIn("recovery required",self.ui._status.props["text"].lower())
         self.assertEqual(self.ui._entry.value,"")
 
     def test_replace_valid_does_not_claim_durability(self):
         self.h.configure()
         original=SecretValue("old")
         self.h.backend.value=original
+        self.h.reconcile()
         self.review(Op.REPLACE)
         self.ui._entry.value="fixture-good"
         self.ui.approve_from_button()
         self.assertEqual(self.h.backend.puts,1)
         self.assertIsNot(self.h.backend.value,original)
-        self.assertIn("not confirmed",self.ui._status.props["text"])
+        self.assertIn("recovery required",self.ui._status.props["text"].lower())
         self.assertFalse(self.h.coordinator.recovery_marker_path.exists())
 
     def test_remove_requires_explicit_acknowledgement(self):
         self.h.configure()
         self.h.backend.value=SecretValue("old")
+        self.h.reconcile()
         self.review(Op.REMOVE)
         self.assertEqual(self.ui._entry.props["state"],"disabled")
         self.assertEqual(self.ui._delete_ack.props["state"],"normal")
@@ -176,13 +190,14 @@ class ManagementUITests(unittest.TestCase):
         self.assertEqual(self.h.backend.deletes,1)
         self.assertIsNone(self.h.backend.value)
         self.assertFalse(self.ui._acknowledged.get())
-        self.assertIn("not confirmed",self.ui._status.props["text"])
+        self.assertIn("not confirmed",self.ui._status.props["text"].lower())
         self.ui.approve_from_button()
         self.assertEqual(self.h.backend.deletes,1)
 
     def test_candidate_never_read_during_delete(self):
         self.h.configure()
         self.h.backend.value=SecretValue("old")
+        self.h.reconcile()
         self.review(Op.REMOVE)
         self.ui._entry.value="would-be-sensitive"
         self.ui._acknowledged.set(True)
@@ -199,7 +214,7 @@ class ManagementUITests(unittest.TestCase):
         self.assertFalse(self.h.coordinator.has_pending)
         self.assertEqual(self.ui._entry.value,"")
         self.assertEqual((self.h.backend.puts,self.h.validator.calls),(0,0))
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
 
     def test_close_consumes_review_and_clears(self):
         self.review(Op.CONNECT)
@@ -218,14 +233,16 @@ class ManagementUITests(unittest.TestCase):
         self.assertIn("unavailable",self.ui._status.props["text"].lower())
 
     def test_concurrent_busy_consumes_review_no_write(self):
+        # BUSY is detected when beginning a new trusted tenure, not at approve.
+        self.h.controller.close()
         self.h.mutex.state=MutexAdmission.BUSY
-        self.review(Op.CONNECT)
+        self.ui.request_from_button(Op.CONNECT)
         self.ui._entry.value="fixture-good"
         self.ui.approve_from_button()
         self.assertEqual(self.h.backend.puts,0)
         self.assertEqual(self.h.validator.calls,0)
         self.assertFalse(self.h.coordinator.has_pending)
-        self.assertIn("another nayeon process",self.ui._status.props["text"].lower())
+        self.assertIn("recovery required",self.ui._status.props["text"].lower())
 
     def test_recovery_marker_blocks_review(self):
         self.h.coordinator.recovery_marker_path.write_text("synthetic-marker")
@@ -251,6 +268,7 @@ class ManagementUITests(unittest.TestCase):
     def test_delete_acknowledgement_cannot_carry_into_another_review(self):
         self.h.configure()
         self.h.backend.value=SecretValue("old")
+        self.h.reconcile()
         self.review(Op.REMOVE)
         self.ui._acknowledged.set(True)
         self.ui.reject_from_button()
@@ -279,6 +297,7 @@ class ManagementUITests(unittest.TestCase):
             "nayeon.brain.onboarding_operation_advice",
             "nayeon.brain.credential_operation_host",
             "nayeon.secrets.contracts",
+            "nayeon.desktop_alpha.first_run_onboarding_recovery_window",
         })
         calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call)]
         attrs={n.func.attr for n in calls if isinstance(n.func,ast.Attribute)}
@@ -324,6 +343,7 @@ class WindowsRealTkManagementTests(unittest.TestCase):
     def test_real_tk_delete_requires_own_acknowledgement(self):
         self.h.configure()
         self.h.backend.value=SecretValue("old")
+        self.h.reconcile()
         self.ui._choices[2].invoke()
         self.ui._approve.invoke()
         self.assertEqual(self.h.backend.deletes,0)

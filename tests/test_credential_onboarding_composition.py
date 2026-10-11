@@ -11,6 +11,8 @@ from nayeon.secrets.contracts import SecretIdentifier, SecretValue
 from nayeon.secrets.lifecycle import CredentialValidationStatus
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class FakeBackend:
     def __init__(self):
         self.values = {}
@@ -180,12 +182,12 @@ class Phase88FrozenProductionScope(unittest.TestCase):
         self.assertEqual(len(production), 102)
         current = {p.relative_to(root).as_posix()
                    for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(current, production | delta)
+        self.assertEqual(current, production | delta | APPROVED_RECOVERY_ADDITIONS)
         changed = set(filter(None, git("diff", "--name-only", tag,
                                        "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others",
                                          "--exclude-standard", "--", "nayeon").splitlines()))
-        self.assertEqual(changed | untracked, delta)
+        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         for name in tracked | {"requirements.txt"}:
             with self.subTest(path=name):

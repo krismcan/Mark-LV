@@ -17,6 +17,9 @@ from nayeon.brain.onboarding_metadata_commit import (
     MetadataOperation, TrustedMetadataCommitHost,
 )
 from nayeon.brain.windows_onboarding_mutex import MutexAdmission
+from nayeon.brain.onboarding_recovery_document import RecoveryState
+from nayeon.brain.onboarding_recovery_store import OnboardingRecoveryJournalStore, RecoveryStoreUnavailable
+from nayeon.brain.onboarding_recovery import RecoveryAdmissionError
 from nayeon.desktop_alpha import first_run_metadata_management_window as ui
 from tests.test_onboarding_coordination import FakeMutex
 from tests.test_first_run_credential_management_window import (
@@ -42,8 +45,24 @@ class MetadataHarness:
             timeout_seconds=10.0)
         self.store=ProviderConnectionFileStore(self.path)
         self.credential=None  # Sentinel: no credential store exists in this workflow
+        # Phase 8.28.1: fixture deliberately establishes a fresh, human-owned
+        # fake reconciliation before exercising metadata review callbacks.
+        # Individual failure cases may close/restart the tenure explicitly.
+        self.controller=self.host.recovery_controller
+        r=self.controller.request_reconciliation()
+        assert self.controller.approve_reconciliation(
+            human_approved=True, fingerprint=r.fingerprint)
+
+    def reconcile(self):
+        if self.controller._ctx is not None:
+            self.controller.close()
+        r=self.controller.request_reconciliation()
+        assert self.controller.approve_reconciliation(
+            human_approved=True, fingerprint=r.fingerprint)
 
     def close(self):
+        if self.controller._ctx is not None:
+            self.controller.close()
         self.temp.cleanup()
 
 
@@ -56,18 +75,19 @@ class TrustedMetadataTests(unittest.TestCase):
         self.assertIs(self.h.host.request_save("gpt-5.6").outcome,Outcome.PENDING)
         self.assertFalse(self.h.path.exists())
         self.assertFalse(self.h.host.recovery_marker_path.exists())
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
         result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.VERIFIED)
         self.assertTrue(result.requires_reobservation)
         self.assertFalse(result.grants_credential_authority)
         self.assertFalse(result.confirms_cross_store_transaction)
         self.assertEqual(self.h.store.load(),canonical())
-        self.assertEqual(self.h.mutex.entered,self.h.mutex.exited)
+        self.assertEqual((self.h.mutex.entered,self.h.mutex.exited),(1,0))
         self.assertFalse(self.h.host.recovery_marker_path.exists())
 
     def test_clear_writes_null_metadata_without_removing_credential(self):
         self.h.store.save(canonical())
+        self.h.reconcile()
         unrelated_key_sentinel=object()
         self.h.credential=unrelated_key_sentinel
         self.assertIs(self.h.host.request_clear().outcome,Outcome.PENDING)
@@ -77,6 +97,7 @@ class TrustedMetadataTests(unittest.TestCase):
 
     def test_model_change_and_idempotent_noop(self):
         self.h.store.save(canonical())
+        self.h.reconcile()
         self.assertIs(self.h.host.request_save("gpt-5.6").outcome,Outcome.REFUSED)
         self.assertIs(self.h.host.request_save("gpt-6").outcome,Outcome.PENDING)
         self.assertIs(self.h.host.approve(human_approved=True).outcome,Outcome.VERIFIED)
@@ -92,7 +113,7 @@ class TrustedMetadataTests(unittest.TestCase):
         self.assertIs(self.h.host.reject().outcome,Outcome.REFUSED)
         self.assertIs(self.h.host.approve(human_approved=True).outcome,Outcome.REFUSED)
         self.assertFalse(self.h.path.exists())
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
 
     def test_expiry_consumes_approval(self):
         self.h.host.request_save("gpt-6")
@@ -107,20 +128,28 @@ class TrustedMetadataTests(unittest.TestCase):
         self.assertFalse(self.h.path.exists())
 
     def test_busy_mutex_refuses_without_creating_marker(self):
+        # Ownership is acquired before human review, not at final approval.
+        self.h.controller.close()
         self.h.mutex.state=MutexAdmission.BUSY
-        self.h.host.request_save("gpt-6")
-        self.assertIs(self.h.host.approve(human_approved=True).outcome,Outcome.BUSY)
+        with self.assertRaises(RecoveryAdmissionError):
+            self.h.controller.request_reconciliation()
+        self.assertIs(self.h.host.request_save("gpt-6").outcome,
+                      Outcome.RECOVERY_REQUIRED)
         self.assertFalse(self.h.path.exists())
         self.assertFalse(self.h.host.recovery_marker_path.exists())
 
     def test_abandoned_mutex_quarantines(self):
+        self.h.controller.close()
         self.h.mutex.state=MutexAdmission.ABANDONED
-        self.h.host.request_save("gpt-6")
-        self.assertIs(self.h.host.approve(human_approved=True).outcome,Outcome.RECOVERY_REQUIRED)
+        # ABANDONED never grants implicit admission, even with old READY evidence.
+        self.assertIs(self.h.host.request_save("gpt-6").outcome,
+                      Outcome.RECOVERY_REQUIRED)
+        review=self.h.controller.request_reconciliation()
+        self.assertTrue(review.operation_uncertain)
+        self.assertFalse(self.h.controller.ready)
         self.assertFalse(self.h.path.exists())
-        self.assertTrue(self.h.host.recovery_marker_path.exists())
-        self.h.mutex.state=MutexAdmission.HELD
-        self.assertIs(self.h.host.request_save("gpt-6").outcome,Outcome.RECOVERY_REQUIRED)
+        self.assertIs(self.h.host.request_save("gpt-6").outcome,
+                      Outcome.RECOVERY_REQUIRED)
 
     def test_prior_marker_refuses_mutation(self):
         self.h.host.recovery_marker_path.write_text("synthetic unfinished operation")
@@ -129,6 +158,7 @@ class TrustedMetadataTests(unittest.TestCase):
 
     def test_metadata_conflict_before_approval(self):
         self.h.store.save(canonical("initial"))
+        self.h.reconcile()
         self.h.host.request_save("changed")
         self.h.store.save(canonical("external"))
         self.assertIs(self.h.host.approve(human_approved=True).outcome,Outcome.CONFLICT)
@@ -137,6 +167,7 @@ class TrustedMetadataTests(unittest.TestCase):
 
     def test_model_aba_conflict(self):
         self.h.store.save(canonical("initial"))
+        self.h.reconcile()
         self.h.host.request_save("changed")
         self.h.store.save(canonical("external"))
         self.h.store.save(canonical("initial"))
@@ -176,7 +207,8 @@ class TrustedMetadataTests(unittest.TestCase):
         with patch.object(ProviderConnectionFileStore,"save",side_effect=OSError("synthetic crash")):
             result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.h.host.recovery_marker_path.exists())
+        self.assertEqual(self.h.controller._store.read()[-1].state,
+                         RecoveryState.IN_FLIGHT)
         self.assertIs(self.h.host.request_save("gpt-6").outcome,Outcome.RECOVERY_REQUIRED)
 
     def test_write_succeeds_then_error_quarantined_no_rollback(self):
@@ -189,11 +221,13 @@ class TrustedMetadataTests(unittest.TestCase):
             result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.RECOVERY_REQUIRED)
         self.assertEqual(self.h.store.load(),canonical("gpt-6"))
-        self.assertTrue(self.h.host.recovery_marker_path.exists())
+        self.assertEqual(self.h.controller._store.read()[-1].state,
+                         RecoveryState.IN_FLIGHT)
 
     def test_failure_to_mark_blocks_write(self):
         self.h.host.request_save("gpt-6")
-        with patch.object(TrustedMetadataCommitHost,"_mark_inflight",return_value=False):
+        with patch.object(OnboardingRecoveryJournalStore,"append",
+                          side_effect=RecoveryStoreUnavailable("injected write failure")):
             result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.RECOVERY_REQUIRED)
         self.assertFalse(self.h.path.exists())
@@ -206,15 +240,17 @@ class TrustedMetadataTests(unittest.TestCase):
         with patch.object(ProviderConnectionFileStore,"save",changed):
             result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.h.host.recovery_marker_path.exists())
+        self.assertEqual(self.h.controller._store.read()[-1].state,
+                         RecoveryState.IN_FLIGHT)
         self.assertEqual(self.h.store.load(),canonical("different"))
 
     def test_marker_cleanup_failure_stays_quarantined(self):
         self.h.host.request_save("gpt-6")
-        with patch.object(TrustedMetadataCommitHost,"_clear_marker",return_value=False):
+        with patch.object(type(self.h.controller),"finish_operation",return_value=False):
             result=self.h.host.approve(human_approved=True)
         self.assertIs(result.outcome,Outcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.h.host.recovery_marker_path.exists())
+        self.assertEqual(self.h.controller._store.read()[-1].state,
+                         RecoveryState.IN_FLIGHT)
 
     def test_exact_contract_receipts_and_constructor_validation(self):
         with self.assertRaises(ValueError):
@@ -241,15 +277,16 @@ class TrustedMetadataTests(unittest.TestCase):
         backend=FakeBackend()
         bound=BoundCredentialLifecycle(backend,SecretIdentifier("openai.api_key"),
                                        FakeValidator())
-        credential=CooperativeOnboardingCoordinator(
-            host=TrustedCredentialOperationHost(
-                onboarding=OpenAICredentialOnboarding(bound),
-                observe=lambda:observe_connection(self.h.path,backend)),
-            metadata_path=self.h.path,availability=backend,
-            mutex=self.h.mutex)
-        self.assertEqual(credential.recovery_marker_path,
-                         self.h.host.recovery_marker_path)
-        self.assertTrue(credential._mark_inflight())
+        with self.assertRaises(RecoveryAdmissionError):
+            CooperativeOnboardingCoordinator(
+                host=TrustedCredentialOperationHost(
+                    onboarding=OpenAICredentialOnboarding(bound),
+                    observe=lambda:observe_connection(self.h.path,backend)),
+                metadata_path=self.h.path,availability=backend,
+                mutex=self.h.mutex)
+        # Reconciliation with no bound observer can no longer authorize new
+        # credential authority: even the metadata host becomes unavailable.
+        self.assertFalse(self.h.controller.ready)
         self.assertIs(self.h.host.request_save("gpt-6").outcome,
                       Outcome.RECOVERY_REQUIRED)
         self.assertFalse(self.h.path.exists())
@@ -263,6 +300,8 @@ class TrustedMetadataTests(unittest.TestCase):
             "nayeon.brain.connection_document",
             "nayeon.brain.connection_persistence",
             "nayeon.brain.windows_onboarding_mutex",
+            "nayeon.brain.onboarding_recovery",
+            "nayeon.brain.onboarding_recovery_evidence",
         })
         names={n.func.attr for n in ast.walk(tree)
                if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)}
@@ -289,7 +328,7 @@ class MetadataUiTests(unittest.TestCase):
 
     def test_construct_has_no_side_effect(self):
         self.assertFalse(self.h.path.exists())
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
         self.assertEqual(self.window._approve.props["state"],"disabled")
 
     def test_ui_save_two_distinct_button_events(self):
@@ -303,6 +342,7 @@ class MetadataUiTests(unittest.TestCase):
 
     def test_ui_clear_requires_additional_ack_and_does_not_touch_key(self):
         self.h.store.save(canonical())
+        self.h.reconcile()
         self.h.credential=object()
         before=self.h.credential
         self.window._clear.props["command"]()
@@ -332,7 +372,7 @@ class MetadataUiTests(unittest.TestCase):
         self.assertFalse(self.h.path.exists())
         self.assertIn("expired",self.window._status.props["text"].lower())
         self.window._approve.props["command"]()
-        self.assertEqual(self.h.mutex.entered,0)
+        self.assertEqual(self.h.mutex.entered,1)
 
     def test_ui_host_type_and_direct_backend_isolation(self):
         with self.assertRaises(TypeError):
@@ -369,6 +409,7 @@ class WindowsTkMetadataTests(unittest.TestCase):
 
     def test_clear_real_widgets_requires_ack(self):
         self.h.store.save(canonical())
+        self.h.reconcile()
         self.window._clear.invoke()
         self.window._approve.invoke()
         self.assertEqual(self.h.store.load(),canonical())

@@ -201,9 +201,53 @@ class CandidateEntryTests(unittest.TestCase):
         self.assertEqual(len(deletions),1)
         self.assertTrue(all(ast.unparse(n.func.value)=="self._entry"
                             for n in deletions))
-        self.assertIn("approve",called)
+        self.assertIn("approve_candidate_validation",called)
+        self.assertNotIn("approve",called)
         self.assertNotIn("WindowsCredentialBackend",called)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedHostAdversarialTests(CandidateEntryTests):
+    def test_other_review_window_connect_cannot_execute_from_validation_panel(self):
+        panel, host, b, v, *_ = self.build()
+        self.assertTrue(host.request(Operation.CONNECT))
+        panel._entry.value = "fixture-good"
+        panel.approve_from_button()
+        self.assertEqual((b.puts,b.deletes,v.calls),(0,0,0))
+        self.assertTrue(host.has_pending)
+        panel.reject_from_button()
+        self.assertTrue(host.has_pending, "Validation UI must not reject another window's review")
+        self.assertEqual(b.puts,0)
+
+    def test_other_window_replace_cannot_adopt_validation_ticket(self):
+        panel, host, b, v, state, *_ = self.build(State.VALIDATION_REQUIRED)
+        from nayeon.secrets.contracts import SecretValue
+        b.value = SecretValue("fixture-existing")
+        self.assertTrue(host.request(Operation.REPLACE))
+        panel._entry.value = "fixture-good"
+        panel.approve_from_button()
+        self.assertEqual((b.puts,b.deletes,v.calls),(0,0,0))
+        self.assertTrue(host.has_pending)
+
+    def test_review_cancelled_then_replaced_with_connect_cannot_reuse_ticket(self):
+        panel, host, b, v, *_ = self.build()
+        panel.request_from_button()
+        old_token = panel._validation_ticket
+        self.assertIsInstance(old_token,str)
+        host.reject()
+        self.assertTrue(host.request(Operation.CONNECT))
+        panel._entry.value = "fixture-good"
+        panel.approve_from_button()
+        self.assertEqual((b.puts,b.deletes,v.calls),(0,0,0))
+        self.assertTrue(host.has_pending)
+
+    def test_other_window_candidate_test_cannot_be_approved_without_own_ticket(self):
+        panel, host, b, v, *_ = self.build()
+        self.assertTrue(host.request(Operation.TEST_CANDIDATE))
+        panel._entry.value="fixture-good"
+        panel.approve_from_button()
+        self.assertEqual((v.calls,b.puts,b.deletes),(0,0,0))
+        self.assertTrue(host.has_pending)

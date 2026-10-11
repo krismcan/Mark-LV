@@ -8,6 +8,7 @@ Never retains a candidate SecretValue or exposes backend error details.
 from dataclasses import dataclass
 from enum import Enum
 from collections.abc import Callable
+import secrets
 
 from nayeon.brain.connection_reconciliation import ConnectionObservation
 from nayeon.brain.credential_onboarding import OpenAICredentialOnboarding
@@ -54,7 +55,7 @@ _CANDIDATE_OPERATIONS = frozenset({
 class TrustedCredentialOperationHost:
     """Explicit in-process UI host boundary; no ambient backend creation."""
 
-    __slots__ = ("__onboarding", "__observe", "__review")
+    __slots__ = ("__onboarding", "__observe", "__review", "__validation_ticket")
 
     def __init__(self, *, onboarding: OpenAICredentialOnboarding,
                  observe: Callable[[], ConnectionObservation],
@@ -68,6 +69,7 @@ class TrustedCredentialOperationHost:
         self.__onboarding = onboarding
         self.__observe = observe
         self.__review = review if review is not None else OnboardingReviewSession()
+        self.__validation_ticket = None
 
     @property
     def has_pending(self) -> bool:
@@ -94,12 +96,52 @@ class TrustedCredentialOperationHost:
             self.__review.begin(advice)
         except Exception:
             return False
+        self.__validation_ticket = None
         return True
+
+    def request_candidate_validation(self) -> str | None:
+        """Start an exact test-only review and return its opaque one-use UI ticket.
+
+        A different window's pending CONNECT/REPLACE/REMOVE is never adopted.
+        This ticket is in-process UI identity, not a recovery/credential permit.
+        """
+        if self.has_pending or not self.request(OnboardingOperation.TEST_CANDIDATE):
+            return None
+        ticket = secrets.token_hex(16)
+        self.__validation_ticket = ticket
+        return ticket
+
+    def approve_candidate_validation(
+        self, *, ticket: str, candidate: SecretValue
+    ) -> CredentialHostResult:
+        """Atomically verify both operation and originating UI ticket BEFORE effect."""
+        pending = self.__review.pending_advice
+        if (type(ticket) is not str or self.__validation_ticket is None
+                or not secrets.compare_digest(ticket, self.__validation_ticket)
+                or pending is None
+                or pending.operation is not OnboardingOperation.TEST_CANDIDATE):
+            return CredentialHostResult(
+                OnboardingOperation.TEST_CANDIDATE, CredentialHostOutcome.BLOCKED
+            )
+        self.__validation_ticket = None
+        return self.approve(candidate=candidate)
+
+    def reject_candidate_validation(self, *, ticket: str) -> CredentialHostResult | None:
+        pending = self.__review.pending_advice
+        if (type(ticket) is not str or self.__validation_ticket is None
+                or not secrets.compare_digest(ticket, self.__validation_ticket)
+                or pending is None
+                or pending.operation is not OnboardingOperation.TEST_CANDIDATE):
+            return None
+        self.__validation_ticket = None
+        return self.reject()
 
     def reject(self) -> CredentialHostResult | None:
         """Explicit UI rejection; no credential operation is invoked."""
         if not self.has_pending:
+            self.__validation_ticket = None
             return None
+        self.__validation_ticket = None
         try:
             decision=self.__review.cancel()
         except Exception:
@@ -112,6 +154,7 @@ class TrustedCredentialOperationHost:
         if pending is None:
             return None
         operation=pending.operation
+        self.__validation_ticket = None
         if ((operation in _CANDIDATE_OPERATIONS and type(candidate) is not SecretValue)
                 or (operation not in _CANDIDATE_OPERATIONS and candidate is not None)):
             self.reject()

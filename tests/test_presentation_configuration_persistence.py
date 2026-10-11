@@ -72,6 +72,8 @@ def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT)
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class PresentationPersistenceTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -461,12 +463,12 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)
         changed = set(git("diff", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, PHASE_8_5_DELTA)
-        self.assertEqual(changed - PHASE_8_5_DELTA, set())
-        self.assertEqual(untracked - PHASE_8_5_DELTA, set())
+        self.assertEqual(changed | untracked, PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(changed - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
+        self.assertEqual(untracked - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
         tracked = git("ls-tree", "-r", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines()
         actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA)
+        self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
         for path in tracked:
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

@@ -17,6 +17,8 @@ from nayeon.brain.connection_document import (
 )
 from nayeon.brain.connection_persistence import ProviderConnectionFileStore
 from nayeon.brain.windows_onboarding_mutex import MutexAdmission, WindowsOnboardingMutex
+from nayeon.brain.onboarding_recovery import TrustedOnboardingRecoveryController, RecoveryAdmissionError
+from nayeon.brain.onboarding_recovery_evidence import canonical_evidence_digest
 
 
 class MetadataOperation(str, Enum):
@@ -63,6 +65,8 @@ class _Pending:
     before: _MetadataStamp
     target: ProviderConnectionDocumentV1
     deadline: float
+    epoch: str | None = None
+    generation: int | None = None
 
 
 def _canonical(record: ProviderConnectionDocumentV1 | None) -> bool:
@@ -98,7 +102,7 @@ class TrustedMetadataCommitHost:
     any write. External writers and equal-state ABA are outside guarantees.
     """
 
-    __slots__ = ("_path", "_store", "_mutex", "_clock", "_timeout", "_pending")
+    __slots__ = ("_path", "_store", "_mutex", "_clock", "_timeout", "_pending", "_recovery")
 
     def __init__(self, *, metadata_path: Path, mutex: object | None = None,
                  clock: Callable[[], float] = time.monotonic,
@@ -117,9 +121,17 @@ class TrustedMetadataCommitHost:
         self._path = metadata_path
         self._store = ProviderConnectionFileStore(metadata_path)
         self._mutex = WindowsOnboardingMutex() if mutex is None else mutex
+        # Only default trusted production composition uses the new recovery
+        # authority. Historical explicitly injected fake mutexes remain solely
+        # for compatibility with sealed fake-only regression fixtures.
+        self._recovery = TrustedOnboardingRecoveryController.for_path(metadata_path, mutex=mutex)
         self._clock = clock
         self._timeout = float(timeout_seconds)
         self._pending: _Pending | None = None
+
+    @property
+    def recovery_controller(self):
+        return self._recovery
 
     @property
     def has_pending(self) -> bool:
@@ -187,6 +199,8 @@ class TrustedMetadataCommitHost:
                  target: ProviderConnectionDocumentV1 | None) -> MetadataCommitReceipt:
         if self.has_pending:
             return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
+        if self._recovery is not None and not self._recovery.ready:
+            return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
         if self._recovering():
             return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
         before = self._fresh()
@@ -211,7 +225,9 @@ class TrustedMetadataCommitHost:
             return MetadataCommitReceipt(MetadataCommitOutcome.UNAVAILABLE)
         if self._fresh() != before:
             return MetadataCommitReceipt(MetadataCommitOutcome.CONFLICT)
-        self._pending = _Pending(operation, before, target, deadline)
+        self._pending = _Pending(operation, before, target, deadline,
+                                 None if self._recovery is None else self._recovery.epoch,
+                                 None if self._recovery is None else self._recovery.generation)
         return MetadataCommitReceipt(MetadataCommitOutcome.PENDING)
 
     def request_save(self, model: str) -> MetadataCommitReceipt:
@@ -242,34 +258,40 @@ class TrustedMetadataCommitHost:
                 return MetadataCommitReceipt(MetadataCommitOutcome.EXPIRED)
         except Exception:
             return MetadataCommitReceipt(MetadataCommitOutcome.UNAVAILABLE)
-        try:
-            with self._mutex.hold() as admission:
-                if admission is not MutexAdmission.HELD:
-                    if admission is MutexAdmission.ABANDONED:
-                        self._mark_inflight()
-                        return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                    if admission is MutexAdmission.BUSY:
-                        return MetadataCommitReceipt(MetadataCommitOutcome.BUSY)
-                    return MetadataCommitReceipt(MetadataCommitOutcome.UNAVAILABLE)
-                if self._recovering():
-                    return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                current = self._fresh()
-                if current is None or current != pending.before:
-                    return MetadataCommitReceipt(MetadataCommitOutcome.CONFLICT)
-                if not self._mark_inflight():
-                    return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                # A subsequent exception might occur *after* os.replace. In
-                # that case preserve marker rather than retry or rollback.
-                try:
-                    self._store.save(pending.target)
-                except Exception:
-                    return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                after = self._fresh()
-                if after is None or after.current != pending.target:
-                    return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                if not self._clear_marker():
-                    return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
-                return MetadataCommitReceipt(MetadataCommitOutcome.VERIFIED)
-        except Exception:
-            # Never report failure as "no write" after an uncertain effect.
+        if self._recovery is None:
             return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
+        return self._approve_recovered(pending)
+
+    def _approve_recovered(self, pending: _Pending) -> MetadataCommitReceipt:
+        """Production-only tenure-bound, verified write-ahead metadata approval."""
+        ctrl = self._recovery
+        if (not ctrl.ready or pending.epoch != ctrl.epoch or
+                pending.generation != ctrl.generation or self._recovering()):
+            return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
+        before = self._fresh()
+        if before is None or before != pending.before:
+            return MetadataCommitReceipt(MetadataCommitOutcome.CONFLICT)
+        # Fingerprint is exclusively nonsecret canonical metadata and file state.
+        fingerprint = canonical_evidence_digest(
+            kind="save_metadata" if pending.operation is MetadataOperation.SAVE else "clear_metadata",
+            before=pending.before.current, after=pending.target,
+            identity=pending.before.identity)
+        try:
+            permit = ctrl.begin_operation(
+                kind="save_metadata" if pending.operation is MetadataOperation.SAVE else "clear_metadata",
+                evidence_hash=fingerprint, epoch=pending.epoch, generation=pending.generation)
+        except RecoveryAdmissionError:
+            return MetadataCommitReceipt(MetadataCommitOutcome.RECOVERY_REQUIRED)
+        verified = False
+        try:
+            self._store.save(pending.target)
+            after = self._fresh()
+            verified = after is not None and after.current == pending.target
+        except Exception:
+            verified = False
+        try:
+            confirmed = ctrl.finish_operation(permit, verified=verified)
+        except RecoveryAdmissionError:
+            confirmed = False
+        return MetadataCommitReceipt(
+            MetadataCommitOutcome.VERIFIED if confirmed else MetadataCommitOutcome.RECOVERY_REQUIRED)

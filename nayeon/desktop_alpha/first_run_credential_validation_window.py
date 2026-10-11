@@ -35,6 +35,7 @@ class FirstRunCredentialValidationWindow:
         self._root = root
         self._host = host
         self._busy = False
+        self._validation_ticket = None
         root.title("Nayeon | Validate a candidate credential")
         root.geometry("630x360")
         root.minsize(490, 290)
@@ -80,7 +81,10 @@ class FirstRunCredentialValidationWindow:
         self._entry.delete(0, tk.END)
 
     def _sync(self):
-        pending = self._host.has_pending is True
+        # Never adopt another window's pending operation, even if it appears
+        # while our panel is open. Only our own opaque candidate-review ticket
+        # can enable candidate entry or approval.
+        pending = self._validation_ticket is not None and self._host.has_pending is True
         self._request.configure(state="disabled" if pending or self._busy else "normal")
         self._approve.configure(state="normal" if pending and not self._busy else "disabled")
         self._reject.configure(state="normal" if pending and not self._busy else "disabled")
@@ -91,18 +95,19 @@ class FirstRunCredentialValidationWindow:
             return
         self._clear()
         try:
-            proposed = self._host.request(OnboardingOperation.TEST_CANDIDATE)
+            ticket = self._host.request_candidate_validation()
+            self._validation_ticket = ticket if type(ticket) is str else None
         except Exception:
-            proposed = False
+            self._validation_ticket = None
         self._status.configure(
             text=("Review pending. Enter a candidate, then approve validation. "
                   "No credential will be saved."
-                  if proposed is True and self._host.has_pending
+                  if self._validation_ticket is not None and self._host.has_pending
                   else "Validation review unavailable. No provider request started."))
         self._sync()
 
     def approve_from_button(self):
-        if self._busy or not self._host.has_pending:
+        if self._busy or self._validation_ticket is None or not self._host.has_pending:
             return
         self._busy = True
         candidate = None
@@ -114,7 +119,10 @@ class FirstRunCredentialValidationWindow:
                 raise ValueError("Invalid credential input")
             candidate = SecretValue(raw)
             raw = None
-            result = self._host.approve(candidate=candidate)
+            ticket = self._validation_ticket
+            self._validation_ticket = None
+            result = self._host.approve_candidate_validation(
+                ticket=ticket, candidate=candidate)
             message = (_MESSAGES[result.outcome]
                        if type(result) is CredentialHostResult
                        and result.operation is OnboardingOperation.TEST_CANDIDATE
@@ -122,9 +130,11 @@ class FirstRunCredentialValidationWindow:
         except Exception:
             # If candidate construction or callback failed, consume any review.
             try:
-                self._host.reject()
+                if self._validation_ticket is not None:
+                    self._host.reject_candidate_validation(ticket=self._validation_ticket)
             except Exception:
                 pass
+            self._validation_ticket = None
             message = "Validation unavailable. No credential saved."
         finally:
             raw = None
@@ -141,10 +151,11 @@ class FirstRunCredentialValidationWindow:
         if self._busy:
             return
         try:
-            if self._host.has_pending:
-                self._host.reject()
+            if self._validation_ticket is not None:
+                self._host.reject_candidate_validation(ticket=self._validation_ticket)
         except Exception:
             pass
+        self._validation_ticket = None
         self._clear()
         self._status.configure(text="Review rejected. Entry cleared. No validation performed.")
         self._sync()

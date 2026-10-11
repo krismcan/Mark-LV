@@ -23,6 +23,8 @@ from nayeon.brain.connection_service import ProviderConnectionService
 from nayeon.secrets.contracts import SecretIdentifier
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class ProviderConnectionStartupTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -246,10 +248,10 @@ class Phase87FrozenProductionScope(unittest.TestCase):
                                        "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others",
                                          "--exclude-standard", "--", "nayeon").splitlines()))
-        self.assertEqual(changed | untracked, delta)
+        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         actual = {p.relative_to(root).as_posix() for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, production | delta)
+        self.assertEqual(actual, production | delta | APPROVED_RECOVERY_ADDITIONS)
         for name in tracked | {"requirements.txt"}:
             with self.subTest(name=name):
                 actual_bytes = (root / name).read_bytes().replace(b"\r\n", b"\n")

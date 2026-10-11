@@ -59,6 +59,8 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
 FAILURE = "Credential lifecycle operation failed"
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class IdentifierSubclass(SecretIdentifier):
     pass
 
@@ -432,9 +434,9 @@ class Phase83ScopeGuards(unittest.TestCase):
             self.assertEqual(tracked & DELTA, set())
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, DELTA)
+            self.assertEqual(changed | untracked, DELTA | APPROVED_RECOVERY_ADDITIONS)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA)
+            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked:
                 with self.subTest(baseline=baseline, path=path):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

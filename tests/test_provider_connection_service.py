@@ -62,6 +62,8 @@ def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT)
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class ProviderConnectionServiceTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -282,10 +284,10 @@ class Phase85ScopeGuards(unittest.TestCase):
             changed = set(git("diff", "--name-only", checkpoint, "--", "nayeon", "requirements.txt").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
             # Accept pre-staged, staged and committed forms of the exact delta.
-            self.assertEqual(changed | untracked, DELTA)
+            self.assertEqual(changed | untracked, DELTA | APPROVED_RECOVERY_ADDITIONS)
             self.assertFalse(changed & untracked)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, production | DELTA)
+            self.assertEqual(actual, production | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked | {"requirements.txt"}:
                 with self.subTest(checkpoint=checkpoint, path=path):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
@@ -323,11 +325,13 @@ class Phase85ScopeGuards(unittest.TestCase):
                 "nayeon/brain/onboarding_metadata_document.py",
                 "nayeon/brain/onboarding_metadata_review.py",
                 "nayeon/brain/onboarding_metadata_change_preview.py",
-                "nayeon/brain/onboarding_metadata_commit.py"},
+                "nayeon/brain/onboarding_metadata_commit.py",
+                "nayeon/brain/onboarding_recovery_evidence.py"},
             "ProviderConnectionFileStore": {
                 "nayeon/brain/connection_service.py", "nayeon/brain/connection_bootstrap.py",
                 "nayeon/brain/onboarding_coordination.py",
-                "nayeon/brain/onboarding_metadata_commit.py"},
+                "nayeon/brain/onboarding_metadata_commit.py",
+                "nayeon/brain/onboarding_recovery.py"},
             "ProviderConnectionService": {
                 "nayeon/brain/connection_bootstrap.py", "nayeon/brain/connection_composition.py",
                 "nayeon/brain/connection_readiness.py", "nayeon/brain/connection_startup.py"},

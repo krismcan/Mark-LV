@@ -75,6 +75,8 @@ def mapping():
     return presentation_configuration_document_to_mapping(PresentationConfigurationDocumentV1())
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class HostilePath:
     def __fspath__(self):
         raise AssertionError("No path coercion")
@@ -335,10 +337,10 @@ def bootstrap_presentation_configuration(path: Path) -> PresentationConfiguratio
         for baseline in (STARTING_HEAD, PRODUCT_COMMIT):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_5_DELTA)
+            self.assertEqual(changed | untracked, PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA)
+            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked:
                 with self.subTest(baseline=baseline, path=path):
                     self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

@@ -19,6 +19,8 @@ from nayeon.secrets.contracts import SecretIdentifier
 from nayeon.secrets.resolver import BoundSecretResolver
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class HostileBackend:
     def __getattribute__(self, name):
         raise AssertionError("Backend accessed before metadata validation")
@@ -400,11 +402,11 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
                       .decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon")
                         .decode().splitlines())
-        self.assertEqual(changed | untracked, delta)
+        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         actual = {path.relative_to(root).as_posix()
                   for path in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, existing | delta)
+        self.assertEqual(actual, existing | delta | APPROVED_RECOVERY_ADDITIONS)
         for path in tracked | {"requirements.txt"}:
             with self.subTest(path=path):
                 on_disk = (root / path).read_bytes().replace(b"\r\n", b"\n")

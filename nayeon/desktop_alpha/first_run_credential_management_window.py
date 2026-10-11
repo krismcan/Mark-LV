@@ -10,6 +10,7 @@ Tests use fake backends and validators; real provider calls require separate
 explicit consent. Tk masking and deletion are best effort, not secure erasure.
 """
 import tkinter as tk
+from nayeon.desktop_alpha.first_run_onboarding_recovery_window import FirstRunOnboardingRecoveryWindow
 
 from nayeon.brain.onboarding_coordination import (
     CooperativeOnboardingCoordinator, CoordinationReceipt, CoordinatedOutcome,
@@ -87,6 +88,11 @@ class FirstRunCredentialManagementWindow:
         tk.Label(root, bg="#101827", fg="#adc1d6",
                  text="Select one review action. Approval is a separate deliberate step.").pack(
                      anchor="w", padx=20, pady=(6, 12))
+        self._recovery_dialog = None
+        self._recovery_button = tk.Button(
+            root, text="Inspect and reconcile onboarding safety",
+            command=self.open_reconciliation_from_button)
+        self._recovery_button.pack(anchor="w", padx=20, pady=4)
         self._choices = []
         for operation, label in _ACTIONS:
             button = tk.Button(root, text=label,
@@ -238,8 +244,34 @@ class FirstRunCredentialManagementWindow:
         self._status.configure(text="Review rejected. Candidate cleared. Nothing submitted.")
         self._sync()
 
+    def open_reconciliation_from_button(self):
+        """Only a user click opens a fresh trusted recovery review."""
+        if self._busy:
+            return
+        if (self._recovery_dialog is not None and
+                self._recovery_dialog._root.winfo_exists()):
+            return
+        self._recovery_dialog = None
+        ctrl = self._coordinator.recovery_controller
+        if ctrl.ready:
+            self._status.configure(text="This onboarding session is already reconciled.")
+            return
+        try:
+            window = tk.Toplevel(self._root)
+            self._recovery_dialog = FirstRunOnboardingRecoveryWindow(
+                window, controller=ctrl)
+        except Exception:
+            self._recovery_dialog = None
+            self._status.configure(text="Recovery review unavailable. Protected changes remain blocked.")
+
     def close_from_window(self):
         if self._busy:
             return
         self.reject_from_button()
+        try:
+            recovery = self._coordinator.recovery_controller
+            if recovery._ctx is not None:
+                recovery.close()
+        except Exception:
+            pass
         self._root.destroy()

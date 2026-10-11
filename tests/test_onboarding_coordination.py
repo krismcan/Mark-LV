@@ -19,6 +19,9 @@ from nayeon.brain.onboarding_operation_advice import OnboardingOperation as Op
 from nayeon.secrets.contracts import SecretIdentifier, SecretValue
 from nayeon.secrets.lifecycle import BoundCredentialLifecycle
 from nayeon.brain.windows_onboarding_mutex import WindowsOnboardingMutex, MutexAdmission
+from nayeon.brain.onboarding_recovery import RecoveryAdmissionError
+from nayeon.brain.onboarding_recovery_document import RecoveryState
+from nayeon.brain.onboarding_recovery_store import OnboardingRecoveryJournalStore, RecoveryStoreUnavailable
 from tests.test_credential_operation_host import FakeBackend, FakeValidator
 
 
@@ -60,6 +63,16 @@ class CoordinationTests(unittest.TestCase):
             host=self.host, metadata_path=self.path,
             availability=self.backend, mutex=self.mutex,
         )
+        self.controller=self.coordinator.recovery_controller
+        self.addCleanup(lambda: self.controller.close() if self.controller._ctx is not None else None)
+        self.reconcile()
+
+    def reconcile(self):
+        if self.controller._ctx is not None:
+            self.controller.close()
+        r=self.controller.request_reconciliation()
+        assert self.controller.approve_reconciliation(
+            human_approved=True, fingerprint=r.fingerprint)
 
     def configure(self, model="gpt-5.6", provider="openai"):
         ProviderConnectionFileStore(self.path).save(
@@ -72,18 +85,18 @@ class CoordinationTests(unittest.TestCase):
         self.assertTrue(self.coordinator.has_pending)
         self.assertFalse(self.coordinator.recovery_marker_path.exists())
         self.assertEqual((self.backend.puts,self.validator.calls),(0,0))
-        self.assertEqual(self.mutex.entered,0)
+        self.assertEqual(self.mutex.entered,1)
         self.coordinator.reject()
         self.assertFalse(self.coordinator.has_pending)
 
     def test_cooperative_connect_locks_one_approval(self):
         self.assertIs(self.coordinator.request(Op.CONNECT).outcome,CoordinatedOutcome.PENDING)
         receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
-        self.assertIs(receipt.outcome,CoordinatedOutcome.COMPLETED)
+        self.assertIs(receipt.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertIs(receipt.host_outcome,CredentialHostOutcome.SUBMITTED)
         self.assertTrue(receipt.requires_reobservation)
         self.assertFalse(receipt.confirms_transaction)
-        self.assertEqual(self.mutex.entered,self.mutex.exited)
+        self.assertEqual((self.mutex.entered,self.mutex.exited),(1,0))
         self.assertEqual(self.mutex.entered,1)
         self.assertFalse(self.coordinator.recovery_marker_path.exists())
         self.assertEqual((self.backend.puts,self.validator.calls),(1,1))
@@ -117,21 +130,24 @@ class CoordinationTests(unittest.TestCase):
         self.assertEqual(self.backend.puts,0)
 
     def test_busy_mutex_is_fail_closed_and_review_consumed(self):
+        self.controller.close()
         self.mutex.state=MutexAdmission.BUSY
-        self.coordinator.request(Op.CONNECT)
-        receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
-        self.assertIs(receipt.outcome,CoordinatedOutcome.BUSY)
+        with self.assertRaises(RecoveryAdmissionError):
+            self.controller.request_reconciliation()
+        self.assertIs(self.coordinator.request(Op.CONNECT).outcome,
+                      CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertFalse(self.host.has_pending)
         self.assertEqual((self.backend.puts,self.validator.calls),(0,0))
         self.assertFalse(self.coordinator.recovery_marker_path.exists())
 
     def test_abandoned_mutex_quarantines_future_operations(self):
+        self.controller.close()
         self.mutex.state=MutexAdmission.ABANDONED
-        self.coordinator.request(Op.CONNECT)
-        self.assertIs(self.coordinator.approve(candidate=SecretValue("fixture-good")).outcome,
+        self.assertIs(self.coordinator.request(Op.CONNECT).outcome,
                       CoordinatedOutcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.coordinator.recovery_marker_path.exists())
-        self.mutex.state=MutexAdmission.HELD
+        review=self.controller.request_reconciliation()
+        self.assertTrue(review.operation_uncertain)
+        self.assertFalse(self.controller.ready)
         self.assertIs(self.coordinator.request(Op.CONNECT).outcome,
                       CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertEqual((self.backend.puts,self.validator.calls),(0,0))
@@ -151,16 +167,18 @@ class CoordinationTests(unittest.TestCase):
         r=self.coordinator.approve(candidate=SecretValue("fixture-good"))
         self.assertIs(r.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertIs(r.host_outcome,CredentialHostOutcome.INDETERMINATE)
-        self.assertTrue(self.coordinator.recovery_marker_path.exists())
+        self.assertIs(self.controller._store.read()[-1].state,
+                      RecoveryState.IN_FLIGHT)
         self.assertNotIn("secret-shaped",str(r))
 
     def test_invalid_replacement_preserves_original_and_clears_marker(self):
         self.configure()
         original=SecretValue("old-key")
         self.backend.value=original
+        self.reconcile()
         self.assertIs(self.coordinator.request(Op.REPLACE).outcome,CoordinatedOutcome.PENDING)
         r=self.coordinator.approve(candidate=SecretValue("fixture-bad"))
-        self.assertIs(r.outcome,CoordinatedOutcome.COMPLETED)
+        self.assertIs(r.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertIs(r.host_outcome,CredentialHostOutcome.INVALID)
         self.assertIs(self.backend.value,original)
         self.assertFalse(self.coordinator.recovery_marker_path.exists())
@@ -169,7 +187,7 @@ class CoordinationTests(unittest.TestCase):
         self.coordinator.request(Op.CONNECT)
         r=self.coordinator.reject()
         self.assertIs(r.outcome,CoordinatedOutcome.REFUSED)
-        self.assertEqual(self.mutex.entered,0)
+        self.assertEqual(self.mutex.entered,1)
         self.assertFalse(self.coordinator.recovery_marker_path.exists())
         self.assertIs(self.coordinator.approve().outcome,CoordinatedOutcome.REFUSED)
 
@@ -197,8 +215,8 @@ class CoordinationTests(unittest.TestCase):
         self.backend.put=assert_owned
         self.coordinator.request(Op.CONNECT)
         receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
-        self.assertIs(receipt.outcome,CoordinatedOutcome.COMPLETED)
-        self.assertFalse(self.mutex.active)
+        self.assertIs(receipt.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
+        self.assertTrue(self.mutex.active)
 
     def test_metadata_corruption_blocks_without_backend_mutation(self):
         self.path.write_text("not-json")
@@ -209,27 +227,31 @@ class CoordinationTests(unittest.TestCase):
     def test_failed_marker_creation_blocks_before_host_approval(self):
         from unittest.mock import patch
         self.coordinator.request(Op.CONNECT)
-        with patch.object(CooperativeOnboardingCoordinator,"_mark_inflight",return_value=False):
+        with patch.object(OnboardingRecoveryJournalStore,"append",
+                          side_effect=RecoveryStoreUnavailable("synthetic preflight failed")):
             receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
         self.assertIs(receipt.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertEqual((self.backend.puts,self.validator.calls),(0,0))
         self.assertFalse(self.host.has_pending)
 
     def test_mutex_unavailable_prevents_mutation(self):
+        self.controller.close()
         self.mutex.state=MutexAdmission.UNAVAILABLE
-        self.coordinator.request(Op.CONNECT)
-        receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
-        self.assertIs(receipt.outcome,CoordinatedOutcome.UNAVAILABLE)
+        with self.assertRaises(RecoveryAdmissionError):
+            self.controller.request_reconciliation()
+        self.assertIs(self.coordinator.request(Op.CONNECT).outcome,
+                      CoordinatedOutcome.RECOVERY_REQUIRED)
         self.assertEqual((self.backend.puts,self.validator.calls),(0,0))
 
-    def test_failed_cleanup_retains_recovery_marker(self):
-        from unittest.mock import patch
-        self.coordinator.request(Op.CONNECT)
-        with patch.object(CooperativeOnboardingCoordinator,"_clear_marker",return_value=False):
-            receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
+    def test_unverified_connect_preserves_recovery_evidence(self):
+        # A SUBMITTED key has no independently proved exact-value readback.
+        self.assertIs(self.coordinator.request(Op.CONNECT).outcome,CoordinatedOutcome.PENDING)
+        receipt=self.coordinator.approve(candidate=SecretValue("fixture-good"))
         self.assertIs(receipt.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.coordinator.recovery_marker_path.exists())
+        self.assertIs(self.controller._store.read()[-1].state,
+                      RecoveryState.IN_FLIGHT)
         self.assertEqual(self.backend.puts,1)
+        self.assertFalse(self.controller.ready)
 
     def test_metadata_changed_during_credential_write_requires_recovery(self):
         self.configure("original")
@@ -238,10 +260,12 @@ class CoordinationTests(unittest.TestCase):
             original_put(*args)
             self.configure("changed-during-write")
         self.backend.put=competing_put
+        self.reconcile()
         self.coordinator.request(Op.CONNECT)
         r=self.coordinator.approve(candidate=SecretValue("fixture-good"))
         self.assertIs(r.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
-        self.assertTrue(self.coordinator.recovery_marker_path.exists())
+        self.assertIs(self.controller._store.read()[-1].state,
+                      RecoveryState.IN_FLIGHT)
         self.assertEqual(self.backend.puts,1)
 
     def test_metadata_changed_during_validation_rejects_result_not_storage(self):
@@ -251,10 +275,11 @@ class CoordinationTests(unittest.TestCase):
             self.configure("changed-during-validation")
             return original(value)
         self.validator.validate=competing_validation
+        self.reconcile()
         self.coordinator.request(Op.TEST_CANDIDATE)
         r=self.coordinator.approve(candidate=SecretValue("fixture-good"))
-        self.assertIs(r.outcome,CoordinatedOutcome.CONFLICT)
-        self.assertFalse(self.coordinator.recovery_marker_path.exists())
+        self.assertIs(r.outcome,CoordinatedOutcome.RECOVERY_REQUIRED)
+        self.assertIs(self.controller._store.read()[-1].state,RecoveryState.IN_FLIGHT)
         self.assertEqual(self.backend.puts,0)
 
 

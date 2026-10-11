@@ -17,6 +17,8 @@ from nayeon.brain.credential_operation_host import (
     CredentialHostOutcome, CredentialHostResult, TrustedCredentialOperationHost,
 )
 from nayeon.brain.onboarding_operation_advice import OnboardingOperation
+from nayeon.brain.onboarding_recovery import TrustedOnboardingRecoveryController, RecoveryAdmissionError
+from nayeon.brain.onboarding_recovery_evidence import canonical_evidence_digest
 from nayeon.brain.windows_onboarding_mutex import (
     MutexAdmission, WindowsOnboardingMutex,
 )
@@ -76,7 +78,7 @@ class CooperativeOnboardingCoordinator:
     writer prevention and no guarantee of detecting same-state key ABA.
     """
 
-    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation")
+    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation", "_recovery", "_pending_epoch", "_pending_generation")
 
     def __init__(self, *, host: TrustedCredentialOperationHost,
                  metadata_path: Path, availability: object,
@@ -93,8 +95,15 @@ class CooperativeOnboardingCoordinator:
         self._path = metadata_path
         self._availability = availability
         self._mutex = WindowsOnboardingMutex() if mutex is None else mutex
+        self._recovery = TrustedOnboardingRecoveryController.for_path(metadata_path, availability=availability, mutex=mutex)
+        self._pending_epoch = None
+        self._pending_generation = None
         self._pending: _FreshStamp | None = None
         self._operation: OnboardingOperation | None = None
+
+    @property
+    def recovery_controller(self):
+        return self._recovery
 
     @property
     def has_pending(self) -> bool:
@@ -135,6 +144,8 @@ class CooperativeOnboardingCoordinator:
     def request(self, operation: OnboardingOperation) -> CoordinationReceipt:
         if self.has_pending or self._host.has_pending or type(operation) is not OnboardingOperation:
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        if self._recovery is not None and not self._recovery.ready:
+            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
         if self._recovering():
             return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
         before = self._fresh()
@@ -153,11 +164,15 @@ class CooperativeOnboardingCoordinator:
             return CoordinationReceipt(CoordinatedOutcome.CONFLICT)
         self._pending = after
         self._operation = operation
+        self._pending_epoch = None if self._recovery is None else self._recovery.epoch
+        self._pending_generation = None if self._recovery is None else self._recovery.generation
         return CoordinationReceipt(CoordinatedOutcome.PENDING)
 
     def reject(self) -> CoordinationReceipt:
         self._pending = None
         self._operation = None
+        self._pending_epoch = None
+        self._pending_generation = None
         try:
             self._host.reject()
         except Exception:
@@ -190,62 +205,67 @@ class CooperativeOnboardingCoordinator:
             self._pending = None
             self._operation = None
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        epoch = self._pending_epoch
+        generation = self._pending_generation
         self._pending = None
         self._operation = None
-        try:
-            with self._mutex.hold() as admission:
-                if admission is not MutexAdmission.HELD:
-                    self._host.reject()
-                    if admission is MutexAdmission.ABANDONED:
-                        # Previously acquired mutex was abandoned: quarantine
-                        # cooperating writers until a human-led recovery.
-                        self._mark_inflight()
-                        return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-                    if admission is MutexAdmission.BUSY:
-                        return CoordinationReceipt(CoordinatedOutcome.BUSY)
-                    return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE)
-                if self._recovering():
-                    self._host.reject()
-                    return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-                current = self._fresh()
-                if current is None or current != pending:
-                    self._host.reject()
-                    return CoordinationReceipt(CoordinatedOutcome.CONFLICT)
-                if not self._mark_inflight():
-                    self._host.reject()
-                    return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-                # From here a crash or backend failure may have partially
-                # mutated one store; preserve the marker in uncertain cases.
-                try:
-                    host_result = self._host.approve(candidate=candidate)
-                except Exception:
-                    host_result = None
-                return self._finish(host_result, operation, pending)
-        except Exception:
+        self._pending_epoch = None
+        self._pending_generation = None
+        if self._recovery is None:
             self._host.reject()
-            return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE)
+            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
+        return self._approve_recovered(pending, operation, candidate, epoch, generation)
 
-    def _finish(self, result: object, operation: OnboardingOperation,
-                before: _FreshStamp) -> CoordinationReceipt:
-        if type(result) is not CredentialHostResult:
-            if operation in _MUTATING:
-                return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-            if not self._clear_marker():
-                return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-            return CoordinationReceipt(CoordinatedOutcome.INDETERMINATE)
-        if operation in _MUTATING and result.outcome is CredentialHostOutcome.INDETERMINATE:
-            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED, result.outcome)
-        # Re-observe metadata while still holding the mutex. Credential
-        # availability may legitimately change after CONNECT/REMOVE; only
-        # the metadata document and its file identity should remain stable.
+    def _approve_recovered(self, pending: _FreshStamp, operation: OnboardingOperation,
+                           candidate: object, epoch: str | None,
+                           generation: int | None) -> CoordinationReceipt:
+        """Trusted active-tenure path; no prior journal READY grants authority."""
+        ctrl = self._recovery
+        if (not ctrl.ready or epoch != ctrl.epoch or generation != ctrl.generation or
+                self._recovering()):
+            self._host.reject()
+            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
+        current = self._fresh()
+        if current is None or current != pending:
+            self._host.reject()
+            return CoordinationReceipt(CoordinatedOutcome.CONFLICT)
+        fingerprint = canonical_evidence_digest(
+            kind=operation.value, before=pending.connection_record,
+            after=None, identity=pending.file_identity,
+            observation=pending.status.value)
+        try:
+            permit = ctrl.begin_operation(kind=operation.value, evidence_hash=fingerprint,
+                                          epoch=epoch, generation=generation)
+        except RecoveryAdmissionError:
+            self._host.reject()
+            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
+        try:
+            host_result = self._host.approve(candidate=candidate)
+        except Exception:
+            host_result = None
         after = self._fresh()
-        if (after is None or after.connection_record != before.connection_record
-                or after.file_identity != before.file_identity):
-            if operation in _MUTATING:
-                return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED, result.outcome)
-            if not self._clear_marker():
-                return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED, result.outcome)
-            return CoordinationReceipt(CoordinatedOutcome.CONFLICT, result.outcome)
-        if not self._clear_marker():
-            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED, result.outcome)
-        return CoordinationReceipt(CoordinatedOutcome.COMPLETED, result.outcome)
+        # CONNECT/REPLACE have no trusted exact-value readback. A mere
+        # SUBMITTED result/presence cannot independently verify the key.
+        verified = (
+            type(host_result) is CredentialHostResult
+            and host_result.outcome is not CredentialHostOutcome.INDETERMINATE
+            and after is not None
+            and after.connection_record == pending.connection_record
+            and after.file_identity == pending.file_identity
+            and (operation is OnboardingOperation.REMOVE and
+                 host_result.outcome is CredentialHostOutcome.SUBMITTED and
+                 ctrl.verify_credential_absent() or
+                 operation not in (OnboardingOperation.CONNECT,
+                                   OnboardingOperation.REPLACE, OnboardingOperation.REMOVE))
+        )
+        try:
+            confirmed = ctrl.finish_operation(permit, verified=verified)
+        except RecoveryAdmissionError:
+            confirmed = False
+        if not confirmed:
+            return CoordinationReceipt(
+                CoordinatedOutcome.RECOVERY_REQUIRED,
+                host_result.outcome if type(host_result) is CredentialHostResult else None)
+        return CoordinationReceipt(
+            CoordinatedOutcome.COMPLETED,
+            host_result.outcome if type(host_result) is CredentialHostResult else None)

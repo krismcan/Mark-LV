@@ -50,6 +50,8 @@ NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persisten
 DELTA = NEW
 
 
+from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+
 class SecretSubclass(SecretValue):
     pass
 
@@ -216,9 +218,9 @@ class Phase84ScopeGuards(unittest.TestCase):
             production = {p for p in tracked if p.startswith("nayeon/") or p == "requirements.txt"}
             changed = set(self.git("diff", "--name-only", baseline, "--", "nayeon", "requirements.txt").splitlines())
             untracked = set(self.git("ls-files", "--others", "--exclude-standard", "--", "nayeon").splitlines())
-            self.assertEqual(changed | untracked, DELTA)
+            self.assertEqual(changed | untracked, DELTA | APPROVED_RECOVERY_ADDITIONS)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in production if p.endswith(".py")} | NEW)
+            self.assertEqual(actual, {p for p in production if p.endswith(".py")} | NEW | APPROVED_RECOVERY_ADDITIONS)
             for path in production - DELTA:
                 with self.subTest(path=path, baseline=baseline):
                     self.assertEqual((ROOT / path).read_text(encoding="utf-8"),
