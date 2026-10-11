@@ -265,3 +265,76 @@ and new annotated tag, independently verify remote exact hashes,
 then update the same-ID master workbook and run the mandatory phase GO/HOLD
 retrospective before starting 8.29. No real keys, credential stores or
 provider calls are authorised by this local maintenance seal.
+
+### Remote closure and bounded final fault-injection follow-up — 11 Oct 2026
+
+**Remote closure of the PRIOR maintenance** (the historical HOLD passages above
+remain evidence of what was pending at the time):
+- User approved GitHub push. `origin/nayeon-v1` independently reports exact
+  branch commit `db8f5ce224f4677f4bc5050939a943c2a7142a08`.
+- Remote annotated tag
+  `nayeon-v1-pre-8-29-shutdown-ownership-native-mutex-maintenance-01`
+  resolves as tag object `e6747ac373605297b0ba6315012498ee4f5f9706`,
+  peeled product-security commit `28b417fe1c97cdcb7f5907ecc0db92e7d3ac6622`.
+  Historical tags preserved.
+- Existing SAME-ID Google Drive workbook
+  `Nayeon_v1_Master_Architecture_Audit_Progress_Updated.xlsm`, file ID
+  `1n0tDiBQCkPWluX6eakRiRfq57tflRW5L`, has been updated in place;
+  Drive readback confirms original ID and macro-enabled MIME type,
+  modification time `2026-10-11T17:02:48.571Z`.
+  Project readiness remains 5/19 planned phases, 0/12 release gates.
+- The earlier pre-push and pre-workbook statements in this append-only audit
+  remain chronological evidence, NOT the current remote disposition.
+
+**User-approved LOCAL scope**: add deterministic fake-only Win32 native cleanup
+exception tests and real Windows/Tk tests that externally destroy metadata and
+credential management roots *inside an actual approve_from_button callback*
+for both refused results and exception paths; reconcile Codex handoff; run
+focused/affected/full regressions and an independent read-only Codex review,
+then prepare a separate local maintenance commit/tag. No production code change,
+live credential, native kernel call, provider request, new product phase or push
+is authorised by this follow-up.
+
+New `tests/test_pre_829_final_fault_injection.py` exercises:
+- ReleaseMutex native exception, CloseHandle native exception, both native
+  exceptions; process admission remains BUSY after each unproven release.
+  Every test patches a disposable process lock and fake kernel32.
+- Metadata and credential management Tk roots destroyed by synchronous,
+  instrumented *approval calls* while busy, both on synthetic refusal and
+  synthetic exception. Teardown defers until `finally`, old review/tenure is
+  cancelled, callbacks remain inert, no fake backend mutation occurs, and fresh
+  reconciliation/new UI ownership can succeed. Only temporary metadata and a
+  fake credential backend/validator are used.
+
+**Initial focused validation**: 7/7 passed. Full regression and independent
+security review are pending at this entry; **Phase 8.29 remains HOLD**.
+
+**Independent final-hardening static review**: GPT-6.1 Sol / High,
+read-only sandbox, separately run through Codex CLI; result saved to
+`C:\Users\krist\AppData\Local\Temp\nayeon_pre829_final_hardening_review_result.txt`.
+**CLEAR for bounded LOCAL test-hardening scope: zero HIGH/MEDIUM findings**.
+Codex independently checked that all native API calls and the process gate
+are fake, and the metadata/credential Tk tests destroy real Toplevel widgets
+synchronously INSIDE production approve callbacks. No files edited or real
+credentials/providers/native calls used by reviewer; the earlier 7/7 and 82/82
+figures were author test evidence, not reviewer-executed tests.
+
+Coverage limitations recorded honestly: mocked approval service bodies do NOT
+validate genuine partial backend writes or real provider effects, nor the
+existing durable IN_FLIGHT journal. Direct Python invocation reaches real
+approval callback logic and Tk Destroy events but not Tk button dispatch.
+Combined native exception test checks latch; individually injected exception
+tests also verify a second admission stays BUSY. Earlier security suites cover
+stale token/ticket isolation across tenure transitions. These are bounded
+test-review caveats, not permission to relax existing sealed trust contracts.
+
+GitHub branch and peeled tag were independently verified in the connected
+host before this follow-up. Codex's read-only environment could not access
+GitHub; it verified only local cached refs. Google Drive metadata verified
+the existing macro-enabled workbook ID and modification timestamp; **cell
+contents were not re-read by this Codex review**. Neither claim substitutes
+for direct evidence or a new release/readiness approval.
+
+**Disposition**: independent test-hardening review CLEAR; maintenance
+seal-time full regression, commit/tag and postcommit verification PENDING.
+**Phase 8.29 HOLD; no push approval for this follow-up.**
