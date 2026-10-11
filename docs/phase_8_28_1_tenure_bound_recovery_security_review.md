@@ -47,3 +47,13 @@ The named mutex protects cooperating Nayeon processes within the same Windows se
 [ ] Phase 8.29 stays blocked until all required gates have completed
 
 **Security process note:** Historic tests were updated only where the approved Phase 8.28.1 authority contract changed; their original sealed content hashes, secret-import restrictions and behavioral fake-only safety assertions were not blanket-disabled or skipped.
+
+
+## Verified product seal — 11 October 2026
+
+- Product commit `3cf53d0844af753468f26452f87b70b541bc0b9c` is committed, annotated-tagged `nayeon-v1-phase-8-28-1-tenure-bound-recovery-security-01`, pushed atomically to `origin/nayeon-v1`, and the independently queried remote peeled tag resolves to that exact commit.
+- Frozen prior Phase 8.28 annotated tag still peels to `b23f638372e9afbb283913f992461b390021d438`.
+- Deterministic Windows Python 3.12 full suite: **2,223 / 2,223 passed, 0 failed, 0 skipped** at staged seal time and again after the product commit. `compileall -q nayeon tests` and staged diff check passed.
+- Codex Sol High independent read-only cross-phase review of the final ticket-bound candidate-validation and unowned-observer fixes: **PASS, no material findings in the reviewed scope**. Its Python sandbox could not run the authoritative host runtime, which was tested separately.
+- Original fake-only shared-host CONNECT/REPLACE bypass probe now has zero key writes; the conflicting observer probe no longer poisons the unowned controller. No live credential, provider or native secret store accessed.
+- Phase 8.29 remains unapproved/not begun. Master workbook same-ID update is a separate documentation completion gate; formal product phase 8 and 12 end-user release acceptance gates remain open.

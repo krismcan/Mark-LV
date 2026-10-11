@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.28 - expiring trusted metadata confirmation and cooperative save/clear with conservative recovery
-- **Latest milestone tag:** `nayeon-v1-phase-8-28-trusted-metadata-confirmation-01`
-- **Full regression baseline:** **2,142 / 2,142**
+- **Latest completed product phase:** Phase 8.28.1 — tenure-bound trusted onboarding recovery and cross-phase security closure
+- **Latest milestone tag:** `nayeon-v1-phase-8-28-1-tenure-bound-recovery-security-01`
+- **Full regression baseline:** **2,223 / 2,223**
 - **Last updated:** 11 Oct 2026
-- **Next restart point:** Phase 8.29 conditional integrated first-run acceptance. Review normal-user consent, live credential/provider testing approval, packaging and release gates before attempting. No live credentials, native credential store or provider calls without explicit separate approval.
+- **Next restart point:** Phase 8.29 remains gated on same-ID master workbook update and renewed explicit scope approval before any live credentials/provider calls. Conduct conditional integrated first-run acceptance with separate consent.
 
 ## Latest architecture invariant
 
-Canonical OpenAI provider/model metadata save and metadata-only clear require separate expiring single-use human approval. Shared Phase 8.26 Windows-session mutex and recovery marker, pre/post typed state checks. 2142/2142 full postcommit, fake-only keys and real Windows Tk fake callbacks. No external-writer CAS, cross-store transaction or provider entitlement. Formal 5/19 phases, 0/12 gates.
+Trusted named mutex held for the entire fresh human-reconciled session; historical READY never grants admission. Bounded nonsecret write-ahead journal must persist/read back IN_FLIGHT before a sensitive effect. Metadata requires typed poststate verification; CONNECT/REPLACE remain uncertain without exact key readback. Candidate-only validation uses one-use operation-bound tickets and cannot execute another window CONNECT/REPLACE. Observer conflicts cannot poison an unowned controller. Full postcommit 2223/2223, zero failures/skips, fake-only Windows acceptance; no real credentials/providers. Phase 8 formal closure and 12 release gates remain open.
 
 ## Required startup behavior
 
