@@ -10,6 +10,7 @@ import subprocess
 import traceback
 from typing import get_type_hints
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from unittest.mock import Mock, call
 
 from nayeon.secrets.contracts import (
@@ -449,6 +450,9 @@ class Phase83ScopeGuards(unittest.TestCase):
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             paths.update(git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines())
         for path in paths:
+            if path == "AGENTS.md":
+                assert_authorized_governance(self, START)
+                continue
             self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                              git("show", START + ":" + path).replace(b"\r\n", b"\n"), path)
 

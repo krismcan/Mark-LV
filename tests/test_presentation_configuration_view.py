@@ -6,6 +6,7 @@ import inspect
 from pathlib import Path
 import subprocess
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from typing import get_type_hints
 
 from nayeon.config import view as m
@@ -362,6 +363,9 @@ def presentation_configuration_view(
                      "nayeon/config/config.py", "nayeon/config/__init__.py", "nayeon/__init__.py",
                      "main.py", "ui.py"):
             with self.subTest(path=path):
+                if path == "AGENTS.md":
+                    assert_authorized_governance(self, STARTING_HEAD)
+                    continue
                 self.assert_content_matches(path, STARTING_HEAD)
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             for path in git("ls-tree", "-r", "--name-only", STARTING_HEAD, "--", directory).decode().splitlines():

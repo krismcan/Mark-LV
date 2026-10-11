@@ -37,7 +37,10 @@ class FirstRunMetadataManagementWindow:
             raise TypeError("Exact trusted metadata host required")
         self._root = root
         self._host = host
+        self._owner_token: str | None = None
+        self._closed = False
         self._operation: MetadataOperation | None = None
+        self._ticket: str | None = None
         self._busy = False
         root.title("Nayeon | Provider metadata")
         root.geometry("700x420")
@@ -82,10 +85,14 @@ class FirstRunMetadataManagementWindow:
                                 wraplength=650, justify="left")
         self._status.pack(anchor="w", padx=20, pady=(12, 8))
         root.protocol("WM_DELETE_WINDOW", self.close_from_window)
+        # Bind ownership only AFTER every widget/callback is constructed;
+        # a constructor failure must not strand a path-wide owner token.
+        self._owner_token = self._host.claim_ui_owner()
         self._sync()
 
     def _sync(self) -> None:
-        pending = self._host.has_pending is True and self._operation is not None
+        pending = (self._ticket is not None and self._operation is not None
+                   and self._host.pending_ui_operation(ticket=self._ticket, owner=self._owner_token) is self._operation)
         self._model.configure(state="disabled" if pending or self._busy else "normal")
         self._save.configure(state="disabled" if pending or self._busy else "normal")
         self._clear.configure(state="disabled" if pending or self._busy else "normal")
@@ -96,14 +103,21 @@ class FirstRunMetadataManagementWindow:
             and not self._busy else "disabled")
 
     def _review(self, operation: MetadataOperation) -> None:
-        if self._busy or self._host.has_pending or self._operation is not None:
+        if self._closed:
+            return
+        if self._owner_token is None or not self._host.has_ui_owner(owner=self._owner_token):
+            self._owner_token = self._host.claim_ui_owner()
+        if not self._host.has_ui_owner(owner=self._owner_token):
+            self._status.configure(text="Another window owns this metadata session.")
+            return
+        if self._busy or self._host.has_pending or self._operation is not None or self._ticket is not None:
             return
         self._clear_acknowledged.set(False)
         try:
             if operation is MetadataOperation.SAVE:
-                proposed = self._host.request_save(self._model.get())
+                proposed, ticket = self._host.request_ui_save(self._model.get(), owner=self._owner_token)
             elif operation is MetadataOperation.CLEAR:
-                proposed = self._host.request_clear()
+                proposed, ticket = self._host.request_ui_clear(owner=self._owner_token)
             else:
                 return
         except Exception:
@@ -112,6 +126,7 @@ class FirstRunMetadataManagementWindow:
                 proposed.outcome is MetadataCommitOutcome.PENDING and
                 self._host.has_pending):
             self._operation = operation
+            self._ticket = ticket
             message = (
                 "Clear review pending. Tick the explicit metadata-only acknowledgement, "
                 "then approve. The saved API key will NOT be removed."
@@ -121,6 +136,7 @@ class FirstRunMetadataManagementWindow:
             )
         else:
             self._operation = None
+            self._ticket = None
             message = self._message(proposed)
         self._status.configure(text=message)
         self._sync()
@@ -138,7 +154,17 @@ class FirstRunMetadataManagementWindow:
         return _MESSAGES.get(receipt.outcome, "Metadata unavailable. No write confirmed.")
 
     def approve_from_button(self) -> None:
-        if self._busy or not self._host.has_pending or self._operation is None:
+        if self._closed:
+            return
+        if (self._busy or self._ticket is None or self._operation is None or
+                not self._host.has_ui_owner(owner=self._owner_token)):
+            return
+        if self._host.pending_ui_operation(ticket=self._ticket, owner=self._owner_token) is not self._operation:
+            self._operation = None
+            self._ticket = None
+            self._clear_acknowledged.set(False)
+            self._status.configure(text="Review changed in another window. No action approved.")
+            self._sync()
             return
         if (self._operation is MetadataOperation.CLEAR and
                 self._clear_acknowledged.get() is not True):
@@ -146,28 +172,35 @@ class FirstRunMetadataManagementWindow:
             return
         self._busy = True
         try:
-            receipt = self._host.approve(human_approved=True)
+            receipt = self._host.approve_ui(
+                ticket=self._ticket, operation=self._operation, human_approved=True,
+                clear_acknowledged=self._clear_acknowledged.get() is True,
+                owner=self._owner_token)
             message = self._message(receipt)
         except Exception:
             try:
-                self._host.reject()
+                if self._ticket is not None:
+                    self._host.reject_ui(ticket=self._ticket, owner=self._owner_token)
             except Exception:
                 pass
             message = "Result unavailable. Re-observe state before retry."
         finally:
             self._busy = False
             self._operation = None
+            self._ticket = None
             self._clear_acknowledged.set(False)
         self._status.configure(text=message)
         self._sync()
 
     def reject_from_button(self) -> None:
-        if self._busy:
+        if self._closed or self._busy:
             return
         try:
-            self._host.reject()
+            if self._ticket is not None:
+                self._host.reject_ui(ticket=self._ticket, owner=self._owner_token)
         except Exception:
             pass
+        self._ticket = None
         self._operation = None
         self._clear_acknowledged.set(False)
         self._status.configure(text="Review rejected. No metadata write requested.")
@@ -175,12 +208,17 @@ class FirstRunMetadataManagementWindow:
 
     def open_reconciliation_from_button(self):
         """Only a user click opens a fresh trusted recovery review."""
-        if self._busy:
+        if self._closed or self._busy:
             return
+        if self._owner_token is None or not self._host.has_ui_owner(owner=self._owner_token):
+            self._owner_token = self._host.claim_ui_owner()
         if (self._recovery_dialog is not None and
                 self._recovery_dialog._root.winfo_exists()):
             return
         self._recovery_dialog = None
+        if not self._host.has_ui_owner(owner=self._owner_token):
+            self._status.configure(text="Another window owns this metadata session.")
+            return
         ctrl = self._host.recovery_controller
         if ctrl.ready:
             self._status.configure(text="This onboarding session is already reconciled.")
@@ -194,13 +232,16 @@ class FirstRunMetadataManagementWindow:
             self._status.configure(text="Recovery review unavailable. Protected changes remain blocked.")
 
     def close_from_window(self) -> None:
-        if self._busy:
+        if self._closed or self._busy:
             return
         self.reject_from_button()
-        try:
-            recovery = self._host.recovery_controller
-            if recovery._ctx is not None:
-                recovery.close()
-        except Exception:
-            pass
+        self._closed = True
+        if self._host.release_ui_owner(owner=self._owner_token):
+            try:
+                recovery = self._host.recovery_controller
+                if recovery._ctx is not None:
+                    recovery.close()
+            except Exception:
+                pass
+        self._owner_token = None
         self._root.destroy()

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import traceback
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from unittest.mock import Mock, patch
 
 from nayeon.config.document import (
@@ -365,6 +366,9 @@ class PresentationServiceBoundaryTests(unittest.TestCase):
         # Codex handoff is intentionally mutable after a sealed product milestone.
         for path in ("AGENTS.md", "scripts/update_codex_context.py",
                      "nayeon/config/config.py", "nayeon/config/__init__.py"):
+            if path == "AGENTS.md":
+                assert_authorized_governance(self, STARTING_HEAD)
+                continue
             self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                              git("show", STARTING_HEAD + ":" + path).replace(b"\r\n", b"\n"))
 

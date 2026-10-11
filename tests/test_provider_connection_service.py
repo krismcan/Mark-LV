@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from unittest.mock import Mock, patch
 
 from nayeon.brain.connection import ProviderConnectionConfiguration as Configuration
@@ -344,6 +345,9 @@ class Phase85ScopeGuards(unittest.TestCase):
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             protected.update(git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines())
         for path in protected:
+            if path == "AGENTS.md":
+                assert_authorized_governance(self, START)
+                continue
             self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                              git("show", START + ":" + path).replace(b"\r\n", b"\n"), path)
 

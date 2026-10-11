@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 import math
 import os
+import secrets
 import time
 from collections.abc import Callable
 
@@ -102,7 +103,7 @@ class TrustedMetadataCommitHost:
     any write. External writers and equal-state ABA are outside guarantees.
     """
 
-    __slots__ = ("_path", "_store", "_mutex", "_clock", "_timeout", "_pending", "_recovery")
+    __slots__ = ("_path", "_store", "_mutex", "_clock", "_timeout", "_pending", "_recovery", "_ui_ticket", "_ui_owner")
 
     def __init__(self, *, metadata_path: Path, mutex: object | None = None,
                  clock: Callable[[], float] = time.monotonic,
@@ -128,6 +129,8 @@ class TrustedMetadataCommitHost:
         self._clock = clock
         self._timeout = float(timeout_seconds)
         self._pending: _Pending | None = None
+        self._ui_ticket: str | None = None
+        self._ui_owner: str | None = None
 
     @property
     def recovery_controller(self):
@@ -242,12 +245,95 @@ class TrustedMetadataCommitHost:
         """Human-triggered metadata-only clear; never deletes stored key."""
         return self._request(MetadataOperation.CLEAR, None)
 
+    def claim_ui_owner(self) -> str | None:
+        """One UI owns this host's pending-review namespace at a time."""
+        if self._ui_owner is not None:
+            if self._recovery.is_ui_window_owner(self._ui_owner):
+                return None
+            # A trusted explicit reconciliation restart invalidated the old
+            # token. A fresh claim must still compete with any other owner.
+            self._ui_owner = None
+        self._ui_owner = self._recovery.claim_ui_window_owner()
+        return self._ui_owner
+
+    def has_ui_owner(self, *, owner: str | None) -> bool:
+        return (type(owner) is str and self._ui_owner is not None and
+                secrets.compare_digest(owner, self._ui_owner) and
+                self._recovery.is_ui_window_owner(owner))
+
+    def release_ui_owner(self, *, owner: str | None) -> bool:
+        if not self.has_ui_owner(owner=owner):
+            return False
+        if not self._recovery.release_ui_window_owner(owner):
+            return False
+        if self._ui_ticket is not None:
+            self._ui_ticket = None
+            self._pending = None
+        self._ui_owner = None
+        return True
+
+    def request_ui_save(self, model: str, *, owner: str | None = None
+                        ) -> tuple[MetadataCommitReceipt, str | None]:
+        return self._request_ui(MetadataOperation.SAVE, model, owner=owner)
+
+    def request_ui_clear(self, *, owner: str | None = None
+                         ) -> tuple[MetadataCommitReceipt, str | None]:
+        return self._request_ui(MetadataOperation.CLEAR, None, owner=owner)
+
+    def _request_ui(self, operation: MetadataOperation, model: str | None, *, owner: str | None
+                    ) -> tuple[MetadataCommitReceipt, str | None]:
+        """Human UI gets one-use ticket for the exact review; foreign UI denied."""
+        if not self.has_ui_owner(owner=owner):
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED), None
+        if self._ui_ticket is not None or self.has_pending:
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED), None
+        # Acquire all nonce material BEFORE opening the pending review:
+        # RNG failure must never leave a raw approvable ticketless review.
+        ticket = secrets.token_hex(16)
+        result = self.request_save(model) if operation is MetadataOperation.SAVE else self.request_clear()
+        if result.outcome is not MetadataCommitOutcome.PENDING:
+            return result, None
+        self._ui_ticket = ticket
+        return result, ticket
+
+    def pending_ui_operation(self, *, ticket: str, owner: str | None = None) -> MetadataOperation | None:
+        if (not self.has_ui_owner(owner=owner) or
+                type(ticket) is not str or self._ui_ticket is None or
+                not secrets.compare_digest(ticket, self._ui_ticket) or self._pending is None):
+            return None
+        return self._pending.operation
+
+    def reject_ui(self, *, ticket: str, owner: str | None = None) -> MetadataCommitReceipt:
+        if self.pending_ui_operation(ticket=ticket, owner=owner) is None:
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
+        self._ui_ticket = None
+        self._pending = None
+        return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
+
+    def approve_ui(self, *, ticket: str, operation: MetadataOperation,
+                   human_approved: bool, clear_acknowledged: bool = False,
+                   owner: str | None = None) -> MetadataCommitReceipt:
+        """No foreign, stale, wrong-operation, or unacknowledged CLEAR can execute."""
+        if (type(operation) is not MetadataOperation or
+                type(human_approved) is not bool or
+                type(clear_acknowledged) is not bool or
+                not human_approved or
+                self.pending_ui_operation(ticket=ticket, owner=owner) is not operation or
+                (operation is MetadataOperation.CLEAR and not clear_acknowledged)):
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
+        self._ui_ticket = None
+        return self.approve(human_approved=True)
+
     def reject(self) -> MetadataCommitReceipt:
+        if self._ui_ticket is not None:
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
         self._pending = None
         return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
 
     def approve(self, *, human_approved: bool) -> MetadataCommitReceipt:
-        """Only trusted human UI event handler may call with True."""
+        """Trusted legacy direct review; UI-owned reviews require matching ticket."""
+        if self._ui_ticket is not None:
+            return MetadataCommitReceipt(MetadataCommitOutcome.REFUSED)
         pending = self._pending
         # Consume the review before attempting any external operation.
         self._pending = None

@@ -10,6 +10,7 @@ import runpy
 import subprocess
 import traceback
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from unittest.mock import patch
 
 from nayeon.secrets import windows_credential as m
@@ -392,6 +393,9 @@ class ScopeGuards(unittest.TestCase):
         # Codex handoff is intentionally mutable after a sealed product milestone.
         for path in ("AGENTS.md", "scripts/update_codex_context.py",
                      "setup.py", "main.py", "ui.py"):
+            if path == "AGENTS.md":
+                assert_authorized_governance(self, START)
+                continue
             self.assert_frozen(path, START)
         for directory in ("actions", "core", "dashboard", "plugins", "memory"):
             for path in git("ls-tree", "-r", "--name-only", START, "--", directory).decode().splitlines():

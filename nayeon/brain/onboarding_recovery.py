@@ -65,7 +65,7 @@ class TrustedOnboardingRecoveryController:
         "_path", "_store", "_marker", "_mutex", "_ctx", "_owner",
         "_epoch", "_ready", "_review", "_generation", "_last",
         "_active", "_availability", "_clock", "_faulted", "_abandoned",
-        "_baseline", "__weakref__"
+        "_baseline", "_ui_window_owner", "__weakref__"
     )
 
     @classmethod
@@ -124,6 +124,25 @@ class TrustedOnboardingRecoveryController:
         self._clock = clock
         self._faulted = False
         self._baseline = None
+        self._ui_window_owner = None
+
+    def claim_ui_window_owner(self) -> str | None:
+        """One trusted management window across all hosts sharing this path."""
+        if self._ui_window_owner is not None:
+            return None
+        value = secrets.token_hex(16)
+        self._ui_window_owner = value
+        return value
+
+    def is_ui_window_owner(self, owner: str | None) -> bool:
+        return (type(owner) is str and self._ui_window_owner is not None and
+                secrets.compare_digest(owner, self._ui_window_owner))
+
+    def release_ui_window_owner(self, owner: str | None) -> bool:
+        if not self.is_ui_window_owner(owner):
+            return False
+        self._ui_window_owner = None
+        return True
 
     @property
     def journal_path(self) -> Path:
@@ -383,4 +402,5 @@ class TrustedOnboardingRecoveryController:
         self._epoch = None
         self._last = None
         self._baseline = None
+        self._ui_window_owner = None
         ctx.__exit__(None, None, None)

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import traceback
 import unittest
+from tests.governance_seal_contract import assert_authorized_governance
 from unittest.mock import patch
 
 from nayeon.config import persistence as m
@@ -477,6 +478,9 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
     def test_protected_instruction_context_and_script_unchanged(self):
         # Codex handoff is intentionally mutable after a sealed product milestone.
         for path in ("AGENTS.md", "scripts/update_codex_context.py"):
+            if path == "AGENTS.md":
+                assert_authorized_governance(self, STARTING_HEAD)
+                continue
             self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                              git("show", STARTING_HEAD + ":" + path).replace(b"\r\n", b"\n"))
 
