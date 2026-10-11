@@ -3,15 +3,15 @@
 > This is the concise live handoff for Codex. Git remains authoritative. Read this after the root AGENTS.md at the start of every Nayeon task.
 
 - **Branch:** `nayeon-v1`
-- **Latest completed product phase:** Phase 8.26 - cooperative onboarding lock, state conflict detection and manual recovery marker
-- **Latest milestone tag:** `nayeon-v1-phase-8-26-cooperative-onboarding-coordination-01`
-- **Full regression baseline:** **2,091 / 2,091**
+- **Latest completed product phase:** Phase 8.27 - trusted human-reviewed connect/replace/delete Tk interface
+- **Latest milestone tag:** `nayeon-v1-phase-8-27-trusted-credential-management-ui-01`
+- **Full regression baseline:** **2,111 / 2,111**
 - **Last updated:** 11 Oct 2026
-- **Next restart point:** Phase 8.27 trusted human-approved credential save replace delete UI, subject to new bounded scope audit. Do not use live credentials or real provider calls without separate consent. Phase 8 and all release gates remain open.
+- **Next restart point:** Phase 8.28 trusted provider/model metadata commit, clearing and conservative recovery. Review authority and state conflict boundaries before edits; no live credentials or provider calls without separate approval.
 
 ## Latest architecture invariant
 
-Cooperating Nayeon Windows-session processes share one Local named mutex for execution; pre- and post-effect metadata identity observations fail closed; interrupted or indeterminate writes retain non-secret recovery marker. No external-writer exclusion, credential CAS, cross-store atomicity, key reads or model-authority route. 2091/2091 full postcommit; formal phases 5/19, gates 0/12.
+Explicit human review, separate single-use approval and destructive delete acknowledgement flow into the Phase 8.26 cooperative single-writer coordinator. Fake-only credential operations and genuine Windows Tk UI tests. Full 2111/2111; no Windows credential store, provider network, external-writer protection or cross-store transaction. Formal 5/19 phases, 0/12 release gates.
 
 ## Required startup behavior
 
