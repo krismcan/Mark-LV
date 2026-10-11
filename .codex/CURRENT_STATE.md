@@ -5,12 +5,12 @@
 - **Branch:** `nayeon-v1`
 - **Latest completed product phase:** Phase 8.28.1 — tenure-bound trusted onboarding recovery and cross-phase security closure
 - **Latest milestone tag:** `nayeon-v1-phase-8-28-1-tenure-bound-recovery-security-01`
-- **Latest sealed security maintenance:** Pre-8.29 recovery-dialog callback isolation after metadata-owner/governance security maintenance
-- **Latest maintenance tag:** `nayeon-v1-pre-8-29-recovery-dialog-lifecycle-maintenance-01`
-- **Verified maintenance product commit:** `4363fd8db28188e61533049058f20a45bd70319a`
-- **Full regression baseline:** **2,235 / 2,235**
+- **Latest sealed security maintenance:** Pre-8.29 shutdown/UI ownership, native mutex release and stale recovery-child hardening (local commit/tag; push and workbook pending)
+- **Latest maintenance tag:** `nayeon-v1-pre-8-29-shutdown-ownership-native-mutex-maintenance-01`
+- **Verified maintenance product commit:** `28b417fe1c97cdcb7f5907ecc0db92e7d3ac6622`
+- **Full regression baseline:** **2,249 / 2,249** (staged seal-time and independent isolated postcommit on Windows Python 3.12)
 - **Last updated:** 11 Oct 2026
-- **Next restart point:** Pre-8.29 metadata owner/governance issues and the stale recovery-child callback have been separately sealed and independently reviewed. Full regression 2,235/2,235. Before Phase 8.29 complete a FRESH mandatory failure-ledger GO/HOLD review, preserve separate scope approvals and do not use live providers or credentials without explicit consent. Five-phase batches require per-phase gates.
+- **Next restart point:** Pre-8.29 shutdown ownership/native mutex release maintenance is locally committed and annotated-tagged, independently reviewed CLEAR, and passed staged plus isolated postcommit full regression 2,249/2,249. Its tag and commit have NOT been pushed or remotely verified; same-ID master workbook update is pending. Obtain explicit push approval and verify remote branch plus peeled tag, then update the master workbook. Re-run the mandatory failure-ledger GO/HOLD review before Phase 8.29, which remains HOLD. No real providers/credentials without separate approval; five-phase batches require per-phase gates.
 
 ## Latest architecture invariant
 

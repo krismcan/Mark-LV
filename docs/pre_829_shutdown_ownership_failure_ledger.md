@@ -5,7 +5,7 @@ Protected starting HEAD and remote-tracking HEAD: `85909c175397e45e79700f8720c29
 Prior product seal: `nayeon-v1-phase-8-28-1-tenure-bound-recovery-security-01`.
 Prior security maintenance seals: `nayeon-v1-pre-8-29-metadata-owner-maintenance-01`,
 `nayeon-v1-pre-8-29-recovery-dialog-lifecycle-maintenance-01`.
-**Current decision: HOLD — uncommitted candidate, independent security review and seal outstanding.**
+**Historical audit-entry decision: HOLD — the repair was then uncommitted. See final local-seal evidence and remaining remote/phase gates below.**
 
 ## Provenance and scope guard
 
@@ -220,3 +220,48 @@ and seal-time evidence remain outstanding. Do not begin Phase 8.29.
   tag, explicitly approved push plus remote verification, Codex handoff and
   same-ID master workbook update. No phase 8.29 implementation is authorised
   by this narrow CLEAR alone.
+
+### Local maintenance seal, exact verification and outstanding remote gates — 11 Oct 2026
+
+- Human continuation authorised bounded local maintenance sealing only;
+  GitHub push still requires explicit user approval.
+- Exactly nine paths were staged and reviewed: six bounded production files,
+  the failure ledger and two new adversarial test modules. No unrelated
+  working-tree paths, no unstaged diff, no historical tag movement.
+- Staged seal-time full unittest discovery, authoritative Windows Python 3.12:
+  **2,249/2,249 passed**, zero failures/skips, runtime **130.770s**,
+  exit code 0. `compileall -q nayeon tests` and
+  `git diff --cached --check` passed. Log:
+  `C:\Users\krist\AppData\Local\Temp\nayeon_pre829_shutdown_seal_staged_full.log`.
+- Product-security maintenance committed locally:
+  `28b417fe1c97cdcb7f5907ecc0db92e7d3ac6622`,
+  parent `85909c175397e45e79700f8720c2967f155a0967`.
+  New **annotated** tag:
+  `nayeon-v1-pre-8-29-shutdown-ownership-native-mutex-maintenance-01`;
+  tag object `e6747ac373605297b0ba6315012498ee4f5f9706`
+  targets this exact commit.
+- An attempted first postcommit run was terminated because a separate
+  simultaneous full-suite runner was detected; overlapping runs were
+  explicitly **not** counted as postcommit evidence. Neither product
+  source nor sealed commit/tag was modified by this runner orchestration.
+- Fresh isolated postcommit Windows full discovery:
+  **2,249/2,249 passed**, zero failures/skips, runtime **134.851s**,
+  exit code 0. Log:
+  `C:\Users\krist\AppData\Local\Temp\nayeon_pre829_shutdown_postcommit_isolated.log`.
+  Source/tag verification and postcommit working tree were clean.
+- Independent read-only Codex Sol High security re-review returned
+  **CLEAR** for all six earlier MEDIUM findings; no fresh HIGH/MEDIUM
+  finding in its bounded review. Native-throw and real busy-in-callback
+  injection remain documented coverage limitations; no automatic
+  release gate or credentials were enabled.
+- Separate local documentation/handoff reconciliation now records this
+  maintenance seal. Current product phase remains **8.28.1**.
+
+**Local maintenance seal: COMPLETE. Remote seal and phase-progression
+decision: HOLD.** No GitHub push, remote peeled-tag/branch verification,
+same-ID macro-enabled master workbook update or Phase 8.29 work has
+been performed. Obtain explicit push approval, push only reviewed branch
+and new annotated tag, independently verify remote exact hashes,
+then update the same-ID master workbook and run the mandatory phase GO/HOLD
+retrospective before starting 8.29. No real keys, credential stores or
+provider calls are authorised by this local maintenance seal.
