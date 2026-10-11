@@ -40,6 +40,7 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/brain/first_run_refresh.py",
          "nayeon/desktop_alpha/first_run_status_window.py",
          "nayeon/desktop_alpha/first_run_review_window.py",
+         "nayeon/desktop_alpha/first_run_credential_validation_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
@@ -528,6 +529,36 @@ class ScopeGuards(unittest.TestCase):
                                          {"SecretIdentifier", "SecretBackend",
                                           "SecretStorageError", "WindowsCredentialBackend",
                                           "SecretStore", "reveal", "get", "put", "delete"})
+                    continue
+                if relative == "nayeon/desktop_alpha/first_run_credential_validation_window.py":
+                    # Phase 8.25 trusted candidate-entry panel: may construct a
+                    # transient SecretValue only, and invoke the approved host.
+                    # Native/backend access or plaintext reveal remain forbidden.
+                    if isinstance(node, ast.ImportFrom):
+                        if node.module == "nayeon.secrets.contracts":
+                            self.assertEqual({alias.name for alias in node.names},
+                                             {"SecretValue"})
+                        self.assertNotIn(node.module,
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.resolver",
+                                          "nayeon.secrets.store"})
+                    elif isinstance(node, ast.Import):
+                        self.assertFalse({alias.name for alias in node.names} &
+                                         {"nayeon.secrets.windows_credential",
+                                          "nayeon.secrets.resolver",
+                                          "nayeon.secrets.store",
+                                          "nayeon.secrets.contracts"})
+                    elif isinstance(node, ast.Attribute):
+                        if node.attr in {"get", "delete"}:
+                            self.assertEqual(ast.unparse(node.value), "self._entry")
+                        self.assertNotIn(node.attr,
+                                         {"reveal", "put", "is_available",
+                                          "WindowsCredentialBackend", "SecretBackend",
+                                          "SecretStore", "SecretIdentifier"})
+                    elif isinstance(node, ast.Name):
+                        self.assertNotIn(node.id,
+                                         {"WindowsCredentialBackend", "SecretBackend",
+                                          "SecretStore", "SecretIdentifier", "SecretStorageError"})
                     continue
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn(node.module, {"nayeon.secrets.contracts", "nayeon.secrets.windows_credential"})

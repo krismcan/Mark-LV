@@ -156,6 +156,7 @@ class Phase88FrozenProductionScope(unittest.TestCase):
          "nayeon/brain/first_run_refresh.py",
          "nayeon/desktop_alpha/first_run_status_window.py",
          "nayeon/desktop_alpha/first_run_review_window.py",
+         "nayeon/desktop_alpha/first_run_credential_validation_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
