@@ -1,0 +1,245 @@
+"""Phase 8.27: trusted Tk key management with explicit human operation approval.
+
+This panel receives an exact trusted coordinator. It cannot create a credential
+backend, select a key namespace, or invoke credential mutation directly.
+Only human-owned Tk review/approve/reject callbacks can submit CONNECT, REPLACE
+or REMOVE through the Phase 8.26 cooperative single-writer boundary.
+
+All provider/credential services must be injected by a trusted composition.
+Tests use fake backends and validators; real provider calls require separate
+explicit consent. Tk masking and deletion are best effort, not secure erasure.
+"""
+import tkinter as tk
+
+from nayeon.brain.onboarding_coordination import (
+    CooperativeOnboardingCoordinator, CoordinationReceipt, CoordinatedOutcome,
+)
+from nayeon.brain.onboarding_operation_advice import OnboardingOperation
+from nayeon.brain.credential_operation_host import CredentialHostOutcome
+from nayeon.secrets.contracts import SecretValue
+
+
+_ACTIONS = (
+    (OnboardingOperation.CONNECT, "Review connecting a new key"),
+    (OnboardingOperation.REPLACE, "Review replacing the stored key"),
+    (OnboardingOperation.REMOVE, "Review deleting the stored key"),
+)
+_NEEDS_CANDIDATE = frozenset({
+    OnboardingOperation.CONNECT, OnboardingOperation.REPLACE,
+})
+_REASON = {
+    CoordinatedOutcome.REFUSED: "Operation refused. No new action was authorised.",
+    CoordinatedOutcome.BUSY: "Another Nayeon process is operating. Nothing submitted. Review again later.",
+    CoordinatedOutcome.CONFLICT: "State changed. No clean completion can be claimed. Refresh and review again.",
+    CoordinatedOutcome.RECOVERY_REQUIRED: (
+        "Recovery required. An operation may have changed state. "
+        "Do not retry or remove the recovery marker without human reconciliation."
+    ),
+    CoordinatedOutcome.UNAVAILABLE: (
+        "Operation unavailable. Inspect current credential state and recovery marker "
+        "before any further attempt."
+    ),
+    CoordinatedOutcome.INDETERMINATE: (
+        "Outcome is inconclusive. Reconcile current state before further actions."
+    ),
+}
+_COMPLETE = {
+    CredentialHostOutcome.SUBMITTED: (
+        "Operation submitted. Storage durability and final credential state are not "
+        "confirmed. Refresh and independently re-observe."
+    ),
+    CredentialHostOutcome.INVALID: (
+        "Candidate validation failed. No credential change was authorised."
+    ),
+    CredentialHostOutcome.INDETERMINATE: (
+        "Credential result is indeterminate. Reconcile state before retrying."
+    ),
+    CredentialHostOutcome.NOT_APPLIED: (
+        "Operation was not applied. Re-observe current credential state."
+    ),
+    CredentialHostOutcome.BLOCKED: (
+        "Approval blocked or expired. No successful operation is claimed."
+    ),
+}
+
+
+class FirstRunCredentialManagementWindow:
+    """Manual, single-use trusted UI bridge; no direct backend/store methods."""
+
+    def __init__(self, root: tk.Tk, *, coordinator: CooperativeOnboardingCoordinator):
+        if type(coordinator) is not CooperativeOnboardingCoordinator:
+            raise TypeError("Exact trusted onboarding coordinator required")
+        self._root = root
+        self._coordinator = coordinator
+        self._operation: OnboardingOperation | None = None
+        self._busy = False
+
+        root.title("Nayeon | Manage OpenAI credential")
+        root.geometry("680x520")
+        root.minsize(560, 420)
+        root.configure(bg="#101827")
+        tk.Label(root, text="Nayeon - Credential management", bg="#101827",
+                 fg="#f1f4fb", font=("Segoe UI", 17, "bold")).pack(
+                     anchor="w", padx=20, pady=(18, 8))
+        tk.Label(root, bg="#101827", fg="#adc1d6",
+                 text="Nothing is saved, replaced, deleted or validated on launch.").pack(
+                     anchor="w", padx=20)
+        tk.Label(root, bg="#101827", fg="#adc1d6",
+                 text="Select one review action. Approval is a separate deliberate step.").pack(
+                     anchor="w", padx=20, pady=(6, 12))
+        self._choices = []
+        for operation, label in _ACTIONS:
+            button = tk.Button(root, text=label,
+                               command=lambda chosen=operation:
+                                   self.request_from_button(chosen))
+            button.pack(anchor="w", padx=20, pady=3)
+            self._choices.append(button)
+        tk.Label(root, text="Candidate key (required only for connect or replace)",
+                 bg="#101827", fg="#adc1d6").pack(
+                     anchor="w", padx=20, pady=(12, 4))
+        self._entry = tk.Entry(root, show="*", exportselection=False, width=60)
+        self._entry.pack(anchor="w", padx=20)
+        for sequence in ("<<Copy>>", "<<Cut>>", "<Control-c>", "<Control-x>",
+                         "<Control-C>", "<Control-X>"):
+            self._entry.bind(sequence, self._prevent_copy)
+        self._acknowledged = tk.BooleanVar(master=root, value=False)
+        self._delete_ack = tk.Checkbutton(
+            root, variable=self._acknowledged,
+            text="I understand that deleting the stored key is destructive",
+            bg="#101827", fg="#f1f4fb", selectcolor="#101827",
+        )
+        self._delete_ack.pack(anchor="w", padx=20, pady=(12, 6))
+        self._approve = tk.Button(root, text="Approve selected operation once",
+                                  command=self.approve_from_button)
+        self._approve.pack(anchor="w", padx=20, pady=3)
+        self._reject = tk.Button(root, text="Reject and clear",
+                                 command=self.reject_from_button)
+        self._reject.pack(anchor="w", padx=20, pady=3)
+        self._status = tk.Label(
+            root, text="No pending review", bg="#101827", fg="#a5c9f7",
+            wraplength=630, justify="left",
+        )
+        self._status.pack(anchor="w", padx=20, pady=(12, 8))
+        root.protocol("WM_DELETE_WINDOW", self.close_from_window)
+        self._sync()
+
+    @staticmethod
+    def _prevent_copy(event):
+        return "break"
+
+    def _clear(self):
+        # Disabled Tk.Entry cannot be deleted: temporarily enable, then clear.
+        self._entry.configure(state="normal")
+        self._entry.delete(0, tk.END)
+
+    def _sync(self):
+        pending = self._coordinator.has_pending is True and self._operation is not None
+        for button in self._choices:
+            button.configure(state="disabled" if pending or self._busy else "normal")
+        self._approve.configure(state="normal" if pending and not self._busy else "disabled")
+        self._reject.configure(state="normal" if pending and not self._busy else "disabled")
+        accepts_key = pending and self._operation in _NEEDS_CANDIDATE
+        self._entry.configure(state="normal" if accepts_key and not self._busy else "disabled")
+        self._delete_ack.configure(state="normal" if pending and
+                                   self._operation is OnboardingOperation.REMOVE
+                                   and not self._busy else "disabled")
+
+    def request_from_button(self, operation: OnboardingOperation):
+        if (self._busy or self._coordinator.has_pending or self._operation is not None
+                or type(operation) is not OnboardingOperation
+                or operation not in {a for a, _ in _ACTIONS}):
+            return
+        self._clear()
+        self._acknowledged.set(False)
+        try:
+            result = self._coordinator.request(operation)
+        except Exception:
+            result = None
+        if (type(result) is CoordinationReceipt
+                and result.outcome is CoordinatedOutcome.PENDING
+                and self._coordinator.has_pending):
+            self._operation = operation
+            message = (
+                "Delete review pending. Tick the explicit deletion acknowledgement, "
+                "then approve once. No key has been deleted."
+                if operation is OnboardingOperation.REMOVE
+                else "Review pending. Enter a key and approve once. "
+                     "No key has been saved or replaced."
+            )
+        else:
+            self._operation = None
+            message = self._message(result)
+        self._status.configure(text=message)
+        self._sync()
+
+    @staticmethod
+    def _message(result):
+        if type(result) is not CoordinationReceipt:
+            return "Operation unavailable. No successful result is claimed."
+        if result.outcome is CoordinatedOutcome.COMPLETED:
+            return _COMPLETE.get(result.host_outcome,
+                                 "Result requires reconciliation.")
+        return _REASON.get(result.outcome, "Operation unavailable. No success is claimed.")
+
+    def approve_from_button(self):
+        operation = self._operation
+        if self._busy or not self._coordinator.has_pending or operation is None:
+            return
+        if (operation is OnboardingOperation.REMOVE
+                and self._acknowledged.get() is not True):
+            self._status.configure(
+                text="Deletion approval requires explicit acknowledgement. Nothing submitted.")
+            return
+        self._busy = True
+        raw = None
+        candidate = None
+        try:
+            if operation in _NEEDS_CANDIDATE:
+                raw = self._entry.get()
+                self._clear()
+                if type(raw) is not str:
+                    raise ValueError("Invalid candidate")
+                candidate = SecretValue(raw)
+                raw = None
+                result = self._coordinator.approve(candidate=candidate)
+            else:
+                self._clear()
+                result = self._coordinator.approve()
+            message = self._message(result)
+        except Exception:
+            try:
+                self._coordinator.reject()
+            except Exception:
+                pass
+            message = "Operation unavailable. Reconcile current state before retrying."
+        finally:
+            raw = None
+            candidate = None
+            try:
+                self._clear()
+            except Exception:
+                pass
+            self._acknowledged.set(False)
+            self._operation = None
+            self._busy = False
+        self._status.configure(text=message)
+        self._sync()
+
+    def reject_from_button(self):
+        if self._busy:
+            return
+        try:
+            self._coordinator.reject()
+        except Exception:
+            pass
+        self._clear()
+        self._acknowledged.set(False)
+        self._operation = None
+        self._status.configure(text="Review rejected. Candidate cleared. Nothing submitted.")
+        self._sync()
+
+    def close_from_window(self):
+        if self._busy:
+            return
+        self.reject_from_button()
+        self._root.destroy()

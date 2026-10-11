@@ -43,6 +43,7 @@ PHASE_8_5_DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connecti
          "nayeon/desktop_alpha/first_run_credential_validation_window.py",
          "nayeon/brain/onboarding_coordination.py",
          "nayeon/brain/windows_onboarding_mutex.py",
+         "nayeon/desktop_alpha/first_run_credential_management_window.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
@@ -532,9 +533,13 @@ class ScopeGuards(unittest.TestCase):
                                           "SecretStorageError", "WindowsCredentialBackend",
                                           "SecretStore", "reveal", "get", "put", "delete"})
                     continue
-                if relative == "nayeon/desktop_alpha/first_run_credential_validation_window.py":
-                    # Phase 8.25 trusted candidate-entry panel: may construct a
-                    # transient SecretValue only, and invoke the approved host.
+                if relative in {
+                        "nayeon/desktop_alpha/first_run_credential_validation_window.py",
+                        "nayeon/desktop_alpha/first_run_credential_management_window.py",
+                }:
+                    # Phases 8.25/8.27 trusted Tk panels may construct a
+                    # transient SecretValue only. The 8.27 panel approves only
+                    # via the cooperative host, never through a secret backend.
                     # Native/backend access or plaintext reveal remain forbidden.
                     if isinstance(node, ast.ImportFrom):
                         if node.module == "nayeon.secrets.contracts":
@@ -551,8 +556,13 @@ class ScopeGuards(unittest.TestCase):
                                           "nayeon.secrets.store",
                                           "nayeon.secrets.contracts"})
                     elif isinstance(node, ast.Attribute):
-                        if node.attr in {"get", "delete"}:
+                        if node.attr == "delete":
                             self.assertEqual(ast.unparse(node.value), "self._entry")
+                        if node.attr == "get":
+                            permitted = {"self._entry"}
+                            if relative.endswith("first_run_credential_management_window.py"):
+                                permitted.update({"self._acknowledged", "_REASON", "_COMPLETE"})
+                            self.assertIn(ast.unparse(node.value), permitted)
                         self.assertNotIn(node.attr,
                                          {"reveal", "put", "is_available",
                                           "WindowsCredentialBackend", "SecretBackend",
