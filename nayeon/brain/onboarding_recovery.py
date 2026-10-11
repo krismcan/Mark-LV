@@ -288,12 +288,20 @@ class TrustedOnboardingRecoveryController:
                                archive_acknowledged: bool = False) -> bool:
         self._ownership()
         review = self._review
-        self._review = None
-        if (not human_approved or type(human_approved) is not bool or
-                review is None or type(fingerprint) is not str or
+        # Invalid/mismatched callbacks must NOT consume another window's
+        # newer review, even if they explicitly reject. Only exact review
+        # identity may change this shared tenure's pending consent state.
+        if (review is None or type(fingerprint) is not str or
                 fingerprint != review.fingerprint or
-                (review.archive_required and archive_acknowledged is not True)):
+                type(human_approved) is not bool):
             return False
+        if not human_approved:
+            self._review = None
+            return False
+        if review.archive_required and archive_acknowledged is not True:
+            self._review = None
+            return False
+        self._review = None
         try:
             if self._faulted or self._time() > review.expires_at:
                 return False

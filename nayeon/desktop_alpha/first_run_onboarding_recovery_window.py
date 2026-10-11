@@ -18,6 +18,7 @@ class FirstRunOnboardingRecoveryWindow:
         self._root = root
         self._controller = controller
         self._review: RecoveryReview | None = None
+        self._closed = False
         root.title("Nayeon | Trusted onboarding reconciliation")
         root.geometry("740x490")
         root.configure(bg="#101827")
@@ -63,7 +64,17 @@ class FirstRunOnboardingRecoveryWindow:
         root.protocol("WM_DELETE_WINDOW", self.close_from_window)
         self._sync()
 
+    def _alive(self) -> bool:
+        if self._closed:
+            return False
+        try:
+            return self._root.winfo_exists() is True or self._root.winfo_exists() == 1
+        except (tk.TclError, AttributeError):
+            return False
+
     def _sync(self):
+        if not self._alive():
+            return
         pending = self._review is not None
         ready = self._controller.ready
         self._review_button.configure(state="disabled" if pending or ready else "normal")
@@ -74,6 +85,8 @@ class FirstRunOnboardingRecoveryWindow:
             state="normal" if pending and self._review.archive_required else "disabled")
 
     def review_from_button(self):
+        if not self._alive():
+            return
         if self._review is not None or self._controller.ready:
             return
         self._ack.set(False)
@@ -101,6 +114,8 @@ class FirstRunOnboardingRecoveryWindow:
         self._sync()
 
     def approve_from_button(self):
+        if not self._alive():
+            return
         review = self._review
         if review is None:
             return
@@ -128,6 +143,8 @@ class FirstRunOnboardingRecoveryWindow:
         self._sync()
 
     def reject_from_button(self):
+        if not self._alive():
+            return
         review = self._review
         self._review = None
         self._ack.set(False)
@@ -142,7 +159,12 @@ class FirstRunOnboardingRecoveryWindow:
         self._sync()
 
     def close_from_window(self):
+        if not self._alive():
+            self._closed = True
+            self._review = None
+            return
         self.reject_from_button()
+        self._closed = True
         # A reconciled tenure belongs to the management host, not this dialog.
         # Closing the review window must not revoke the owner's admission.
         if not self._controller.ready:
