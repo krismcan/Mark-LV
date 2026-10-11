@@ -45,3 +45,13 @@ This packet permits **repair and verification only**. **Phase 8.29 and five-phas
 ## Independent review finding / re-review closure required
 
 First independent Codex Sol High review found two additional MEDIUM gaps: (a) two metadata host instances shared one pooled recovery controller but closing the second host could revoke the first owner's mutex tenure; (b) an already closed Tk panel could reclaim a new owner token through a retained callback. Both were repaired at the pooled controller/UI lifecycle level. Extended fake-only Windows Tk tests now cover foreign-host close, closed callback, exact ticket with wrong owner, and widget-construction failure. Separate read-only re-review **CLEAR**, with no material findings in cross-host and closed-widget fixes. Authoritative complete working-tree regression after remediation: **2,233/2,233**, no errors, failures or skips. The separate exact staged full regression and seal remain required before GO.
+
+
+## Verified independent maintenance seal — 11 Oct 2026
+
+- Product maintenance commit e3e5e9605dbb3b09452994a9d042b4b5e0edf34e.
+- Annotated tag nayeon-v1-pre-8-29-metadata-owner-maintenance-01; remote peeled tag and origin/nayeon-v1 independently verified against this commit after an atomic GitHub push.
+- Previous Phase 8.28.1 product tag peels unchanged to 3cf53d0844af753468f26452f87b70b541bc0b9c.
+- Real Windows fake-only staged and postcommit full regressions 2,233/2,233, zero failures or skips; targeted Windows Tk 41/41.
+- Independent Codex Sol High read-only re-review CLEAR on both prior medium cross-host/window-lifecycle findings. No live provider call or actual secret-store action.
+- This seal closes two identified pre-8.29 maintenance blockers. Release gate score remains 0/12. Live credential/provider acceptance remains unapproved.
