@@ -29,3 +29,9 @@ The entry is masked, ordinary copy/cut Tk bindings are intercepted, the panel do
 5. Codex handoff refresh, same-ID 16-worksheet master `.xlsm` update, exact file identity/readback verification.
 
 **Next:** Phase 8.26 trusted coordination/concurrency threats. Explicit user approval still required for any genuine live validation, credential input, change of approved scope, or production readiness claim.
+
+## Phase 8.25 post-product maintenance: real Tk acceptance
+
+The first product seal verified 2,067/2,067 deterministic tests before and after the commit, but that suite drove the Tk API through synthetic widgets. The additional actual-Windows-Tk acceptance now creates a genuine withdrawn `tk.Tk()`, binds the real `tk.Entry` and `tk.Button` widgets, and uses `Button.invoke()` for explicit review, approval, rejection and invalid-entry paths with fake backend/validator only. All three real-Tk cases passed in the initial focused run, along with the original 13 synthetic cases (16/16 combined).
+
+This is genuine Tk widget callback evidence, **not** actual human consent, native Credential Manager I/O, connected provider validation, packaging, or formal release gate evidence. No existing tag moves; record the new persistent real-Tk suite in a distinct post-product maintenance commit and annotated tag only after full regression.
