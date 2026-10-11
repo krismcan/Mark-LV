@@ -37,6 +37,8 @@ NEW = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persisten
          "nayeon/desktop_alpha/first_run_status_window.py",
          "nayeon/desktop_alpha/first_run_review_window.py",
          "nayeon/desktop_alpha/first_run_credential_validation_window.py",
+         "nayeon/brain/onboarding_coordination.py",
+         "nayeon/brain/windows_onboarding_mutex.py",
          "nayeon/desktop_alpha/__init__.py",
          "nayeon/desktop_alpha/__main__.py",
          "nayeon/desktop_alpha/controller.py",
