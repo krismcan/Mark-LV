@@ -7,7 +7,7 @@
 - **Latest milestone tag:** `nayeon-v1-phase-8-28-1-tenure-bound-recovery-security-01`
 - **Full regression baseline:** **2,223 / 2,223**
 - **Last updated:** 11 Oct 2026
-- **Next restart point:** Phase 8.29 remains gated on same-ID master workbook update and renewed explicit scope approval before any live credentials/provider calls. Conduct conditional integrated first-run acceptance with separate consent.
+- **Next restart point:** Mandatory prior-failure and cross-phase architecture GO/HOLD review per `docs/engineering_failure_review_gate.md` BEFORE any Phase 8.29 work. Phase 8.29 remains unapproved and live credentials/provider calls require separate explicit consent.
 
 ## Latest architecture invariant
 
@@ -16,6 +16,8 @@ Trusted named mutex held for the entire fresh human-reconciled session; historic
 ## Required startup behavior
 
 Inspect current HEAD/tag/status and read the latest relevant phase review before editing. If Git disagrees with this file, report the mismatch and treat Git as authoritative.
+
+Before proposing or starting Phase 8.29 or any future product phase, complete the mandatory **Open Failures & Prior-Issues Review** and record explicit GO/HOLD according to `docs/engineering_failure_review_gate.md`. Include material historical failures, earlier workarounds, architectural dependencies and alternate trusted call paths, even when prior full regressions passed. Resolve material findings, add reproducing tests, independently review and repeat affected/full tests before advancing.
 
 ## Close-out rule
 

@@ -86,9 +86,35 @@ For milestones run focused tests, relevant affected/trust-path tests, full `unit
 
 Never claim a verified milestone while relevant failures remain unresolved.
 
+## Mandatory Failure & Architectural Regression Gate
+
+**Before each new phase and before security-sensitive seals**, review recent failures,
+previous incident reports, regressions, security-review findings, blockers, retries,
+workarounds, and historical assumptions that could affect the new scope. Follow
+[docs/engineering_failure_review_gate.md](docs/engineering_failure_review_gate.md).
+
+- Maintain a bounded **Open Failures & Prior-Issues Review** with severity, root
+  cause, reproduced evidence, impacted callers/trust boundaries, repair, tests,
+  independent review and explicit GO/HOLD disposition.
+- **STOP** forward phase work for unresolved material failures, unknown root
+  causes, failed regressions, or security-sensitive missing evidence. Do not
+  proceed merely because other tests passed; a green suite is not proof of
+  cross-phase architectural safety.
+- Trace architectural failures through all relevant older entrypoints and
+  alternate routes, shared objects, windows, processes and restarts. Add
+  adversarial tests reproducing the original failure, then verify the fix.
+- Never skip/weaken tests, downgrade findings, mask exceptions, or approve
+  risky deferrals to force a milestone seal. Any genuinely low-risk deferral
+  needs documented evidence and the user's explicit approval.
+- If there is no meaningful progress for **five minutes**, inspect the live
+  process/logs immediately and stop or pivot when stuck. Preserve checkpoints.
+- Repeat focused, affected, cross-phase and full regression suites plus
+  independent review after a material repair. Keep earlier product tags
+  immutable; only GO after verified closure and documentation.
+
 ## Phase workflow
 
-Architecture audit -> approved bounded implementation -> independent validation -> justified smoke -> human seal review -> exact staging -> seal-time regression -> milestone commit -> annotated tag -> approved push -> remote verification -> master workbook update.
+Retrospective failure gate (GO/HOLD) -> architecture/dependency audit -> approved bounded implementation -> independent validation and adversarial regression -> justified smoke -> human seal review -> exact staging -> seal-time regression -> milestone commit -> annotated tag -> approved push -> remote verification -> master workbook update.
 
 ### Mandatory Codex context refresh
 
