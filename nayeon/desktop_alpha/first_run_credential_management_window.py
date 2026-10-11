@@ -74,6 +74,9 @@ class FirstRunCredentialManagementWindow:
         self._coordinator = coordinator
         self._operation: OnboardingOperation | None = None
         self._busy = False
+        self._closed = False
+        self._close_deferred = False
+        self._owner_token: str | None = None
 
         root.title("Nayeon | Manage OpenAI credential")
         root.geometry("680x520")
@@ -127,7 +130,66 @@ class FirstRunCredentialManagementWindow:
         )
         self._status.pack(anchor="w", padx=20, pady=(12, 8))
         root.protocol("WM_DELETE_WINDOW", self.close_from_window)
+        root.bind("<Destroy>", self._on_destroy, add="+")
         self._sync()
+        # Constructor failure must not strand a path-pooled UI owner token.
+        self._owner_token = self._coordinator.recovery_controller.claim_ui_window_owner()
+
+    def _live_window(self) -> bool:
+        if self._closed:
+            return False
+        try:
+            return bool(self._root.winfo_exists())
+        except (tk.TclError, AttributeError):
+            return False
+
+    def _owns_token(self) -> bool:
+        """Owner identity remains meaningful after root destruction."""
+        return self._coordinator.recovery_controller.is_ui_window_owner(self._owner_token)
+
+    def _on_destroy(self, event) -> None:
+        if event.widget is self._root:
+            self._teardown()
+
+    def _release_owned(self) -> None:
+        # Never touch Tk in this path. Reject only the exact owning panel's
+        # pending operation; foreign callers must not cancel another review.
+        if self._owns_token():
+            try:
+                self._coordinator.reject()
+            except Exception:
+                pass
+            try:
+                self._coordinator.recovery_controller.close_ui_window_owner(self._owner_token)
+            except Exception:
+                # Native uncertainty remains fail-closed in the controller.
+                pass
+        self._owner_token = None
+        self._operation = None
+        self._close_deferred = False
+
+    def _teardown(self) -> None:
+        if self._closed and not self._close_deferred:
+            return
+        self._closed = True
+        if self._busy:
+            self._close_deferred = True
+            return
+        self._release_owned()
+
+    def _finish_deferred_close(self) -> None:
+        if self._close_deferred and not self._busy:
+            self._release_owned()
+
+    def _has_owner(self) -> bool:
+        return self._live_window() and self._owns_token()
+
+    def _claim_owner(self) -> bool:
+        if not self._live_window():
+            return False
+        if not self._has_owner():
+            self._owner_token = self._coordinator.recovery_controller.claim_ui_window_owner()
+        return self._has_owner()
 
     @staticmethod
     def _prevent_copy(event):
@@ -139,6 +201,8 @@ class FirstRunCredentialManagementWindow:
         self._entry.delete(0, tk.END)
 
     def _sync(self):
+        if not self._live_window():
+            return
         pending = self._coordinator.has_pending is True and self._operation is not None
         for button in self._choices:
             button.configure(state="disabled" if pending or self._busy else "normal")
@@ -151,6 +215,11 @@ class FirstRunCredentialManagementWindow:
                                    and not self._busy else "disabled")
 
     def request_from_button(self, operation: OnboardingOperation):
+        if not self._live_window():
+            return
+        if not self._claim_owner():
+            self._status.configure(text="Another window owns onboarding recovery.")
+            return
         if (self._busy or self._coordinator.has_pending or self._operation is not None
                 or type(operation) is not OnboardingOperation
                 or operation not in {a for a, _ in _ACTIONS}):
@@ -188,6 +257,8 @@ class FirstRunCredentialManagementWindow:
         return _REASON.get(result.outcome, "Operation unavailable. No success is claimed.")
 
     def approve_from_button(self):
+        if not self._has_owner():
+            return
         operation = self._operation
         if self._busy or not self._coordinator.has_pending or operation is None:
             return
@@ -221,18 +292,22 @@ class FirstRunCredentialManagementWindow:
         finally:
             raw = None
             candidate = None
-            try:
-                self._clear()
-            except Exception:
-                pass
-            self._acknowledged.set(False)
+            if self._live_window():
+                try:
+                    self._clear()
+                    self._acknowledged.set(False)
+                except tk.TclError:
+                    pass
             self._operation = None
             self._busy = False
+            self._finish_deferred_close()
+        if not self._live_window():
+            return
         self._status.configure(text=message)
         self._sync()
 
     def reject_from_button(self):
-        if self._busy:
+        if not self._has_owner() or self._busy:
             return
         try:
             self._coordinator.reject()
@@ -245,8 +320,11 @@ class FirstRunCredentialManagementWindow:
         self._sync()
 
     def open_reconciliation_from_button(self):
-        """Only a user click opens a fresh trusted recovery review."""
-        if self._busy:
+        """Only an owning, live human window may open a recovery review."""
+        if not self._live_window() or self._busy:
+            return
+        if not self._claim_owner():
+            self._status.configure(text="Another window owns onboarding recovery.")
             return
         if (self._recovery_dialog is not None and
                 self._recovery_dialog._root.winfo_exists()):
@@ -265,13 +343,20 @@ class FirstRunCredentialManagementWindow:
             self._status.configure(text="Recovery review unavailable. Protected changes remain blocked.")
 
     def close_from_window(self):
-        if self._busy:
+        if self._closed or self._busy:
             return
-        self.reject_from_button()
+        # Scrub the visible candidate before releasing the owner. External
+        # destroyed-root cleanup cannot touch the already-dead entry.
+        if self._live_window():
+            try:
+                self._clear()
+                self._acknowledged.set(False)
+            except (tk.TclError, AttributeError):
+                pass
+        self._teardown()
         try:
-            recovery = self._coordinator.recovery_controller
-            if recovery._ctx is not None:
-                recovery.close()
-        except Exception:
+            if self._root.winfo_exists():
+                self._root.destroy()
+        except (tk.TclError, AttributeError):
+            # Test-only fake roots do not expose winfo_exists.
             pass
-        self._root.destroy()

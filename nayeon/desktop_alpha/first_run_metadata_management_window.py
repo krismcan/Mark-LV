@@ -39,6 +39,7 @@ class FirstRunMetadataManagementWindow:
         self._host = host
         self._owner_token: str | None = None
         self._closed = False
+        self._close_deferred = False
         self._operation: MetadataOperation | None = None
         self._ticket: str | None = None
         self._busy = False
@@ -85,12 +86,67 @@ class FirstRunMetadataManagementWindow:
                                 wraplength=650, justify="left")
         self._status.pack(anchor="w", padx=20, pady=(12, 8))
         root.protocol("WM_DELETE_WINDOW", self.close_from_window)
+        root.bind("<Destroy>", self._on_destroy, add="+")
         # Bind ownership only AFTER every widget/callback is constructed;
         # a constructor failure must not strand a path-wide owner token.
-        self._owner_token = self._host.claim_ui_owner()
         self._sync()
+        self._owner_token = self._host.claim_ui_owner()
+
+    def _live_window(self) -> bool:
+        if self._closed:
+            return False
+        try:
+            return bool(self._root.winfo_exists())
+        except (tk.TclError, AttributeError):
+            return False
+
+    def _on_destroy(self, event) -> None:
+        if event.widget is self._root:  # Descendant widget destruction is inert.
+            self._teardown()
+
+    def _release_owned(self) -> None:
+        """No Tk operations. Only the exact owner may cancel/close a tenure."""
+        owner = self._owner_token
+        if self._host.has_ui_owner(owner=owner):
+            try:
+                if self._ticket is not None:
+                    self._host.reject_ui(ticket=self._ticket, owner=owner)
+            except Exception:
+                pass
+            try:
+                self._host.close_ui_owner(owner=owner)
+            except Exception:
+                # Native uncertainty remains latched by the controller.
+                pass
+        self._owner_token = None
+        self._ticket = None
+        self._operation = None
+        self._close_deferred = False
+
+    def _teardown(self) -> None:
+        if self._closed and not self._close_deferred:
+            return
+        self._closed = True
+        if self._busy:
+            self._close_deferred = True
+            return
+        self._release_owned()
+
+    def _finish_deferred_close(self) -> None:
+        if self._close_deferred and not self._busy:
+            self._release_owned()
+
+    def _claim_owners(self) -> bool:
+        """The host token is already bound to the shared recovery controller."""
+        if not self._live_window():
+            return False
+        if not self._host.has_ui_owner(owner=self._owner_token):
+            self._owner_token = self._host.claim_ui_owner()
+        return self._host.has_ui_owner(owner=self._owner_token)
 
     def _sync(self) -> None:
+        if not self._live_window():
+            return
         pending = (self._ticket is not None and self._operation is not None
                    and self._host.pending_ui_operation(ticket=self._ticket, owner=self._owner_token) is self._operation)
         self._model.configure(state="disabled" if pending or self._busy else "normal")
@@ -103,11 +159,9 @@ class FirstRunMetadataManagementWindow:
             and not self._busy else "disabled")
 
     def _review(self, operation: MetadataOperation) -> None:
-        if self._closed:
+        if not self._live_window():
             return
-        if self._owner_token is None or not self._host.has_ui_owner(owner=self._owner_token):
-            self._owner_token = self._host.claim_ui_owner()
-        if not self._host.has_ui_owner(owner=self._owner_token):
+        if not self._claim_owners():
             self._status.configure(text="Another window owns this metadata session.")
             return
         if self._busy or self._host.has_pending or self._operation is not None or self._ticket is not None:
@@ -154,7 +208,7 @@ class FirstRunMetadataManagementWindow:
         return _MESSAGES.get(receipt.outcome, "Metadata unavailable. No write confirmed.")
 
     def approve_from_button(self) -> None:
-        if self._closed:
+        if not self._live_window():
             return
         if (self._busy or self._ticket is None or self._operation is None or
                 not self._host.has_ui_owner(owner=self._owner_token)):
@@ -188,12 +242,16 @@ class FirstRunMetadataManagementWindow:
             self._busy = False
             self._operation = None
             self._ticket = None
-            self._clear_acknowledged.set(False)
+            if self._live_window():
+                self._clear_acknowledged.set(False)
+            self._finish_deferred_close()
+        if not self._live_window():
+            return
         self._status.configure(text=message)
         self._sync()
 
     def reject_from_button(self) -> None:
-        if self._closed or self._busy:
+        if not self._live_window() or self._busy:
             return
         try:
             if self._ticket is not None:
@@ -207,11 +265,12 @@ class FirstRunMetadataManagementWindow:
         self._sync()
 
     def open_reconciliation_from_button(self):
-        """Only a user click opens a fresh trusted recovery review."""
-        if self._closed or self._busy:
+        """Only a live owning window may open a trusted recovery review."""
+        if not self._live_window() or self._busy:
             return
-        if self._owner_token is None or not self._host.has_ui_owner(owner=self._owner_token):
-            self._owner_token = self._host.claim_ui_owner()
+        if not self._claim_owners():
+            self._status.configure(text="Another window owns this metadata session.")
+            return
         if (self._recovery_dialog is not None and
                 self._recovery_dialog._root.winfo_exists()):
             return
@@ -234,14 +293,10 @@ class FirstRunMetadataManagementWindow:
     def close_from_window(self) -> None:
         if self._closed or self._busy:
             return
-        self.reject_from_button()
-        self._closed = True
-        if self._host.release_ui_owner(owner=self._owner_token):
-            try:
-                recovery = self._host.recovery_controller
-                if recovery._ctx is not None:
-                    recovery.close()
-            except Exception:
-                pass
-        self._owner_token = None
-        self._root.destroy()
+        # Shared with exact-root <Destroy>; never touch widgets during teardown.
+        self._teardown()
+        try:
+            if self._root.winfo_exists():
+                self._root.destroy()
+        except tk.TclError:
+            pass

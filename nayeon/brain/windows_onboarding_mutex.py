@@ -73,14 +73,23 @@ class WindowsOnboardingMutex:
             else:
                 yield MutexAdmission.UNAVAILABLE
         finally:
+            # A zero BOOL or native exception is an *unproven* release.
+            # Hold the process gate indefinitely on uncertainty: allowing
+            # another local contender could violate continuous tenure.
+            released = True
             if handle is not None and kernel is not None:
                 if owned:
                     try:
-                        kernel.ReleaseMutex(handle)
+                        if not kernel.ReleaseMutex(handle):
+                            released = False
                     except Exception:
-                        pass
+                        released = False
                 try:
-                    kernel.CloseHandle(handle)
+                    if not kernel.CloseHandle(handle):
+                        released = False
                 except Exception:
-                    pass
-            _PROCESS_LOCK.release()
+                    released = False
+            if released:
+                _PROCESS_LOCK.release()
+            else:
+                raise RuntimeError("Onboarding mutex native release unverified; restart process")

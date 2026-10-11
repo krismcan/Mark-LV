@@ -272,6 +272,22 @@ class TrustedMetadataCommitHost:
         self._ui_owner = None
         return True
 
+    def close_ui_owner(self, *, owner: str | None) -> bool:
+        """Only this UI owner may close the shared recovery tenure.
+
+        Close the OS mutex before releasing the shared ownership token.
+        A close failure retains the token, preventing another host/window
+        from taking over a tenure that is still active.
+        """
+        if not self.has_ui_owner(owner=owner):
+            return False
+        if not self._recovery.close_ui_window_owner(owner):
+            return False
+        self._ui_owner = None
+        self._ui_ticket = None
+        self._pending = None
+        return True
+
     def request_ui_save(self, model: str, *, owner: str | None = None
                         ) -> tuple[MetadataCommitReceipt, str | None]:
         return self._request_ui(MetadataOperation.SAVE, model, owner=owner)

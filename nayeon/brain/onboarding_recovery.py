@@ -65,7 +65,7 @@ class TrustedOnboardingRecoveryController:
         "_path", "_store", "_marker", "_mutex", "_ctx", "_owner",
         "_epoch", "_ready", "_review", "_generation", "_last",
         "_active", "_availability", "_clock", "_faulted", "_abandoned",
-        "_baseline", "_ui_window_owner", "__weakref__"
+        "_baseline", "_ui_window_owner", "_release_uncertain", "__weakref__"
     )
 
     @classmethod
@@ -125,10 +125,11 @@ class TrustedOnboardingRecoveryController:
         self._faulted = False
         self._baseline = None
         self._ui_window_owner = None
+        self._release_uncertain = False
 
     def claim_ui_window_owner(self) -> str | None:
         """One trusted management window across all hosts sharing this path."""
-        if self._ui_window_owner is not None:
+        if self._ui_window_owner is not None or self._release_uncertain:
             return None
         value = secrets.token_hex(16)
         self._ui_window_owner = value
@@ -139,7 +140,10 @@ class TrustedOnboardingRecoveryController:
                 secrets.compare_digest(owner, self._ui_window_owner))
 
     def release_ui_window_owner(self, owner: str | None) -> bool:
-        if not self.is_ui_window_owner(owner):
+        # Releasing a UI owner without closing an active mutex would let a
+        # second window inherit this tenure's previously admitted READY.
+        if (self._release_uncertain or self._ctx is not None or
+                not self.is_ui_window_owner(owner)):
             return False
         self._ui_window_owner = None
         return True
@@ -172,6 +176,8 @@ class TrustedOnboardingRecoveryController:
             raise RecoveryAdmissionError("No continuous same-thread mutex tenure")
 
     def _enter(self):
+        if self._release_uncertain:
+            raise RecoveryAdmissionError("Prior mutex release uncertain; restart process")
         if self._ctx is not None:
             self._ownership()
             return
@@ -398,17 +404,36 @@ class TrustedOnboardingRecoveryController:
             self._faulted = True
             return False
 
+    def close_ui_window_owner(self, owner: str | None) -> bool:
+        """Revoke a UI tenure only for its exact currently owning window."""
+        if not self.is_ui_window_owner(owner):
+            return False
+        if self._ctx is not None:
+            self.close()
+        else:
+            self.release_ui_window_owner(owner)
+        return True
+
     def close(self) -> None:
         self._ownership()
+        if self._release_uncertain:
+            raise RecoveryAdmissionError("Mutex exit previously failed; restart process")
         self._ready = False
         self._review = None
         self._active = None
-        self._faulted = False
+        self._faulted = True
+        # Retain all tenure/owner state on a failed mutex release. An
+        # uncertain release is not permission to start a new session.
         ctx = self._ctx
+        self._release_uncertain = True
+        # A generator context may be exhausted after one failed __exit__;
+        # never treat a second call as proof the native mutex was released.
+        ctx.__exit__(None, None, None)
         self._ctx = None
+        self._release_uncertain = False
         self._owner = None
         self._epoch = None
         self._last = None
         self._baseline = None
         self._ui_window_owner = None
-        ctx.__exit__(None, None, None)
+        self._faulted = False

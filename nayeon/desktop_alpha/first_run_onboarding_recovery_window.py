@@ -165,12 +165,7 @@ class FirstRunOnboardingRecoveryWindow:
             return
         self.reject_from_button()
         self._closed = True
-        # A reconciled tenure belongs to the management host, not this dialog.
-        # Closing the review window must not revoke the owner's admission.
-        if not self._controller.ready:
-            try:
-                if self._controller._ctx is not None:
-                    self._controller.close()
-            except Exception:
-                pass
+        # A child review is NEVER the owner of the path-wide mutex tenure.
+        # Even a live but stale child cannot revoke a newer owner's review.
+        # The owning management window alone performs owner-scoped teardown.
         self._root.destroy()
