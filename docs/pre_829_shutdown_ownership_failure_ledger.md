@@ -338,3 +338,45 @@ for direct evidence or a new release/readiness approval.
 **Disposition**: independent test-hardening review CLEAR; maintenance
 seal-time full regression, commit/tag and postcommit verification PENDING.
 **Phase 8.29 HOLD; no push approval for this follow-up.**
+
+### Final fault-injection maintenance: local seal complete — 11 Oct 2026
+
+- Independent read-only Codex Sol High assessment: **CLEAR** for exact
+  test-only scope (zero HIGH/MEDIUM). Reviewer noted mocked approval services
+  do not simulate partial backend writes; those protections remain covered
+  under distinct existing recovery/journal architecture tests and have not
+  been expanded or bypassed in this follow-up.
+- Seven new adversarial tests: **7/7 passed**, zero skips. Affected/cross-phase
+  suite: **82/82 passed**, zero skips; Python compileall and staged diff check
+  passed. No production file modified.
+- Exact staged seal files: `.codex/CURRENT_STATE.md`,
+  `docs/pre_829_shutdown_ownership_failure_ledger.md`,
+  `tests/test_pre_829_final_fault_injection.py`. No unrelated staging.
+- Windows Python 3.12 staged full regression: **2,256/2,256 passed**,
+  0 failures/skips, runtime **129.435s**; log
+  `C:\Users\krist\AppData\Local\Temp\nayeon_pre829_final_hardening_staged_full.log`.
+  PowerShell captured normal unittest summary stderr as a non-fatal
+  `NativeCommandError` wrapper; exit code remained 0, and test summary OK.
+- Separate local maintenance commit:
+  `6cb0e702cab9532c8fc1a46491182b8c9c30feda`
+  (parent `db8f5ce224f4677f4bc5050939a943c2a7142a08`).
+  NEW annotated tag:
+  `nayeon-v1-pre-8-29-final-fault-injection-maintenance-01`,
+  pointing exactly to the above commit. Historical product and earlier
+  maintenance tags remain unchanged.
+- Clean isolated postcommit full regression: **2,256/2,256 passed**,
+  0 failures/skips, runtime **130.092s**; log
+  `C:\Users\krist\AppData\Local\Temp\nayeon_pre829_final_hardening_postcommit_full.log`;
+  postcommit compileall and Git clean-tree verification passed.
+- Prior approved GitHub remote seal was branch `db8f5ce`, annotated
+  shutdown/mutex tag at `28b417f`. The new `6cb0e70` test-only maintenance
+  commit/tag are **LOCAL ONLY** and have **not been pushed**.
+  The prior same-ID master .xlsm remains the canonical Drive workbook;
+  do not silently publish or update its readiness metrics for an unpushed
+  local test-only maintenance.
+
+**Local test-hardening maintenance seal: COMPLETE. Previous security repair
+remote seal: VERIFIED. New maintenance remote seal: NOT AUTHORISED. Phase 8.29
+and new product development: HOLD** pending separate explicit push/phase
+approval and fresh pre-phase failure gate. No live provider, key, credential
+store or native Windows mutex was used in the test hardening.
