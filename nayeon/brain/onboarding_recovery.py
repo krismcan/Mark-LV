@@ -291,13 +291,24 @@ class TrustedOnboardingRecoveryController:
             raise RecoveryAdmissionError("Cannot begin reconciliation") from exc
 
     def approve_reconciliation(self, *, human_approved: bool, fingerprint: str,
-                               archive_acknowledged: bool = False) -> bool:
+                               archive_acknowledged: bool = False,
+                               expected_review: RecoveryReview | None = None) -> bool:
+        """Trusted human consent; UI callers bind to their exact review instance.
+
+        Existing trusted direct callers retain the historical fingerprint API.
+        A UI holding a review must supply expected_review to prevent same-evidence
+        reentrancy from authorising or cancelling a successor in this tenure.
+        """
         self._ownership()
         review = self._review
-        # Invalid/mismatched callbacks must NOT consume another window's
-        # newer review, even if they explicitly reject. Only exact review
-        # identity may change this shared tenure's pending consent state.
-        if (review is None or type(fingerprint) is not str or
+        # Fingerprints bind evidence, not review instances: a cancelled review
+        # can be recreated in this same epoch with an identical digest.
+        # Reject a stale UI-held instance BEFORE consuming the new review.
+        if (review is None or
+                (expected_review is not None and
+                 (type(expected_review) is not RecoveryReview or
+                  expected_review is not review)) or
+                type(fingerprint) is not str or
                 fingerprint != review.fingerprint or
                 type(human_approved) is not bool):
             return False

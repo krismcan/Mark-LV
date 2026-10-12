@@ -62,7 +62,29 @@ class FirstRunOnboardingRecoveryWindow:
                                 text="Admission blocked until this review is completed.")
         self._status.pack(anchor="w", padx=20, pady=10)
         root.protocol("WM_DELETE_WINDOW", self.close_from_window)
+        root.bind("<Destroy>", self._on_destroy, add="+")
         self._sync()
+
+    def _cancel_exact_review(self, review: RecoveryReview | None) -> None:
+        """Only this child's fingerprint may be rejected; parent tenure stays owned."""
+        if review is None:
+            return
+        try:
+            self._controller.approve_reconciliation(
+                human_approved=False, fingerprint=review.fingerprint,
+                expected_review=review)
+        except Exception:
+            # Rejection failure never permits admission or a foreign review cancel.
+            pass
+
+    def _on_destroy(self, event) -> None:
+        """Handle child-only external destruction without manipulating dead Tk widgets."""
+        if event.widget is not self._root:
+            return
+        self._closed = True
+        review = self._review
+        self._review = None
+        self._cancel_exact_review(review)
 
     def _alive(self) -> bool:
         if self._closed:
@@ -94,8 +116,13 @@ class FirstRunOnboardingRecoveryWindow:
         try:
             review = self._controller.request_reconciliation()
         except Exception:
-            self._status.configure(text="Reconciliation unavailable. Protected operations remain blocked.")
-            self._sync()
+            if self._alive():
+                self._status.configure(text="Reconciliation unavailable. Protected operations remain blocked.")
+                self._sync()
+            return
+        if not self._alive():
+            # A synchronous external Destroy during review must not strand it.
+            self._cancel_exact_review(review)
             return
         self._review = review
         summary = (
@@ -125,16 +152,21 @@ class FirstRunOnboardingRecoveryWindow:
         if review.archive_required and self._archive_ack.get() is not True:
             self._status.configure(text="Journal archive requires separate acknowledgement.")
             return
-        self._review = None
+        # Keep the exact review available to the root Destroy handler until
+        # controller approval returns; a reentrant close must reject it.
         self._ack.set(False)
         archived_ok = self._archive_ack.get()
         self._archive_ack.set(False)
         try:
             approved = self._controller.approve_reconciliation(
                 human_approved=True, fingerprint=review.fingerprint,
-                archive_acknowledged=archived_ok)
+                archive_acknowledged=archived_ok, expected_review=review)
         except Exception:
             approved = False
+        finally:
+            self._review = None
+        if not self._alive():
+            return
         self._status.configure(text=(
             "Fresh trusted admission established for this continuously owned mutex tenure."
             if approved else
@@ -149,19 +181,18 @@ class FirstRunOnboardingRecoveryWindow:
         self._review = None
         self._ack.set(False)
         self._archive_ack.set(False)
-        if review is not None:
-            try:
-                self._controller.approve_reconciliation(
-                    human_approved=False, fingerprint=review.fingerprint)
-            except Exception:
-                pass
+        self._cancel_exact_review(review)
+        if not self._alive():
+            return
         self._status.configure(text="Review rejected. No admission granted.")
         self._sync()
 
     def close_from_window(self):
         if not self._alive():
             self._closed = True
+            review = self._review
             self._review = None
+            self._cancel_exact_review(review)
             return
         self.reject_from_button()
         self._closed = True
