@@ -73,6 +73,7 @@ class FirstRunCredentialManagementWindow:
         self._root = root
         self._coordinator = coordinator
         self._operation: OnboardingOperation | None = None
+        self._ticket = None  # One exact coordinator-owned human UI review.
         self._busy = False
         self._closed = False
         self._close_deferred = False
@@ -152,20 +153,34 @@ class FirstRunCredentialManagementWindow:
             self._teardown()
 
     def _release_owned(self) -> None:
-        # Never touch Tk in this path. Reject only the exact owning panel's
-        # pending operation; foreign callers must not cancel another review.
+        # Never touch Tk here. A Destroy callback cannot call the legacy
+        # unbound reject() or consume a different window/review successor.
         if self._owns_token():
+            if self._ticket is not None and self._operation is not None:
+                try:
+                    self._coordinator.reject_ui(
+                        ticket=self._ticket, owner_token=self._owner_token,
+                        root=self._root, operation=self._operation)
+                except Exception:
+                    pass
+            # A callback can issue a different, same-operation B after this
+            # window already discarded A's local ticket. Revoking the ACTUAL
+            # owner/root must clean B with coordinator-verified B identity,
+            # while A's stale callback alone must remain incapable of it.
             try:
-                self._coordinator.reject()
+                self._coordinator.reject_ui_for_owner_shutdown(
+                    owner_token=self._owner_token, root=self._root)
             except Exception:
                 pass
             try:
-                self._coordinator.recovery_controller.close_ui_window_owner(self._owner_token)
+                self._coordinator.recovery_controller.close_ui_window_owner(
+                    self._owner_token)
             except Exception:
                 # Native uncertainty remains fail-closed in the controller.
                 pass
         self._owner_token = None
         self._operation = None
+        self._ticket = None
         self._close_deferred = False
 
     def _teardown(self) -> None:
@@ -203,7 +218,12 @@ class FirstRunCredentialManagementWindow:
     def _sync(self):
         if not self._live_window():
             return
-        pending = self._coordinator.has_pending is True and self._operation is not None
+        pending = (
+            self._ticket is not None and self._operation is not None and
+            self._coordinator.is_current_ui_ticket(
+                ticket=self._ticket, owner_token=self._owner_token,
+                root=self._root, operation=self._operation,
+                allow_expired=True))
         for button in self._choices:
             button.configure(state="disabled" if pending or self._busy else "normal")
         self._approve.configure(state="normal" if pending and not self._busy else "disabled")
@@ -221,19 +241,44 @@ class FirstRunCredentialManagementWindow:
             self._status.configure(text="Another window owns onboarding recovery.")
             return
         if (self._busy or self._coordinator.has_pending or self._operation is not None
+                or self._ticket is not None
                 or type(operation) is not OnboardingOperation
                 or operation not in {a for a, _ in _ACTIONS}):
             return
         self._clear()
         self._acknowledged.set(False)
+        owner = self._owner_token
+        self._busy = True
+        result, ticket = None, None
         try:
-            result = self._coordinator.request(operation)
+            result, ticket = self._coordinator.request_ui(
+                operation, owner_token=owner, root=self._root)
         except Exception:
-            result = None
+            result, ticket = None, None
+        finally:
+            self._busy = False
+        # request_ui can reenter Tk and destroy this root before returning.
+        # Reject only the review it issued; never call unbound reject().
+        if not self._has_owner():
+            if ticket is not None:
+                try:
+                    self._coordinator.reject_ui(
+                        ticket=ticket, owner_token=owner,
+                        root=self._root, operation=operation)
+                except Exception:
+                    pass
+            self._operation = None
+            self._ticket = None
+            self._finish_deferred_close()
+            return
         if (type(result) is CoordinationReceipt
                 and result.outcome is CoordinatedOutcome.PENDING
-                and self._coordinator.has_pending):
+                and ticket is not None
+                and self._coordinator.is_current_ui_ticket(
+                    ticket=ticket, owner_token=owner, root=self._root,
+                    operation=operation)):
             self._operation = operation
+            self._ticket = ticket
             message = (
                 "Delete review pending. Tick the explicit deletion acknowledgement, "
                 "then approve once. No key has been deleted."
@@ -243,6 +288,7 @@ class FirstRunCredentialManagementWindow:
             )
         else:
             self._operation = None
+            self._ticket = None
             message = self._message(result)
         self._status.configure(text=message)
         self._sync()
@@ -259,8 +305,19 @@ class FirstRunCredentialManagementWindow:
     def approve_from_button(self):
         if not self._has_owner():
             return
-        operation = self._operation
-        if self._busy or not self._coordinator.has_pending or operation is None:
+        operation, ticket, owner = self._operation, self._ticket, self._owner_token
+        if self._busy or ticket is None or operation is None:
+            return
+        if not self._coordinator.is_current_ui_ticket(
+                ticket=ticket, owner_token=owner, root=self._root,
+                operation=operation, allow_expired=True):
+            # A stale window must not consume the current successor's review.
+            self._clear()
+            self._acknowledged.set(False)
+            self._operation = None
+            self._ticket = None
+            self._status.configure(text="Review changed. Refresh and review again.")
+            self._sync()
             return
         if (operation is OnboardingOperation.REMOVE
                 and self._acknowledged.get() is not True):
@@ -278,20 +335,40 @@ class FirstRunCredentialManagementWindow:
                     raise ValueError("Invalid candidate")
                 candidate = SecretValue(raw)
                 raw = None
-                result = self._coordinator.approve(candidate=candidate)
             else:
                 self._clear()
-                result = self._coordinator.approve()
+            # Candidate reading and deletion may reenter Tk. A destroyed root
+            # can never deliver consent, even if its token is not yet released.
+            if not self._has_owner():
+                raise RuntimeError("Approval window destroyed during callback")
+            result = self._coordinator.approve_ui(
+                ticket=ticket, owner_token=owner, root=self._root,
+                operation=operation, candidate=candidate,
+                acknowledged=(self._acknowledged.get() is True
+                              if operation is OnboardingOperation.REMOVE else False))
             message = self._message(result)
         except Exception:
             try:
-                self._coordinator.reject()
+                self._coordinator.reject_ui(
+                    ticket=ticket, owner_token=owner, root=self._root,
+                    operation=operation)
             except Exception:
                 pass
             message = "Operation unavailable. Reconcile current state before retrying."
         finally:
             raw = None
             candidate = None
+            # A rejected/aborted delegated approval can return without
+            # consuming A. Clean only the exact original ticket before
+            # discarding the window's reference. This is inert after normal
+            # consumption and cannot reject a reentrant same-operation B.
+            if ticket is not None and operation is not None:
+                try:
+                    self._coordinator.reject_ui(
+                        ticket=ticket, owner_token=owner, root=self._root,
+                        operation=operation)
+                except Exception:
+                    pass
             if self._live_window():
                 try:
                     self._clear()
@@ -299,6 +376,7 @@ class FirstRunCredentialManagementWindow:
                 except tk.TclError:
                     pass
             self._operation = None
+            self._ticket = None
             self._busy = False
             self._finish_deferred_close()
         if not self._live_window():
@@ -309,14 +387,19 @@ class FirstRunCredentialManagementWindow:
     def reject_from_button(self):
         if not self._has_owner() or self._busy:
             return
+        operation, ticket = self._operation, self._ticket
         try:
-            self._coordinator.reject()
+            if ticket is not None and operation is not None:
+                self._coordinator.reject_ui(
+                    ticket=ticket, owner_token=self._owner_token,
+                    root=self._root, operation=operation)
         except Exception:
             pass
         self._clear()
         self._acknowledged.set(False)
         self._operation = None
-        self._status.configure(text="Review rejected. Candidate cleared. Nothing submitted.")
+        self._ticket = None
+        self._status.configure(text="Review cleared. No other review was changed.")
         self._sync()
 
     def open_reconciliation_from_button(self):

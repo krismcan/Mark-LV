@@ -191,8 +191,15 @@ class ApprovalCallbackRootDestructionTests(unittest.TestCase):
         owner = window._owner_token
         calls = []
 
-        def destroy_during_real_approval(coordinator, *, candidate=None):
+        def destroy_during_real_approval(coordinator, *, ticket, owner_token,
+                                        root, operation, candidate=None,
+                                        acknowledged=False):
             self.assertIs(coordinator, harness.coordinator)
+            self.assertIs(ticket, window._ticket)
+            self.assertEqual(owner_token, owner)
+            self.assertIs(root, window._root)
+            self.assertIs(operation, OnboardingOperation.CONNECT)
+            self.assertIs(acknowledged, False)
             self.assertTrue(window._busy)
             self.assertTrue(harness.controller.ready)
             self.assertTrue(harness.coordinator.has_pending)
@@ -208,7 +215,7 @@ class ApprovalCallbackRootDestructionTests(unittest.TestCase):
                 raise RuntimeError("synthetic in-flight credential approval failure")
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
 
-        with patch.object(CooperativeOnboardingCoordinator, "approve",
+        with patch.object(CooperativeOnboardingCoordinator, "approve_ui",
                           autospec=True, side_effect=destroy_during_real_approval):
             window.approve_from_button()
 

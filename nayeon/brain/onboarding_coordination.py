@@ -8,7 +8,10 @@ marker on uncertain mutation or interruption. No cross-store CAS/transaction.
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import math
 import os
+import secrets
+import time
 from nayeon.brain.connection_persistence import ProviderConnectionFileStore
 from nayeon.brain.connection_reconciliation import (
     ConnectionObservationStatus, observe_connection,
@@ -59,6 +62,26 @@ class _FreshStamp:
     status: ConnectionObservationStatus
 
 
+@dataclass(frozen=True, slots=True, repr=False, eq=False)
+class _UiApprovalTicket:
+    """One exact trusted UI review; not a provider secret or model action.
+
+    Exact object identity, not equal evidence or equal operation, is the
+    authorisation key. The coordinator alone controls its consumption.
+    """
+    owner_token: str
+    root: object
+    operation: OnboardingOperation
+    pending: _FreshStamp
+    epoch: str
+    generation: int
+    issued: float
+    expires_at: float
+    nonce: bytes
+
+
+_UI_REVIEW_TTL_SECONDS = 300.0
+
 _MUTATING = frozenset({
     OnboardingOperation.CONNECT, OnboardingOperation.REPLACE, OnboardingOperation.REMOVE,
 })
@@ -78,7 +101,7 @@ class CooperativeOnboardingCoordinator:
     writer prevention and no guarantee of detecting same-state key ABA.
     """
 
-    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation", "_recovery", "_pending_epoch", "_pending_generation")
+    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation", "_recovery", "_pending_epoch", "_pending_generation", "_ui_ticket")
 
     def __init__(self, *, host: TrustedCredentialOperationHost,
                  metadata_path: Path, availability: object,
@@ -100,6 +123,7 @@ class CooperativeOnboardingCoordinator:
         self._pending_generation = None
         self._pending: _FreshStamp | None = None
         self._operation: OnboardingOperation | None = None
+        self._ui_ticket: _UiApprovalTicket | None = None
 
     @property
     def recovery_controller(self):
@@ -168,7 +192,166 @@ class CooperativeOnboardingCoordinator:
         self._pending_generation = None if self._recovery is None else self._recovery.generation
         return CoordinationReceipt(CoordinatedOutcome.PENDING)
 
+    def request_ui(self, operation: OnboardingOperation, *,
+                   owner_token: str, root: object):
+        """Issue an exact, one-use review for the owning trusted Tk window.
+
+        Return (CoordinationReceipt, private_ticket_or_None). Existing
+        request()/approve()/reject() remain trusted non-UI compatibility only.
+        """
+        if (type(owner_token) is not str or not owner_token or root is None or
+                type(operation) is not OnboardingOperation or
+                not self._recovery.is_ui_window_owner(owner_token)):
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED), None
+        outcome = self.request(operation)
+        if outcome.outcome is not CoordinatedOutcome.PENDING:
+            return outcome, None
+        # Retain the exact A review BEFORE any clock/randomness dependency
+        # can reenter and replace it with a same-operation successor B.
+        issued_pending = self._pending
+        issued_epoch = self._pending_epoch
+        issued_generation = self._pending_generation
+        try:
+            # A reentrant Tk Destroy may have released the owner mid-request.
+            if not self._recovery.is_ui_window_owner(owner_token):
+                raise ValueError("UI owner no longer active")
+            issued = time.monotonic()
+            nonce = secrets.token_bytes(16)
+            epoch, generation = self._pending_epoch, self._pending_generation
+            if (type(issued) is not float or not math.isfinite(issued) or
+                    type(nonce) is not bytes or len(nonce) != 16 or
+                    type(epoch) is not str or not epoch or
+                    type(generation) is not int or issued_pending is None or
+                    self._pending is not issued_pending or
+                    self._operation is not operation or
+                    self._pending_epoch != issued_epoch or
+                    self._pending_generation != issued_generation or
+                    self._ui_ticket is not None or
+                    not self._host.has_pending or
+                    not self._recovery.is_ui_window_owner(owner_token) or
+                    not self._recovery.ready or
+                    epoch != self._recovery.epoch or
+                    generation != self._recovery.generation):
+                raise ValueError("No trusted review-instance admission")
+            ticket = _UiApprovalTicket(
+                owner_token=owner_token, root=root, operation=operation,
+                pending=self._pending, epoch=epoch, generation=generation,
+                issued=issued, expires_at=issued + _UI_REVIEW_TTL_SECONDS,
+                nonce=nonce)
+            if not math.isfinite(ticket.expires_at):
+                raise ValueError("Review deadline invalid")
+            self._ui_ticket = ticket
+            return outcome, ticket
+        except Exception:
+            # An issuance fault may have reentered and replaced A with B.
+            # Reject only the exact originally requested A when it remains
+            # unbound; never use raw reject() against B or B's UI ticket.
+            if (self._pending is issued_pending and
+                    self._operation is operation and
+                    self._ui_ticket is None):
+                self.reject()
+            return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE), None
+
+    def is_current_ui_ticket(self, *, ticket: object, owner_token: str,
+                             root: object, operation: OnboardingOperation,
+                             allow_expired: bool = False) -> bool:
+        """Read-only exact identity check, including current owner tenure."""
+        ctrl = self._recovery
+
+        def exactly_current():
+            # All of these checks refer to the same exact review instance,
+            # not just its operation or an equal evidence fingerprint.
+            return (type(ticket) is _UiApprovalTicket and
+                    ticket is self._ui_ticket and
+                    type(owner_token) is str and
+                    owner_token == ticket.owner_token and
+                    root is ticket.root and
+                    type(operation) is OnboardingOperation and
+                    operation is ticket.operation and
+                    self._pending is ticket.pending and
+                    self._operation is operation and
+                    self._host.has_pending and ctrl.ready and
+                    ctrl.is_ui_window_owner(owner_token) and
+                    self._pending_epoch == ticket.epoch and
+                    self._pending_generation == ticket.generation and
+                    ctrl.epoch == ticket.epoch and
+                    ctrl.generation == ticket.generation)
+
+        try:
+            if not exactly_current():
+                return False
+            if not allow_expired:
+                # This dependency could reenter Tk/trusted callbacks and
+                # replace A with B while returning a valid-looking timestamp.
+                # Revalidate the WHOLE identity after it returns; otherwise
+                # A's human approval could flow into B's pending operation.
+                now = time.monotonic()
+                if (type(now) is not float or not math.isfinite(now) or
+                        not (ticket.issued <= now <= ticket.expires_at)):
+                    return False
+                return exactly_current()
+            return True
+        except Exception:
+            return False
+
+    def approve_ui(self, *, ticket: object, owner_token: str, root: object,
+                   operation: OnboardingOperation, candidate: object = None,
+                   acknowledged: bool = False) -> CoordinationReceipt:
+        """Consume only this UI review before entering original host path."""
+        if not self.is_current_ui_ticket(ticket=ticket, owner_token=owner_token,
+                                         root=root, operation=operation):
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        if (type(acknowledged) is not bool or
+                (operation is OnboardingOperation.REMOVE and not acknowledged)):
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        exact_pending = self._pending
+        try:
+            # Keep the UI ticket installed while processing, so reentrant
+            # raw approve()/reject() cannot bypass consent binding.
+            return self._approve_pending(candidate=candidate)
+        finally:
+            # A delegated approval may throw or return before consuming A.
+            # Clear/reject only A; reentrant B may have identical evidence.
+            if self._ui_ticket is ticket:
+                self._ui_ticket = None
+            if (self._pending is exact_pending and
+                    self._operation is operation and
+                    self._ui_ticket is None):
+                self.reject()
+
+    def reject_ui(self, *, ticket: object, owner_token: str, root: object,
+                  operation: OnboardingOperation) -> CoordinationReceipt:
+        """Exact-owner cleanup may reject expired A but never successor B."""
+        if not self.is_current_ui_ticket(
+                ticket=ticket, owner_token=owner_token, root=root,
+                operation=operation, allow_expired=True):
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        self._ui_ticket = None
+        return self.reject()
+
+    def reject_ui_for_owner_shutdown(self, *, owner_token: str,
+                                     root: object) -> CoordinationReceipt:
+        """Trusted owner-root teardown of its CURRENT active review.
+
+        This is deliberately distinct from A's stale callback reject_ui(A):
+        an old callback cannot cancel B, but closing the actual owning root
+        must revoke its own current B before owner tenure is released.
+        A foreign window or released owner cannot invoke this route.
+        """
+        ticket = self._ui_ticket
+        if (type(ticket) is not _UiApprovalTicket or
+                type(owner_token) is not str or
+                ticket.owner_token != owner_token or
+                ticket.root is not root or
+                not self._recovery.is_ui_window_owner(owner_token)):
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        return self.reject_ui(ticket=ticket, owner_token=owner_token,
+                              root=root, operation=ticket.operation)
+
     def reject(self) -> CoordinationReceipt:
+        # Trusted legacy calls cannot steal a pending UI-ticket-owned review.
+        if self._ui_ticket is not None:
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         self._pending = None
         self._operation = None
         self._pending_epoch = None
@@ -199,6 +382,13 @@ class CooperativeOnboardingCoordinator:
             return False
 
     def approve(self, *, candidate: object = None) -> CoordinationReceipt:
+        # Never let raw trusted direct calls consume a UI-owned review.
+        if self._ui_ticket is not None:
+            return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        return self._approve_pending(candidate=candidate)
+
+    def _approve_pending(self, *, candidate: object = None) -> CoordinationReceipt:
+        """Shared consumption body; approval entrypoint enforces UI provenance."""
         pending = self._pending
         operation = self._operation
         if pending is None or operation is None or not self._host.has_pending:
