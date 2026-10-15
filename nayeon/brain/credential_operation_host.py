@@ -75,6 +75,25 @@ class TrustedCredentialOperationHost:
     def has_pending(self) -> bool:
         return self.__review.has_pending
 
+    @property
+    def pending_review_identity(self) -> object | None:
+        """Exact process-local review object; never an authority token."""
+        return self.__review.pending_advice
+
+    def reject_if_current(self, expected_review: object) -> CredentialHostResult | None:
+        """Cancel only A; never consume a different host review B."""
+        if expected_review is None or self.pending_review_identity is not expected_review:
+            return None
+        return self.reject(expected_review=expected_review)
+
+    def approve_if_current(
+        self, expected_review: object, *, candidate: SecretValue | None = None
+    ) -> CredentialHostResult | None:
+        """Approve A only while the same exact host review still owns it."""
+        if expected_review is None or self.pending_review_identity is not expected_review:
+            return None
+        return self.approve(candidate=candidate, expected_review=expected_review)
+
     def _fresh(self) -> ConnectionObservation | None:
         try:
             observed = self.__observe()
@@ -136,41 +155,57 @@ class TrustedCredentialOperationHost:
         self.__validation_ticket = None
         return self.reject()
 
-    def reject(self) -> CredentialHostResult | None:
-        """Explicit UI rejection; no credential operation is invoked."""
-        if not self.has_pending:
-            self.__validation_ticket = None
+    def reject(self, *, expected_review: object = None) -> CredentialHostResult | None:
+        """Explicit UI rejection; never cancel a replaced review."""
+        pending = self.__review.pending_advice
+        if expected_review is not None and pending is not expected_review:
             return None
+        if pending is None:
+            return None
+        # Drop A's validation ticket before a reentrant clock can create B.
         self.__validation_ticket = None
+        # cancel() may invoke a reentrant clock. Session identity validation
+        # prevents that old cancellation from consuming a successor.
         try:
-            decision=self.__review.cancel()
+            decision = self.__review.cancel()
         except Exception:
             return None
         return CredentialHostResult(decision.operation, CredentialHostOutcome.BLOCKED)
 
-    def approve(self, *, candidate: SecretValue | None = None) -> CredentialHostResult | None:
-        """Trusted UI callback only. Candidate exists on the stack, not in pending state."""
-        pending=self.__review.pending_advice
-        if pending is None:
+    def approve(self, *, candidate: SecretValue | None = None,
+                expected_review: object = None) -> CredentialHostResult | None:
+        """Trusted UI callback only; never transfer A's approval to B."""
+        pending = self.__review.pending_advice
+        if pending is None or (expected_review is not None and
+                               pending is not expected_review):
             return None
-        operation=pending.operation
+        operation = pending.operation
+        # Reentrant observation/clock callbacks must not wipe B's ticket.
         self.__validation_ticket = None
         if ((operation in _CANDIDATE_OPERATIONS and type(candidate) is not SecretValue)
                 or (operation not in _CANDIDATE_OPERATIONS and candidate is not None)):
-            self.reject()
+            self.reject_if_current(pending)
             return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
-        observed=self._fresh()
-        if (observed is None or observed.status is not pending.observed or
-                advise_onboarding_operation(observed,operation).eligibility
-                is not OperationEligibility.SUGGESTED):
-            self.reject()
+        observed = self._fresh()
+        if self.__review.pending_advice is not pending:
+            return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
+        if observed is None or observed.status is not pending.observed:
+            self.reject_if_current(pending)
+            return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
+        eligibility = advise_onboarding_operation(observed, operation).eligibility
+        if (self.__review.pending_advice is not pending or
+                eligibility is not OperationEligibility.SUGGESTED):
+            self.reject_if_current(pending)
             return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
         try:
-            approval=self.__review.finish(human_approved=True)
+            approval = self.__review.finish(human_approved=True)
         except Exception:
-            self.reject()
+            self.reject_if_current(pending)
             return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
-        if approval.decision is not ReviewDecision.APPROVED:
+        # B could have been issued by the review clock during A's finish.
+        # Never execute A in the presence of a different pending B.
+        if (approval.decision is not ReviewDecision.APPROVED or
+                self.__review.pending_advice is not None):
             return CredentialHostResult(operation, CredentialHostOutcome.BLOCKED)
         try:
             if operation is OnboardingOperation.TEST_CANDIDATE:

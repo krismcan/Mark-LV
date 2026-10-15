@@ -72,6 +72,46 @@ class ReviewSessionTests(unittest.TestCase):
         host.begin(advice())
         self.assertIs(host.finish(human_approved=True).decision,m.ReviewDecision.EXPIRED)
 
+    def test_reentrant_finish_clock_preserves_successor(self):
+        calls = [0]
+        host = None
+        successor = []
+
+        def clock():
+            calls[0] += 1
+            if calls[0] == 2:
+                host.cancel()  # Nested third clock consumes original A.
+                b = advice()
+                host.begin(b)  # Fourth clock issues distinct B.
+                successor.append(b)
+            return 10.0
+
+        host = m.OnboardingReviewSession(clock=clock)
+        first = advice()
+        host.begin(first)
+        with self.assertRaises(RuntimeError):
+            host.finish(human_approved=True)
+        self.assertIs(host.pending_advice, successor[0])
+        self.assertIsNot(host.pending_advice, first)
+
+    def test_reentrant_begin_clock_cannot_replace_successor(self):
+        calls = [0]
+        host = None
+        successor = []
+
+        def clock():
+            calls[0] += 1
+            if calls[0] == 1:
+                b = advice()
+                host.begin(b)
+                successor.append(b)
+            return 10.0
+
+        host = m.OnboardingReviewSession(clock=clock)
+        with self.assertRaises(RuntimeError):
+            host.begin(advice())
+        self.assertIs(host.pending_advice, successor[0])
+
     def test_direct_receipt_never_claims_execution_authority(self):
         data=dict(operation=OnboardingOperation.CONNECT,
                   observed=ConnectionObservationStatus.SETUP_REQUIRED,

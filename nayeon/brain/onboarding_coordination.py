@@ -101,7 +101,7 @@ class CooperativeOnboardingCoordinator:
     writer prevention and no guarantee of detecting same-state key ABA.
     """
 
-    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation", "_recovery", "_pending_epoch", "_pending_generation", "_ui_ticket")
+    __slots__ = ("_host", "_path", "_availability", "_mutex", "_pending", "_operation", "_recovery", "_pending_epoch", "_pending_generation", "_pending_host_review", "_ui_ticket")
 
     def __init__(self, *, host: TrustedCredentialOperationHost,
                  metadata_path: Path, availability: object,
@@ -121,6 +121,7 @@ class CooperativeOnboardingCoordinator:
         self._recovery = TrustedOnboardingRecoveryController.for_path(metadata_path, availability=availability, mutex=mutex)
         self._pending_epoch = None
         self._pending_generation = None
+        self._pending_host_review = None
         self._pending: _FreshStamp | None = None
         self._operation: OnboardingOperation | None = None
         self._ui_ticket: _UiApprovalTicket | None = None
@@ -179,15 +180,19 @@ class CooperativeOnboardingCoordinator:
             allowed = self._host.request(operation)
         except Exception:
             allowed = False
-        if allowed is not True or not self._host.has_pending:
-            self._host.reject()
+        # Bind this exact host review; a reentrant dependency may have
+        # replaced an earlier review without changing operation or evidence.
+        host_review = self._host.pending_review_identity if allowed is True else None
+        if allowed is not True or host_review is None:
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         after = self._fresh()
-        if after is None or after != before:
-            self._host.reject()
+        if (after is None or after != before or
+                self._host.pending_review_identity is not host_review):
+            self._host.reject_if_current(host_review)
             return CoordinationReceipt(CoordinatedOutcome.CONFLICT)
         self._pending = after
         self._operation = operation
+        self._pending_host_review = host_review
         self._pending_epoch = None if self._recovery is None else self._recovery.epoch
         self._pending_generation = None if self._recovery is None else self._recovery.generation
         return CoordinationReceipt(CoordinatedOutcome.PENDING)
@@ -227,7 +232,8 @@ class CooperativeOnboardingCoordinator:
                     self._pending_epoch != issued_epoch or
                     self._pending_generation != issued_generation or
                     self._ui_ticket is not None or
-                    not self._host.has_pending or
+                    self._pending_host_review is None or
+                    self._host.pending_review_identity is not self._pending_host_review or
                     not self._recovery.is_ui_window_owner(owner_token) or
                     not self._recovery.ready or
                     epoch != self._recovery.epoch or
@@ -270,7 +276,9 @@ class CooperativeOnboardingCoordinator:
                     operation is ticket.operation and
                     self._pending is ticket.pending and
                     self._operation is operation and
-                    self._host.has_pending and ctrl.ready and
+                    self._pending_host_review is not None and
+                    self._host.pending_review_identity is self._pending_host_review and
+                    ctrl.ready and
                     ctrl.is_ui_window_owner(owner_token) and
                     self._pending_epoch == ticket.epoch and
                     self._pending_generation == ticket.generation and
@@ -352,12 +360,17 @@ class CooperativeOnboardingCoordinator:
         # Trusted legacy calls cannot steal a pending UI-ticket-owned review.
         if self._ui_ticket is not None:
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
+        host_review = self._pending_host_review
         self._pending = None
         self._operation = None
         self._pending_epoch = None
         self._pending_generation = None
+        self._pending_host_review = None
         try:
-            self._host.reject()
+            if host_review is None:
+                self._host.reject()  # Explicit trusted orphan cleanup only.
+            else:
+                self._host.reject_if_current(host_review)
         except Exception:
             return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE)
         return CoordinationReceipt(CoordinatedOutcome.REFUSED)
@@ -391,9 +404,12 @@ class CooperativeOnboardingCoordinator:
         """Shared consumption body; approval entrypoint enforces UI provenance."""
         pending = self._pending
         operation = self._operation
-        if pending is None or operation is None or not self._host.has_pending:
+        host_review = self._pending_host_review
+        if (pending is None or operation is None or host_review is None or
+                self._host.pending_review_identity is not host_review):
             self._pending = None
             self._operation = None
+            self._pending_host_review = None
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         epoch = self._pending_epoch
         generation = self._pending_generation
@@ -401,37 +417,60 @@ class CooperativeOnboardingCoordinator:
         self._operation = None
         self._pending_epoch = None
         self._pending_generation = None
+        self._pending_host_review = None
         if self._recovery is None:
-            self._host.reject()
+            self._host.reject_if_current(host_review)
             return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
-        return self._approve_recovered(pending, operation, candidate, epoch, generation)
+        return self._approve_recovered(pending, operation, candidate, epoch, generation,
+                                       host_review)
 
     def _approve_recovered(self, pending: _FreshStamp, operation: OnboardingOperation,
                            candidate: object, epoch: str | None,
-                           generation: int | None) -> CoordinationReceipt:
-        """Trusted active-tenure path; no prior journal READY grants authority."""
+                           generation: int | None,
+                           host_review: object) -> CoordinationReceipt:
+        """Trusted active-tenure path, bound to A's exact host review."""
         ctrl = self._recovery
         if (not ctrl.ready or epoch != ctrl.epoch or generation != ctrl.generation or
                 self._recovering()):
-            self._host.reject()
+            self._host.reject_if_current(host_review)
             return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
         current = self._fresh()
-        if current is None or current != pending:
-            self._host.reject()
+        if (current is None or current != pending or
+                self._host.pending_review_identity is not host_review):
+            self._host.reject_if_current(host_review)
             return CoordinationReceipt(CoordinatedOutcome.CONFLICT)
-        fingerprint = canonical_evidence_digest(
-            kind=operation.value, before=pending.connection_record,
-            after=None, identity=pending.file_identity,
-            observation=pending.status.value)
         try:
+            fingerprint = canonical_evidence_digest(
+                kind=operation.value, before=pending.connection_record,
+                after=None, identity=pending.file_identity,
+                observation=pending.status.value)
+            # A successful reentrant callback may have replaced A with B.
+            # Do not even start the IN_FLIGHT journal for B using A's consent.
+            if self._host.pending_review_identity is not host_review:
+                return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE)
             permit = ctrl.begin_operation(kind=operation.value, evidence_hash=fingerprint,
                                           epoch=epoch, generation=generation)
-        except RecoveryAdmissionError:
-            self._host.reject()
-            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
+        except Exception as exc:
+            # A's exceptional cleanup must not cancel a distinct successor B.
+            # Admission could already have persisted IN_FLIGHT: never retry.
+            try:
+                self._host.reject_if_current(host_review)
+            except Exception:
+                pass
+            return CoordinationReceipt(
+                CoordinatedOutcome.RECOVERY_REQUIRED
+                if isinstance(exc, RecoveryAdmissionError)
+                else CoordinatedOutcome.UNAVAILABLE)
         try:
-            host_result = self._host.approve(candidate=candidate)
+            host_result = self._host.approve_if_current(host_review, candidate=candidate)
         except Exception:
+            # The permit may already have journaled IN_FLIGHT. A dependency
+            # exception before host review consumption must not strand A,
+            # but A must never reject a distinct host-only or coordinator B.
+            try:
+                self._host.reject_if_current(host_review)
+            except Exception:
+                pass
             host_result = None
         after = self._fresh()
         # CONNECT/REPLACE have no trusted exact-value readback. A mere

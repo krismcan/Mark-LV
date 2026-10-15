@@ -87,6 +87,10 @@ class OnboardingReviewSession:
         deadline = self._now() + self._timeout
         if not math.isfinite(deadline):
             raise RuntimeError("Review deadline unavailable")
+        # A trusted clock can synchronously begin another review. Never
+        # overwrite that successor with the earlier request.
+        if self._pending is not None:
+            raise RuntimeError("Review changed while checking the deadline")
         self._pending = advice
         self._deadline = deadline
 
@@ -97,11 +101,15 @@ class OnboardingReviewSession:
         advice = self._pending
         if advice is None:
             raise RuntimeError("No pending onboarding review")
-        # Fail closed even if clock becomes unavailable; clear pending once.
+        # The trusted clock can synchronously cancel A and start B. Never
+        # clear or approve B using A's earlier captured decision.
+        deadline = self._deadline
         try:
-            valid = self._now() <= self._deadline
+            valid = self._now() <= deadline
         except RuntimeError:
             valid = False
+        if self._pending is not advice or self._deadline != deadline:
+            raise RuntimeError("Review replaced during decision timing")
         self._pending = None
         self._deadline = None
         decision = (ReviewDecision.EXPIRED if not valid else
