@@ -1,4 +1,5 @@
 """Phase 8.7 explicit-path startup tests and sealed-production guard."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 from dataclasses import FrozenInstanceError
@@ -24,7 +25,7 @@ from nayeon.secrets.contracts import SecretIdentifier
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -254,7 +255,7 @@ class Phase87FrozenProductionScope(unittest.TestCase):
         self.assertEqual(migrated_scope(changed | untracked), delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         actual = {p.relative_to(root).as_posix() for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, production | delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(approved_830_files(actual), production | delta | APPROVED_RECOVERY_ADDITIONS)
         for name in tracked | {"requirements.txt"}:
             with self.subTest(name=name):
                 actual_bytes = (root / name).read_bytes().replace(b"\r\n", b"\n")

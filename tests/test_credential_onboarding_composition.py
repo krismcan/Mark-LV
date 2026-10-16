@@ -1,4 +1,5 @@
 """Phase 8.8 trusted composition tests: no real credentials or network calls."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 import inspect
@@ -12,7 +13,7 @@ from nayeon.secrets.lifecycle import CredentialValidationStatus
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -185,7 +186,7 @@ class Phase88FrozenProductionScope(unittest.TestCase):
         self.assertEqual(len(production), 102)
         current = {p.relative_to(root).as_posix()
                    for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(current, production | delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(approved_830_files(current), production | delta | APPROVED_RECOVERY_ADDITIONS)
         changed = set(filter(None, git("diff", "--name-only", tag,
                                        "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others",

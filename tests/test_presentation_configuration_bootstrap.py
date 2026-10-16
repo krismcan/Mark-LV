@@ -1,4 +1,5 @@
 """Phase 7.5 explicit-path composition and sealed production boundary guards."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 import inspect
@@ -77,8 +78,9 @@ def mapping():
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
+    approved_830_files, approved_830_scope, owner_may_reference,
 )
 
 class HostilePath:
@@ -301,7 +303,10 @@ def bootstrap_presentation_configuration(path: Path) -> PresentationConfiguratio
 
     def assert_no_references(self, targets, allowed):
         for path in (ROOT / "nayeon").rglob("*.py"):
-            if path.relative_to(ROOT).as_posix() in allowed:
+            rel = path.relative_to(ROOT).as_posix()
+            if rel in allowed:
+                continue
+            if owner_may_reference(rel, targets):
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.ImportFrom):
@@ -344,7 +349,7 @@ def bootstrap_presentation_configuration(path: Path) -> PresentationConfiguratio
             self.assertEqual(migrated_scope(changed | untracked), PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(approved_830_files(actual), {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked:
                 with self.subTest(baseline=baseline, path=path):
                     assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

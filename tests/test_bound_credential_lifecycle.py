@@ -1,4 +1,5 @@
 """Deterministic Phase 8.3 lifecycle privacy, ordering and authority tests."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 import copy
@@ -444,10 +445,10 @@ class Phase83ScopeGuards(unittest.TestCase):
             self.assertEqual(tracked & DELTA, set())
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked,
+            self.assertEqual(approved_830_scope(changed | untracked),
                              DELTA | APPROVED_RECOVERY_ADDITIONS | {REVOCABLE_LIFECYCLE})
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(approved_830_files(actual), {p for p in tracked if p.endswith(".py")} | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked:
                 with self.subTest(baseline=baseline, path=path):
                     candidate = (ROOT / path).read_bytes().replace(b"\r\n", b"\n")

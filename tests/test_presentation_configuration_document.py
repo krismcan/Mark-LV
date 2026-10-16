@@ -1,4 +1,5 @@
 """Phase 7.2 pure codec, privacy and bounded production dependency guards."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 from collections import UserDict
@@ -274,6 +275,8 @@ class PresentationDocumentBoundaryTests(unittest.TestCase):
         for path in (ROOT / "nayeon").rglob("*.py"):
             if path in (MODULE, ROOT / "nayeon/config/persistence.py", ROOT / "nayeon/config/service.py",
                         ROOT / "nayeon/config/view.py"):
+                continue
+            if owner_may_reference(path.relative_to(ROOT).as_posix(), targets):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):

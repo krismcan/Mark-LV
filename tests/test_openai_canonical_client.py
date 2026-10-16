@@ -1,4 +1,5 @@
 """Canonical client security tests; synthetic secrets and public SDK fakes only."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 import inspect
@@ -51,7 +52,7 @@ DELTA = NEW
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -223,7 +224,7 @@ class Phase84ScopeGuards(unittest.TestCase):
             untracked = set(self.git("ls-files", "--others", "--exclude-standard", "--", "nayeon").splitlines())
             self.assertEqual(migrated_scope(changed | untracked), DELTA | APPROVED_RECOVERY_ADDITIONS)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, {p for p in production if p.endswith(".py")} | NEW | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(approved_830_files(actual), {p for p in production if p.endswith(".py")} | NEW | APPROVED_RECOVERY_ADDITIONS)
             for path in production - DELTA:
                 with self.subTest(path=path, baseline=baseline):
                     assert_frozen_or_revocable(self, path, (ROOT / path).read_text(encoding="utf-8"),

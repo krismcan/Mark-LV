@@ -1,4 +1,5 @@
 """Phase 8.5 lazy ownership, persist-before-swap and exact production scope."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 from pathlib import Path
@@ -64,7 +65,7 @@ def git(*args):
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -291,7 +292,7 @@ class Phase85ScopeGuards(unittest.TestCase):
             self.assertEqual(migrated_scope(changed | untracked), DELTA | APPROVED_RECOVERY_ADDITIONS)
             self.assertFalse(changed & untracked)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
-            self.assertEqual(actual, production | DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(approved_830_files(actual), production | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked | {"requirements.txt"}:
                 with self.subTest(checkpoint=checkpoint, path=path):
                     assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

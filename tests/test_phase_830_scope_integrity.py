@@ -1,0 +1,267 @@
+"""Read-only 8.30 historical production-scope security negatives.
+
+All synthetic Git records are injected in memory; Windows junction evidence uses
+only a newly owned disposable TemporaryDirectory, never the repository.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest import mock
+
+from tests import phase_8_30_scope_migration as scope
+
+OID = b"1" * 40
+
+
+def tree_record(path: str) -> bytes:
+    return b"100644 blob " + OID + b"\t" + path.encode("utf-8") + b"\0"
+
+
+def index_record(path: str) -> bytes:
+    return b"100644 " + OID + b" 0\t" + path.encode("utf-8") + b"\0"
+
+
+def replace_or_add_record(raw: bytes, path: str, replacement: bytes) -> bytes:
+    """One tampered Git pathname in either an unstaged or committed inventory."""
+    encoded = path.encode("utf-8")
+    rows = [item for item in raw.split(b"\0") if item]
+    matches = [index for index, item in enumerate(rows)
+               if item.split(b"\t", 1)[-1] == encoded]
+    if len(matches) > 1:
+        raise AssertionError("Git test fixture contains duplicate pathnames")
+    if matches:
+        rows[matches[0]] = replacement.rstrip(b"\0")
+    else:
+        rows.append(replacement.rstrip(b"\0"))
+    return b"\0".join(rows) + b"\0"
+
+
+class Phase830ScopeIntegrityTests(unittest.TestCase):
+    def test_current_protected_source_invariant(self):
+        scope.assert_830_integrity()
+        scope.assert_exact_owner_imports()
+
+    def test_git_reads_complete_path_inventories(self):
+        calls = []
+        original = scope._git
+        def observed(*args):
+            calls.append(args)
+            return original(*args)
+        with mock.patch.object(scope, "_git", side_effect=observed):
+            scope.assert_830_integrity()
+        self.assertIn(("ls-files", "--stage", "-z"), calls)
+        self.assertIn(("ls-files", "--others", "--exclude-standard", "-z"), calls)
+        self.assertTrue(all(len(args) == 5 for args in calls if args[0] == "ls-tree"))
+
+    def test_head_alias_after_clean_baseline(self):
+        original = scope._git
+        count = []
+        def supplied(*args):
+            response = original(*args)
+            if args[0] == "ls-tree":
+                count.append(args)
+                if len(count) == 2:
+                    return response + tree_record("nayeon./config/foreign.py")
+            return response
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                scope.assert_830_integrity()
+        self.assertEqual(len(count), 2)
+
+    def test_all_approved_ui_configuration_imports_are_exact(self):
+        scope.assert_exact_830_source_imports()
+        for relative in scope.CONFIG_IMPORT_ALLOW:
+            self.assertEqual(len(scope._approved_source(relative)), 40)
+
+    def test_pinned_new_ui_hash_mismatch_refused(self):
+        for relative in (
+            "nayeon/desktop_alpha/application.py",
+            "nayeon/desktop_alpha/workspace_window.py",
+            "nayeon/desktop_alpha/presentation_window.py",
+            "nayeon/desktop_alpha/window.py",
+        ):
+            with self.subTest(relative=relative):
+                bad = dict(scope.APPROVED_SOURCE_SHA256)
+                bad[relative] = "0" * 64
+                with mock.patch.object(scope, "APPROVED_SOURCE_SHA256", bad):
+                    with self.assertRaisesRegex(AssertionError, "Unapproved 8.30 source bytes"):
+                        scope.assert_830_integrity()
+
+    def test_staged_modified_entrypoint_bad_blob_refused(self):
+        actual = scope._git
+        file_name = b"nayeon/desktop_alpha/window.py"
+        def supplied(*args):
+            result = actual(*args)
+            if args[:3] == ("ls-files", "--stage", "-z"):
+                entries = result.split(b"\0")
+                for i, item in enumerate(entries):
+                    if item.endswith(b"\t" + file_name):
+                        entries[i] = b"100644 " + OID + b" 0\t" + file_name
+                        return b"\0".join(entries)
+                raise AssertionError("Original entrypoint missing")
+            return result
+        expected = ("Unapproved entrypoint source change"
+                    if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
+                    else "Postcommit entrypoint rollback refused")
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, expected):
+                scope.assert_830_integrity()
+
+    def test_staged_unapproved_new_ui_blob_refused(self):
+        actual = scope._git
+        relative = "nayeon/desktop_alpha/application.py"
+        def supplied(*args):
+            result = actual(*args)
+            if args[:3] == ("ls-files", "--stage", "-z"):
+                return replace_or_add_record(result, relative, index_record(relative))
+            return result
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "(?:Missing or unapproved staged|Unapproved staged) 8.30 source"):
+                scope.assert_830_integrity()
+
+    def test_committed_unapproved_new_ui_blob_refused(self):
+        actual = scope._git
+        seen = []
+        relative = "nayeon/desktop_alpha/application.py"
+        def supplied(*args):
+            result = actual(*args)
+            if args and args[0] == "ls-tree":
+                seen.append(True)
+                if len(seen) == 2:
+                    return replace_or_add_record(result, relative, tree_record(relative))
+            return result
+        expected = ("Unexpected precommit 8.30 product source"
+                    if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
+                    else "Missing or unapproved committed 8.30 source")
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, expected):
+                scope.assert_830_integrity()
+
+    def test_approved_diff_scope_does_not_swallow_unrelated_changes(self):
+        allow = set(scope.APPROVED_SOURCE_SHA256)
+        extra = "nayeon/config/document.py"
+        self.assertEqual(scope.approved_830_scope(allow | {extra}),
+                         {extra, "nayeon/desktop_alpha/window.py"})
+        self.assertEqual(scope.approved_830_files(set(scope.APPROVED_NEW_SHA256) | {extra}),
+                         {extra})
+
+    def test_staged_root_case_alias_refused(self):
+        actual = scope._git
+        def supplied(*args):
+            result = actual(*args)
+            if args[:3] == ("ls-files", "--stage", "-z"):
+                return result + index_record("Nayeon/config/document.py")
+            return result
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                scope.assert_830_integrity()
+
+    def test_committed_root_case_alias_refused(self):
+        actual = scope._git
+        def supplied(*args):
+            result = actual(*args)
+            if args[:4] == ("ls-tree", "-r", "-z", "--full-tree"):
+                return result + tree_record("NAYEON/config/document.py")
+            return result
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                scope.assert_830_integrity()
+
+    def test_untracked_root_alias_refused(self):
+        actual = scope._git
+        def supplied(*args):
+            result = actual(*args)
+            if args[:4] == ("ls-files", "--others", "--exclude-standard", "-z"):
+                return result + b"Nayeon/foreign.py\0"
+            return result
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                scope.assert_830_integrity()
+
+    def test_trailing_dot_space_staged_aliases_refused(self):
+        actual = scope._git
+        for alias in ("nayeon./config/foreign.py", "nayeon /config/foreign.py",
+                      "NAYEON. /config/foreign.py"):
+            with self.subTest(alias=alias):
+                def supplied(*args):
+                    result = actual(*args)
+                    if args[:3] == ("ls-files", "--stage", "-z"):
+                        return result + index_record(alias)
+                    return result
+                with mock.patch.object(scope, "_git", side_effect=supplied):
+                    with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                        scope.assert_830_integrity()
+
+    def test_trailing_dot_space_committed_aliases_refused(self):
+        actual = scope._git
+        for alias in ("nayeon./config/foreign.py", "nayeon /config/foreign.py"):
+            with self.subTest(alias=alias):
+                def supplied(*args):
+                    result = actual(*args)
+                    if args[:4] == ("ls-tree", "-r", "-z", "--full-tree"):
+                        return result + tree_record(alias)
+                    return result
+                with mock.patch.object(scope, "_git", side_effect=supplied):
+                    with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                        scope.assert_830_integrity()
+
+    def test_trailing_dot_space_untracked_aliases_refused(self):
+        actual = scope._git
+        for alias in ("nayeon./config/foreign.py", "nayeon /config/foreign.py"):
+            with self.subTest(alias=alias):
+                def supplied(*args):
+                    result = actual(*args)
+                    if args[:4] == ("ls-files", "--others", "--exclude-standard", "-z"):
+                        return result + alias.encode("utf-8") + b"\0"
+                    return result
+                with mock.patch.object(scope, "_git", side_effect=supplied):
+                    with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+                        scope.assert_830_integrity()
+
+    def test_backslash_root_alias_refused(self):
+        with self.assertRaisesRegex(AssertionError, "Aliased production root"):
+            scope._production_git_path("NAYEON\\config\\document.py")
+
+    def test_noncanonical_production_path_refused(self):
+        for path in ("nayeon/config../document.py", "nayeon/../config/file.py",
+                     "nayeon/config/file.py:", "nayeon//file.py"):
+            with self.subTest(path=path):
+                with self.assertRaises(AssertionError):
+                    scope._production_git_path(path)
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows junction test")
+    def test_junction_parent_refused(self):
+        with tempfile.TemporaryDirectory(prefix="nayeon_830_scope_junction_") as temp:
+            root = Path(temp)
+            target = root / "ordinary_target"
+            target.mkdir()
+            junction = root / "nayeon"
+            made = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(junction), str(target)],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(made.returncode, 0, made.stderr)
+            try:
+                with mock.patch.object(scope, "ROOT", root):
+                    with self.assertRaisesRegex(AssertionError, "Linked or reparse"):
+                        scope._reject_linked_parents(junction / "config" / "file.py")
+            finally:
+                os.rmdir(junction)
+
+    def test_frozen_production_rejected_on_wrong_branch(self):
+        actual = scope._git
+        def supplied(*args):
+            if args[:2] == ("branch", "--show-current"):
+                return b"wrong-branch\n"
+            return actual(*args)
+        with mock.patch.object(scope, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "Wrong production branch"):
+                scope.assert_830_integrity()
+
+
+if __name__ == "__main__":
+    unittest.main()

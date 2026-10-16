@@ -1,4 +1,5 @@
 """Phase 7.1 deterministic contracts and protected-checkpoint source guards."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
@@ -63,7 +64,7 @@ STRING_FIELDS = tuple(
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -220,6 +221,10 @@ class PresentationBoundaryTests(unittest.TestCase):
         for path in (ROOT / "nayeon").rglob("*.py"):
             if path in (ROOT / MODULE, ROOT / DOCUMENT_MODULE, ROOT / VIEW_MODULE):
                 continue
+            if owner_may_reference(path.relative_to(ROOT).as_posix(), targets):
+                # Only the exact SHA-pinned presentation widget may consume
+                # immutable presentation types; the helper checks its imports.
+                continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):
@@ -240,12 +245,12 @@ class PresentationBoundaryTests(unittest.TestCase):
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
         self.assertEqual(migrated_scope(changed | untracked), PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
         self.assertEqual(migrated_scope(changed) - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
-        self.assertEqual(untracked - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
+        self.assertEqual(approved_830_scope(untracked) - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
         tracked = git("ls-tree", "-r", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines()
         actual_sources = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
-        self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(approved_830_files(actual_sources), {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
         for path in tracked:
             with self.subTest(path=path):
                 assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),

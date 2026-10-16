@@ -118,9 +118,9 @@ class NayeonWindow:
 
 def main():
     """Launch only when explicitly invoked; never starts a hidden background task."""
-    root = tk.Tk()
-    NayeonWindow(root)
-    root.mainloop()
+    from nayeon.desktop_alpha.application import main as application_main
+
+    application_main()
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,5 @@
 """Phase 8.9 read-only provider/key reconciliation, deterministic only."""
+from tests.phase_8_30_scope_migration import approved_830_files, approved_830_scope, owner_may_reference
 
 import ast
 from dataclasses import FrozenInstanceError
@@ -21,7 +22,7 @@ S = m.ConnectionObservationStatus
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
-from tests.phase_8_29_lifecycle_scope_migration import (
+from tests.phase_8_30_scope_migration import (
     migrated_scope, assert_frozen_or_revocable,
 )
 
@@ -284,7 +285,7 @@ class Phase89ProductionFreeze(unittest.TestCase):
         production = {x for x in previous if x.endswith(".py")}
         self.assertEqual(len(production), 104)
         actual = {p.relative_to(root).as_posix() for p in (root / "nayeon").rglob("*.py")}
-        self.assertEqual(actual, production | delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(approved_830_files(actual), production | delta | APPROVED_RECOVERY_ADDITIONS)
         diff = set(filter(None, git("diff", "--name-only", tag,
                                     "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others", "--exclude-standard",
