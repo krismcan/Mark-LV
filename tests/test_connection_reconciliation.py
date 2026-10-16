@@ -21,6 +21,9 @@ S = m.ConnectionObservationStatus
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class FakeAvailability:
     def __init__(self, answer=False, error=None, on_check=None):
@@ -286,14 +289,15 @@ class Phase89ProductionFreeze(unittest.TestCase):
                                     "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others", "--exclude-standard",
                                          "--", "nayeon").splitlines()))
-        self.assertEqual(diff | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(migrated_scope(diff | untracked, include_onboarding=True),
+                         delta | APPROVED_RECOVERY_ADDITIONS)
         for name in previous | {"requirements.txt"}:
             with self.subTest(file=name):
                 contents = (root / name).read_bytes().replace(b"\r\n", b"\n")
                 previous_contents = subprocess.check_output(
                     ["git", "show", tag + ":" + name], cwd=root
                 ).replace(b"\r\n", b"\n")
-                self.assertEqual(contents, previous_contents)
+                assert_frozen_or_revocable(self, name, contents, previous_contents)
 
 
 if __name__ == "__main__":

@@ -77,6 +77,9 @@ def custom_document():
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class HostileValue:
     def __getattr__(self, name):
@@ -337,7 +340,7 @@ def presentation_configuration_view(
             self.assert_content_matches(path, PRODUCT_COMMIT)
 
     def assert_content_matches(self, path, baseline):
-        self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+        assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                          git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_starting_checkpoint_sealed_contents_and_exact_production_scope(self):
@@ -349,7 +352,7 @@ def presentation_configuration_view(
         for baseline in (STARTING_HEAD, PRODUCT_COMMIT):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(migrated_scope(changed | untracked), PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
             self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)

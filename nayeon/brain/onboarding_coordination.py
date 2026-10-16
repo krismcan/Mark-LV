@@ -82,6 +82,26 @@ class _UiApprovalTicket:
 
 _UI_REVIEW_TTL_SECONDS = 300.0
 
+
+def _trusted_ui_root_live(root: object) -> bool:
+    """Fail closed for a real Tk root destroyed during review admission.
+
+    Non-Tk trusted legacy/test root identity objects do not advertise a
+    class-defined winfo_exists contract; ownership and ticket identity still
+    gate them. Do not reflect through instance __getattr__ or import Tk here.
+    """
+    try:
+        probe = getattr(type(root), "winfo_exists", None)
+        if probe is None:
+            return True
+        if not callable(probe):
+            return False
+        exists = probe(root)
+        return type(exists) is int and exists == 1
+    except Exception:
+        return False
+
+
 _MUTATING = frozenset({
     OnboardingOperation.CONNECT, OnboardingOperation.REPLACE, OnboardingOperation.REMOVE,
 })
@@ -306,8 +326,17 @@ class CooperativeOnboardingCoordinator:
                    operation: OnboardingOperation, candidate: object = None,
                    acknowledged: bool = False) -> CoordinationReceipt:
         """Consume only this UI review before entering original host path."""
-        if not self.is_current_ui_ticket(ticket=ticket, owner_token=owner_token,
-                                         root=root, operation=operation):
+        if (not _trusted_ui_root_live(root) or
+                not self.is_current_ui_ticket(
+                    ticket=ticket, owner_token=owner_token,
+                    root=root, operation=operation) or
+                not _trusted_ui_root_live(root) or
+                not self.is_current_ui_ticket(
+                    ticket=ticket, owner_token=owner_token, root=root,
+                    operation=operation, allow_expired=True)):
+            # The exact root can be destroyed by a trusted reentrant clock
+            # callback even while the owner token is still bound. A stale
+            # root never carries consent into a new credential effect.
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         if (type(acknowledged) is not bool or
                 (operation is OnboardingOperation.REMOVE and not acknowledged)):
@@ -430,6 +459,21 @@ class CooperativeOnboardingCoordinator:
                            host_review: object) -> CoordinationReceipt:
         """Trusted active-tenure path, bound to A's exact host review."""
         ctrl = self._recovery
+        ui_ticket = self._ui_ticket
+
+        def live_original_ui() -> bool:
+            # A's Tk root may be destroyed by any reentrant trusted
+            # dependency before IN_FLIGHT admission or before fake effects.
+            # Legacy trusted non-UI calls have no UI ticket.
+            if ui_ticket is None:
+                return True
+            return (type(ui_ticket) is _UiApprovalTicket and
+                    self._ui_ticket is ui_ticket and
+                    ctrl.is_ui_window_owner(ui_ticket.owner_token) and
+                    _trusted_ui_root_live(ui_ticket.root) and
+                    self._ui_ticket is ui_ticket and
+                    ctrl.is_ui_window_owner(ui_ticket.owner_token))
+
         if (not ctrl.ready or epoch != ctrl.epoch or generation != ctrl.generation or
                 self._recovering()):
             self._host.reject_if_current(host_review)
@@ -446,8 +490,11 @@ class CooperativeOnboardingCoordinator:
                 observation=pending.status.value)
             # A successful reentrant callback may have replaced A with B.
             # Do not even start the IN_FLIGHT journal for B using A's consent.
-            if self._host.pending_review_identity is not host_review:
-                return CoordinationReceipt(CoordinatedOutcome.UNAVAILABLE)
+            if (self._host.pending_review_identity is not host_review or
+                    not live_original_ui() or
+                    self._host.pending_review_identity is not host_review):
+                self._host.reject_if_current(host_review)
+                return CoordinationReceipt(CoordinatedOutcome.REFUSED)
             permit = ctrl.begin_operation(kind=operation.value, evidence_hash=fingerprint,
                                           epoch=epoch, generation=generation)
         except Exception as exc:
@@ -461,8 +508,23 @@ class CooperativeOnboardingCoordinator:
                 CoordinatedOutcome.RECOVERY_REQUIRED
                 if isinstance(exc, RecoveryAdmissionError)
                 else CoordinatedOutcome.UNAVAILABLE)
+        # Journal admission may itself reenter trusted callbacks. If the
+        # original UI root died before the effect, preserve IN_FLIGHT as
+        # uncertain; never delegate a credential mutation from dead consent.
+        if not live_original_ui():
+            try:
+                self._host.reject_if_current(host_review)
+            except Exception:
+                pass
+            try:
+                ctrl.finish_operation(permit, verified=False)
+            except RecoveryAdmissionError:
+                pass
+            return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
         try:
-            host_result = self._host.approve_if_current(host_review, candidate=candidate)
+            host_result = self._host.approve_if_current(
+                host_review, candidate=candidate,
+                approval_live=live_original_ui if ui_ticket is not None else None)
         except Exception:
             # The permit may already have journaled IN_FLIGHT. A dependency
             # exception before host review consumption must not strand A,

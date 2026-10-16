@@ -32,6 +32,22 @@ class CredentialLifecycleStateError(RuntimeError):
 _FAILURE = "Credential lifecycle operation failed"
 
 
+def _require_live(approval_live: object | None) -> None:
+    """Trusted, optional revocation gate at the actual lifecycle boundary.
+
+    Direct legacy trusted calls have no UI approval scope. Scoped GUI calls
+    fail closed on errors or non-exact boolean confirmation.
+    """
+    if approval_live is None:
+        return
+    try:
+        allowed = approval_live()
+    except Exception:
+        allowed = False
+    if allowed is not True:
+        raise CredentialLifecycleStateError("Credential approval no longer active")
+
+
 class BoundCredentialLifecycle:
     """Permanently bind one backend, exact identifier and validator.
 
@@ -81,58 +97,78 @@ class BoundCredentialLifecycle:
             raise SecretStorageError(_FAILURE)
         return result
 
-    def test_candidate(self, value: SecretValue) -> CredentialValidationStatus:
+    def test_candidate(self, value: SecretValue, *,
+                       _approval_live: object | None = None
+                       ) -> CredentialValidationStatus:
         if type(value) is not SecretValue:
             raise TypeError("Value must be an exact SecretValue")
+        _require_live(_approval_live)
         try:
             result = self.__validator.validate(value)
         except Exception:
             # Credential/provider validation failures are contained as a tri-state
             # result. Process-control exceptions are deliberately not swallowed.
-            return CredentialValidationStatus.INDETERMINATE
+            result = CredentialValidationStatus.INDETERMINATE
+        _require_live(_approval_live)
         if type(result) is not CredentialValidationStatus:
             return CredentialValidationStatus.INDETERMINATE
         return result
 
-    def test_stored(self) -> CredentialValidationStatus:
+    def test_stored(self, *,
+                    _approval_live: object | None = None
+                    ) -> CredentialValidationStatus:
+        _require_live(_approval_live)
         try:
             value = self.__backend.get(self.__identifier)
         except (SecretNotFoundError, SecretStorageError):
             raise
         except Exception:
             raise SecretStorageError(_FAILURE) from None
+        _require_live(_approval_live)
         if type(value) is not SecretValue:
             raise SecretStorageError(_FAILURE)
-        return self.test_candidate(value)
+        return self.test_candidate(value, _approval_live=_approval_live)
 
-    def connect(self, value: SecretValue) -> CredentialValidationStatus:
+    def connect(self, value: SecretValue, *,
+                _approval_live: object | None = None
+                ) -> CredentialValidationStatus:
         if type(value) is not SecretValue:
             raise TypeError("Value must be an exact SecretValue")
+        _require_live(_approval_live)
         if self.is_connected():
             raise CredentialLifecycleStateError("Credential is already connected")
-        status = self.test_candidate(value)
+        _require_live(_approval_live)
+        status = self.test_candidate(value, _approval_live=_approval_live)
         if status is not CredentialValidationStatus.VALID:
             return status
+        _require_live(_approval_live)
         if self.is_connected():
             raise CredentialLifecycleStateError("Credential state changed")
-        self._put(value)
+        self._put(value, _approval_live=_approval_live)
         return status
 
-    def replace(self, value: SecretValue) -> CredentialValidationStatus:
+    def replace(self, value: SecretValue, *,
+                _approval_live: object | None = None
+                ) -> CredentialValidationStatus:
         """Keep the old credential untouched through validation and recheck."""
         if type(value) is not SecretValue:
             raise TypeError("Value must be an exact SecretValue")
+        _require_live(_approval_live)
         if not self.is_connected():
             raise CredentialLifecycleStateError("Credential is not connected")
-        status = self.test_candidate(value)
+        _require_live(_approval_live)
+        status = self.test_candidate(value, _approval_live=_approval_live)
         if status is not CredentialValidationStatus.VALID:
             return status
+        _require_live(_approval_live)
         if not self.is_connected():
             raise CredentialLifecycleStateError("Credential state changed")
-        self._put(value)
+        self._put(value, _approval_live=_approval_live)
         return status
 
-    def _put(self, value: SecretValue) -> None:
+    def _put(self, value: SecretValue, *,
+             _approval_live: object | None = None) -> None:
+        _require_live(_approval_live)
         try:
             self.__backend.put(self.__identifier, value)
         except SecretStorageError:
@@ -140,7 +176,9 @@ class BoundCredentialLifecycle:
         except Exception:
             raise SecretStorageError(_FAILURE) from None
 
-    def remove(self) -> bool:
+    def remove(self, *,
+               _approval_live: object | None = None) -> bool:
+        _require_live(_approval_live)
         try:
             result = self.__backend.delete(self.__identifier)
         except SecretStorageError:

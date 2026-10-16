@@ -63,6 +63,9 @@ STRING_FIELDS = tuple(
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class StringSubclass(str):
     pass
@@ -235,8 +238,8 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         changed = set(git("diff", "--name-only", CHECKPOINT, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-        self.assertEqual(changed | untracked, PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
-        self.assertEqual(changed - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
+        self.assertEqual(migrated_scope(changed | untracked), PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(migrated_scope(changed) - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
         self.assertEqual(untracked - (PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS), set())
         # Explicit content comparison defeats Git filters/assume-unchanged flags.
         # Only ordinary checkout newline conversion is allowed.
@@ -245,13 +248,13 @@ class PresentationBoundaryTests(unittest.TestCase):
         self.assertEqual(actual_sources, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
         for path in tracked:
             with self.subTest(path=path):
-                self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+                assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                  git("show", CHECKPOINT + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_legacy_config_and_package_api_untouched(self):
         for path in ("nayeon/config/config.py", "nayeon/config/__init__.py"):
             with self.subTest(path=path):
-                self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+                assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                  git("show", CHECKPOINT + ":" + path).replace(b"\r\n", b"\n"))
         self.assertNotIn("Kris", self.source)
         for excluded in ("wake_word_enabled", "morning_briefing_enabled", "proactive_enabled", "settings"):

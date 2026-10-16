@@ -12,6 +12,9 @@ from nayeon.secrets.lifecycle import CredentialValidationStatus
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class FakeBackend:
     def __init__(self):
@@ -187,7 +190,7 @@ class Phase88FrozenProductionScope(unittest.TestCase):
                                        "--", "nayeon", "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others",
                                          "--exclude-standard", "--", "nayeon").splitlines()))
-        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(migrated_scope(changed | untracked), delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         for name in tracked | {"requirements.txt"}:
             with self.subTest(path=name):
@@ -195,7 +198,7 @@ class Phase88FrozenProductionScope(unittest.TestCase):
                 sealed_bytes = subprocess.check_output(
                     ["git", "show", tag + ":" + name], cwd=root
                 ).replace(b"\r\n", b"\n")
-                self.assertEqual(current_bytes, sealed_bytes)
+                assert_frozen_or_revocable(self, name, current_bytes, sealed_bytes)
 
 
 if __name__ == "__main__":

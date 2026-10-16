@@ -24,6 +24,9 @@ from nayeon.secrets.contracts import SecretIdentifier
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class ProviderConnectionStartupTests(unittest.TestCase):
     def setUp(self):
@@ -248,7 +251,7 @@ class Phase87FrozenProductionScope(unittest.TestCase):
                                        "requirements.txt").splitlines()))
         untracked = set(filter(None, git("ls-files", "--others",
                                          "--exclude-standard", "--", "nayeon").splitlines()))
-        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(migrated_scope(changed | untracked), delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         actual = {p.relative_to(root).as_posix() for p in (root / "nayeon").rglob("*.py")}
         self.assertEqual(actual, production | delta | APPROVED_RECOVERY_ADDITIONS)
@@ -258,7 +261,7 @@ class Phase87FrozenProductionScope(unittest.TestCase):
                 sealed_bytes = subprocess.check_output(
                     ["git", "show", tag + ":" + name], cwd=root
                 ).replace(b"\r\n", b"\n")
-                self.assertEqual(actual_bytes, sealed_bytes)
+                assert_frozen_or_revocable(self, name, actual_bytes, sealed_bytes)
 
 
 if __name__ == "__main__":

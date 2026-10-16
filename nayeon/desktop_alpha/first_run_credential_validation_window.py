@@ -80,6 +80,23 @@ class FirstRunCredentialValidationWindow:
         self._entry.configure(state="normal")
         self._entry.delete(0, tk.END)
 
+    def _root_live(self) -> bool:
+        """Testable Tk liveness probe; no Tk calls at module import.
+
+        Legacy trusted fake root objects lacking a class-defined Tk probe
+        retain prior semantics. Real Tk roots fail closed on destruction.
+        """
+        try:
+            probe = getattr(type(self._root), "winfo_exists", None)
+            if probe is None:
+                return True
+            if not callable(probe):
+                return False
+            exists = probe(self._root)
+            return type(exists) is int and exists == 1
+        except Exception:
+            return False
+
     def _sync(self):
         # Never adopt another window's pending operation, even if it appears
         # while our panel is open. Only our own opaque candidate-review ticket
@@ -120,9 +137,17 @@ class FirstRunCredentialValidationWindow:
             candidate = SecretValue(raw)
             raw = None
             ticket = self._validation_ticket
+            origin_root = self._root
             self._validation_ticket = None
+
+            def approval_live() -> bool:
+                return (self._busy is True and self._root is origin_root
+                        and self._validation_ticket is None
+                        and self._root_live())
+
             result = self._host.approve_candidate_validation(
-                ticket=ticket, candidate=candidate)
+                ticket=ticket, candidate=candidate,
+                approval_live=approval_live)
             message = (_MESSAGES[result.outcome]
                        if type(result) is CredentialHostResult
                        and result.operation is OnboardingOperation.TEST_CANDIDATE
@@ -144,6 +169,11 @@ class FirstRunCredentialValidationWindow:
             except Exception:
                 pass
             self._busy = False
+        # A trusted validation/clock callback can destroy the Tk root during
+        # this busy event. Never update dead widgets or surface a Tcl callback
+        # traceback containing incidental candidate state.
+        if not self._root_live():
+            return
         self._status.configure(text=message)
         self._sync()
 

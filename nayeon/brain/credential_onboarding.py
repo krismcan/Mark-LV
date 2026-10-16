@@ -32,21 +32,22 @@ class OpenAICredentialOnboarding:
             raise ValueError("Credential identifier is not supported")
         object.__setattr__(self, "_OpenAICredentialOnboarding__lifecycle", lifecycle)
 
-    def _call(self, operation: str, *args: object) -> object:
+    def _call(self, operation: str, *args: object,
+              _approval_live: object | None = None) -> object:
         """Delegate a fixed internal operation, sanitizing backend failures."""
         try:
             if operation == "is_connected":
                 return self.__lifecycle.is_connected()
             if operation == "test_candidate":
-                return self.__lifecycle.test_candidate(*args)
+                return self.__lifecycle.test_candidate(*args, _approval_live=_approval_live)
             if operation == "test_stored":
-                return self.__lifecycle.test_stored()
+                return self.__lifecycle.test_stored(_approval_live=_approval_live)
             if operation == "connect":
-                return self.__lifecycle.connect(*args)
+                return self.__lifecycle.connect(*args, _approval_live=_approval_live)
             if operation == "replace":
-                return self.__lifecycle.replace(*args)
+                return self.__lifecycle.replace(*args, _approval_live=_approval_live)
             if operation == "remove":
-                return self.__lifecycle.remove()
+                return self.__lifecycle.remove(_approval_live=_approval_live)
             raise ValueError("Unsupported onboarding operation")
         except SecretNotFoundError:
             raise SecretNotFoundError("Credential is not available") from None
@@ -61,31 +62,40 @@ class OpenAICredentialOnboarding:
         """Explicit storage availability check, not proof of provider validity."""
         return self._call("is_connected")
 
-    def test_candidate(self, value: SecretValue) -> CredentialValidationStatus:
+    def test_candidate(self, value: SecretValue, *,
+                       _approval_live: object | None = None
+                       ) -> CredentialValidationStatus:
         """Explicit validation probe; never saves a candidate."""
         if type(value) is not SecretValue:
             raise TypeError("Candidate must be an exact SecretValue")
-        return self._call("test_candidate", value)
+        return self._call("test_candidate", value, _approval_live=_approval_live)
 
-    def test_stored(self) -> CredentialValidationStatus:
+    def test_stored(self, *,
+                    _approval_live: object | None = None
+                    ) -> CredentialValidationStatus:
         """Explicitly retrieve and validate one bound stored credential."""
-        return self._call("test_stored")
+        return self._call("test_stored", _approval_live=_approval_live)
 
-    def connect(self, value: SecretValue) -> CredentialValidationStatus:
+    def connect(self, value: SecretValue, *,
+                _approval_live: object | None = None
+                ) -> CredentialValidationStatus:
         """Only persist a validated candidate if none is already present."""
         if type(value) is not SecretValue:
             raise TypeError("Candidate must be an exact SecretValue")
-        return self._call("connect", value)
+        return self._call("connect", value, _approval_live=_approval_live)
 
-    def replace(self, value: SecretValue) -> CredentialValidationStatus:
+    def replace(self, value: SecretValue, *,
+                _approval_live: object | None = None
+                ) -> CredentialValidationStatus:
         """Preserve old credential unless candidate validates and rechecks pass."""
         if type(value) is not SecretValue:
             raise TypeError("Candidate must be an exact SecretValue")
-        return self._call("replace", value)
+        return self._call("replace", value, _approval_live=_approval_live)
 
-    def remove(self) -> bool:
+    def remove(self, *,
+               _approval_live: object | None = None) -> bool:
         """Explicit deletion; never mutate non-secret connection metadata."""
-        return self._call("remove")
+        return self._call("remove", _approval_live=_approval_live)
 
     def __repr__(self) -> str:
         return "OpenAICredentialOnboarding(<redacted>)"

@@ -64,6 +64,9 @@ def git(*args):
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class ProviderConnectionServiceTests(unittest.TestCase):
     def setUp(self):
@@ -285,13 +288,13 @@ class Phase85ScopeGuards(unittest.TestCase):
             changed = set(git("diff", "--name-only", checkpoint, "--", "nayeon", "requirements.txt").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
             # Accept pre-staged, staged and committed forms of the exact delta.
-            self.assertEqual(changed | untracked, DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(migrated_scope(changed | untracked), DELTA | APPROVED_RECOVERY_ADDITIONS)
             self.assertFalse(changed & untracked)
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
             self.assertEqual(actual, production | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked | {"requirements.txt"}:
                 with self.subTest(checkpoint=checkpoint, path=path):
-                    self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+                    assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                                      git("show", checkpoint + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_exact_metadata_consumers_and_only_approved_composition(self):
@@ -348,7 +351,7 @@ class Phase85ScopeGuards(unittest.TestCase):
             if path == "AGENTS.md":
                 assert_authorized_governance(self, START)
                 continue
-            self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+            assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                              git("show", START + ":" + path).replace(b"\r\n", b"\n"), path)
 
 

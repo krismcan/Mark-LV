@@ -20,6 +20,9 @@ from nayeon.secrets.resolver import BoundSecretResolver
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class HostileBackend:
     def __getattribute__(self, name):
@@ -402,7 +405,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
                       .decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon")
                         .decode().splitlines())
-        self.assertEqual(changed | untracked, delta | APPROVED_RECOVERY_ADDITIONS)
+        self.assertEqual(migrated_scope(changed | untracked), delta | APPROVED_RECOVERY_ADDITIONS)
         self.assertFalse(changed & untracked)
         actual = {path.relative_to(root).as_posix()
                   for path in (root / "nayeon").rglob("*.py")}
@@ -411,7 +414,7 @@ class Phase86ProductionScopeGuards(unittest.TestCase):
             with self.subTest(path=path):
                 on_disk = (root / path).read_bytes().replace(b"\r\n", b"\n")
                 original = git("show", tag + ":" + path).replace(b"\r\n", b"\n")
-                self.assertEqual(on_disk, original)
+                assert_frozen_or_revocable(self, path, on_disk, original)
 
 if __name__ == "__main__":
     unittest.main()

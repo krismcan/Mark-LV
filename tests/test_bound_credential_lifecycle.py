@@ -2,6 +2,7 @@
 
 import ast
 import copy
+import hashlib
 from enum import Enum
 import inspect
 from pathlib import Path
@@ -58,6 +59,14 @@ DELTA = {"nayeon/brain/connection_document.py", "nayeon/brain/connection_persist
          "nayeon/desktop_alpha/window.py",
          "nayeon/desktop_alpha/notepad.py"}
 FAILURE = "Credential lifecycle operation failed"
+
+# Phase 8.29 approved test-contract migration: ONLY this originally frozen
+# lifecycle file may differ, at an independently reviewed exact hash. All
+# other Phase 8.3-era source freezes and historical tag checks still apply.
+REVOCABLE_LIFECYCLE = "nayeon/secrets/lifecycle.py"
+REVOCABLE_LIFECYCLE_SHA256 = (
+    "0eeee437a84064c74b9c584c4813ce828a2eeb2a310eeeeff4135df430c8c551"
+)
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
@@ -435,13 +444,22 @@ class Phase83ScopeGuards(unittest.TestCase):
             self.assertEqual(tracked & DELTA, set())
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(changed | untracked,
+                             DELTA | APPROVED_RECOVERY_ADDITIONS | {REVOCABLE_LIFECYCLE})
             actual = {p.relative_to(ROOT).as_posix() for p in (ROOT / "nayeon").rglob("*.py")}
             self.assertEqual(actual, {p for p in tracked if p.endswith(".py")} | DELTA | APPROVED_RECOVERY_ADDITIONS)
             for path in tracked:
                 with self.subTest(baseline=baseline, path=path):
-                    self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
-                                     git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
+                    candidate = (ROOT / path).read_bytes().replace(b"\r\n", b"\n")
+                    if path == REVOCABLE_LIFECYCLE:
+                        # Migration: do not compare the replacement to old
+                        # bytes; pin the exact repaired source instead.
+                        self.assertEqual(hashlib.sha256(candidate).hexdigest(),
+                                         REVOCABLE_LIFECYCLE_SHA256)
+                    else:
+                        self.assertEqual(
+                            candidate,
+                            git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_protected_context_dependencies_and_legacy_frozen(self):
         # The post-seal Codex handoff is intentionally refreshed; freeze instructions and script.

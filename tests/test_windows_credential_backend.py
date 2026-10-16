@@ -57,6 +57,9 @@ FAILURE = "Secret storage operation failed"
 
 
 from tests.phase_8_28_1_scope import APPROVED_RECOVERY_ADDITIONS
+from tests.phase_8_29_lifecycle_scope_migration import (
+    migrated_scope, assert_frozen_or_revocable,
+)
 
 class FakeNative:
     def __init__(self):
@@ -369,7 +372,7 @@ def git(*args):
 
 class ScopeGuards(unittest.TestCase):
     def assert_frozen(self, path, baseline):
-        self.assertEqual((ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
+        assert_frozen_or_revocable(self, path, (ROOT / path).read_bytes().replace(b"\r\n", b"\n"),
                          git("show", baseline + ":" + path).replace(b"\r\n", b"\n"), path)
 
     def test_exact_phase_8_3_delta_and_other_production_frozen(self):
@@ -381,7 +384,7 @@ class ScopeGuards(unittest.TestCase):
         for baseline in (START, SEALED):
             changed = set(git("diff", "--name-only", baseline, "--", "nayeon").decode().splitlines())
             untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())
-            self.assertEqual(changed | untracked, PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
+            self.assertEqual(migrated_scope(changed | untracked), PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
             tracked = git("ls-tree", "-r", "--name-only", baseline, "--", "nayeon").decode().splitlines()
             actual = {path.relative_to(ROOT).as_posix() for path in (ROOT / "nayeon").rglob("*.py")}
             self.assertEqual(actual, {path for path in tracked if path.endswith(".py")} | PHASE_8_5_DELTA | APPROVED_RECOVERY_ADDITIONS)
