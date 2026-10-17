@@ -94,6 +94,16 @@ def _no_unsafe_imports(path: str, data: bytes) -> None:
 
 
 def assert_831_integrity() -> None:
+    """Current callers always pass the exact 8.32 successor, including H.
+
+    Historical snapshots are only exercised explicitly by enumerated synthetic
+    fixtures in test_phase_831_scope_integrity; never select history from HEAD.
+    """
+    from tests.phase_8_32_scope_migration import assert_832_integrity
+    assert_832_integrity()
+
+
+def _assert_831_historical_integrity() -> None:
     if _read_git("rev-parse", "--show-object-format").decode("ascii").strip() != "sha1":
         raise AssertionError("Unsupported Git object format")
     head_ref = _read_git("rev-parse", "HEAD").decode("ascii").strip()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 
@@ -12,6 +13,7 @@ from nayeon.desktop_alpha.conversation_session import (
 
 class WorkspaceWindow(ttk.Frame):
     def __init__(self, root, *, on_conversation, on_settings, on_connection):
+        self._creator_thread = threading.get_ident()
         super().__init__(root, padding=24, style="Offline.TFrame")
         style = ttk.Style(root)
         style.configure("Offline.TFrame", background="#f3f6fb")
@@ -41,22 +43,38 @@ class WorkspaceWindow(ttk.Frame):
             ("settings", "Presentation Settings", on_settings),
             ("connection", "Connection", on_connection),
         ):
-            button = ttk.Button(navigation, name=name, text=label, command=command,
+            button = ttk.Button(navigation, name=name, text=label, command=lambda callback=command: self._dispatch(callback),
                                 takefocus=True)
             button.pack(side="left", padx=(0, 10))
-            button.bind("<Return>", lambda event, callback=command: (callback(), "break")[1])
+            button.bind("<Return>", lambda event, callback=command: self._return(callback))
             self.navigation_buttons.append(button)
         self.content = ttk.Frame(self, style="Offline.TFrame")
         self.content.pack(fill="both", expand=True)
 
+    def _require_creator_thread(self) -> None:
+        if threading.get_ident() != self._creator_thread:
+            raise RuntimeError("WRONG_THREAD")
+
+    def _dispatch(self, callback, *args):
+        self._require_creator_thread()
+        return callback(*args)
+
+    def _return(self, callback):
+        self._require_creator_thread()
+        callback()
+        return "break"
+
     def set_busy(self, busy: bool) -> None:
+        self._require_creator_thread()
         for button in self.navigation_buttons:
             button.configure(state="disabled" if busy else "normal")
 
     def publish_name(self, name: str) -> None:
+        self._require_creator_thread()
         self.name_label.configure(text=name)
 
     def publish_profile_status(self, status: str) -> None:
+        self._require_creator_thread()
         self.profile_status.configure(text=status)
 
 
@@ -64,17 +82,33 @@ class WorkspacePane(ttk.Frame):
     """A destroyed pane can be checked without querying the dead Tcl interpreter."""
 
     def __init__(self, parent, *, name, on_destroy):
+        self._creator_thread = threading.get_ident()
         super().__init__(parent, name=name, style="Offline.TFrame")
         self._alive = True
         self._on_destroy = on_destroy
         self.bind("<Destroy>", self._destroyed, add="+")
 
+    def _require_creator_thread(self) -> None:
+        if threading.get_ident() != self._creator_thread:
+            raise RuntimeError("WRONG_THREAD")
+
+    def _dispatch(self, callback, *args):
+        self._require_creator_thread()
+        return callback(*args)
+
+    def _return(self, callback):
+        self._require_creator_thread()
+        callback()
+        return "break"
+
     def _destroyed(self, event):
+        self._require_creator_thread()
         if event.widget is self and self._alive:
             self._alive = False
             self._on_destroy()
 
     def exists(self) -> bool:
+        self._require_creator_thread()
         if not self._alive:
             return False
         try:
@@ -83,10 +117,12 @@ class WorkspacePane(ttk.Frame):
             return False
 
     def dispose(self) -> None:
+        self._require_creator_thread()
         if WorkspacePane.exists(self):
             self.destroy()
 
     def destroy(self) -> None:
+        self._require_creator_thread()
         if not self._alive:
             return
         self._alive = False
@@ -120,7 +156,7 @@ class ConversationWindow(WorkspacePane):
         # Even if a nested Tk dispatch occurs during owner-only render, reject
         # user keyboard/paste/cut/clear edits on this output-only surface.
         for event_name in ("<KeyPress>", "<<Paste>>", "<<Cut>>", "<<Clear>>"):
-            self.transcript.bind(event_name, lambda event: "break")
+            self.transcript.bind(event_name, self._block_edit)
         self.transcript.tag_configure("USER", foreground="#24364b")
         self.transcript.tag_configure("LOCAL_STATUS", foreground="#205c91",
                                       font=("Segoe UI", 10, "bold"))
@@ -139,17 +175,18 @@ class ConversationWindow(WorkspacePane):
         self.status.pack(anchor="w", pady=6)
         reset_row = ttk.Frame(self, style="Offline.TFrame")
         reset_row.pack(fill="x")
-        self.clear_button = ttk.Button(reset_row, text="Review Clear", command=lambda: on_reset(ResetOperation.CLEAR))
-        self.new_session_button = ttk.Button(reset_row, text="Review New Session", command=lambda: on_reset(ResetOperation.NEW_SESSION))
+        self.clear_button = ttk.Button(reset_row, text="Review Clear", command=lambda: self._dispatch(on_reset, ResetOperation.CLEAR))
+        self.new_session_button = ttk.Button(reset_row, text="Review New Session", command=lambda: self._dispatch(on_reset, ResetOperation.NEW_SESSION))
         self.confirm_button = ttk.Button(reset_row, text="Confirm reset", state="disabled", command=self._confirm_reset)
         self.dismiss_button = ttk.Button(reset_row, text="Dismiss", state="disabled", command=self._dismiss_reset)
         for button in (self.clear_button, self.new_session_button, self.confirm_button, self.dismiss_button):
             button.pack(side="left", padx=(0, 8))
-            button.bind("<Return>", lambda event, b=button: (b.invoke(), "break")[1])
+            button.bind("<Return>", lambda event, b=button: self._return(b.invoke))
         self.reset_status = ttk.Label(self, text="", wraplength=680, style="Badge.Offline.TLabel")
         self.reset_status.pack(anchor="w", pady=6)
 
     def exists(self) -> bool:
+        self._require_creator_thread()
         if not super().exists():
             return False
         try:
@@ -159,10 +196,11 @@ class ConversationWindow(WorkspacePane):
             return False
 
     def focus_initial(self) -> None:
+        self._require_creator_thread()
         self.entry.focus_set()
 
-    @staticmethod
-    def _proposed(candidate):
+    def _proposed(self, candidate):
+        self._require_creator_thread()
         if candidate == "":
             return True
         try:
@@ -172,12 +210,14 @@ class ConversationWindow(WorkspacePane):
             return False
 
     def show_status(self, text):
+        self._require_creator_thread()
         if len(text) > 160:
             raise ValueError("Status exceeds display bound")
         if self._is_current():
             self.status.configure(text=text)
 
     def render(self, snapshot):
+        self._require_creator_thread()
         # The bounded immutable owner snapshot is authoritative; never evict.
         if not self._is_current():
             return
@@ -195,41 +235,74 @@ class ConversationWindow(WorkspacePane):
             if self._is_current():
                 self.transcript.configure(state="disabled")
 
+    def _block_edit(self, _event=None):
+        self._require_creator_thread()
+        return "break"
+
     def show_reset(self, review, confirm, dismiss):
-        self.clear_reset()
-        if not self._is_current():
+        self._require_creator_thread()
+        prior = self._reset_review
+        self.clear_reset(prior)
+        if not self._is_current() or self._reset_review is not None:
             return
+        # Publish identity and Python callbacks before any partial Tk update.
         self._reset_review = review
         self._reset_confirm, self._reset_dismiss = confirm, dismiss
-        self.reset_status.configure(text="Review " + review.operation.value + ": discard all session history? Expires in 30 seconds.")
+        self.reset_status.configure(text="Review " + review.operation.value +
+            ": discard all session history? Valid for 30 seconds. Expired confirmation is refused; select Review again.")
         if self._is_current() and self._reset_review is review:
             self.confirm_button.configure(state="normal")
         if self._is_current() and self._reset_review is review:
             self.dismiss_button.configure(state="normal")
 
     def clear_reset(self, review=None):
+        self._require_creator_thread()
         if review is not None and self._reset_review is not review:
             return
         self._reset_review = None
         self._reset_confirm = self._reset_dismiss = None
-        for widget in (self.confirm_button, self.dismiss_button):
-            if not self._is_current():
-                return
-            widget.configure(state="disabled")
-        if self._is_current():
-            self.reset_status.configure(text="")
+        failure = None
+        for widget, options in ((self.confirm_button, {"state": "disabled"}),
+                                (self.dismiss_button, {"state": "disabled"}),
+                                (self.reset_status, {"text": ""})):
+            # A configure can dispatch a successor. Never disable or erase B.
+            if not self._is_current() or self._reset_review is not None:
+                break
+            try:
+                widget.configure(**options)
+            except Exception as error:
+                if failure is None:
+                    failure = error
+        if failure is not None:
+            raise failure
+
+    def destroy(self) -> None:
+        self._require_creator_thread()
+        self._reset_review = None
+        self._reset_confirm = self._reset_dismiss = None
+        super().destroy()
+
+    def _destroyed(self, event):
+        self._require_creator_thread()
+        if event.widget is self:
+            self._reset_review = None
+            self._reset_confirm = self._reset_dismiss = None
+        super()._destroyed(event)
 
     def _confirm_reset(self):
+        self._require_creator_thread()
         callback = self._reset_confirm
         if callback is not None and self._is_current():
             callback()
 
     def _dismiss_reset(self):
+        self._require_creator_thread()
         callback = self._reset_dismiss
         if callback is not None and self._is_current():
             callback()
 
     def _send(self, _event=None):
+        self._require_creator_thread()
         if self._sending or not self._is_current():
             return "break"
         self._sending = True
@@ -247,9 +320,10 @@ class ConnectionWindow(WorkspacePane):
         ttk.Label(self, text="Not observed; connection operations unavailable in this prototype",
                   wraplength=580, style="Offline.TLabel").pack(anchor="w", pady=(18, 24))
         self.back_button = ttk.Button(self, name="back", text="Back to Conversation",
-                                      command=on_conversation)
+                                      command=lambda: self._dispatch(on_conversation))
         self.back_button.pack(anchor="w")
-        self.back_button.bind("<Return>", lambda event: (on_conversation(), "break")[1])
+        self.back_button.bind("<Return>", lambda event: self._return(on_conversation))
 
     def focus_initial(self) -> None:
+        self._require_creator_thread()
         self.back_button.focus_set()

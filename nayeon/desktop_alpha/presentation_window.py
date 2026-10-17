@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 
@@ -15,6 +16,7 @@ from nayeon.config.presentation import AssistantPresentationIdentity, UserPresen
 
 class PresentationWindow(ttk.Frame):
     def __init__(self, parent, *, on_change, on_review, on_save, on_cancel, on_destroy):
+        self._creator_thread = threading.get_ident()
         super().__init__(parent, name="presentation_view", style="Offline.TFrame")
         self._alive = True
         self._loading = False
@@ -52,19 +54,33 @@ class PresentationWindow(ttk.Frame):
         buttons = ttk.Frame(self, style="Offline.TFrame")
         buttons.pack(anchor="w")
         self.review_button = ttk.Button(buttons, name="review", text="Review changes",
-                                        command=on_review, state="disabled")
+                                        command=lambda: self._dispatch(on_review), state="disabled")
         self.save_button = ttk.Button(buttons, name="save", text="Save reviewed changes",
-                                      command=on_save, state="disabled")
-        self.cancel_button = ttk.Button(buttons, name="cancel", text="Cancel", command=on_cancel)
+                                      command=lambda: self._dispatch(on_save), state="disabled")
+        self.cancel_button = ttk.Button(buttons, name="cancel", text="Cancel", command=lambda: self._dispatch(on_cancel))
         for button, callback in ((self.review_button, on_review),
                                  (self.save_button, on_save), (self.cancel_button, on_cancel)):
             button.pack(side="left", padx=(0, 10))
-            button.bind("<Return>", lambda event, command=callback: (command(), "break")[1])
+            button.bind("<Return>", lambda event, command=callback: self._return(command))
         self._traces = [(variable, variable.trace_add("write", self._changed))
                         for variable in (self.assistant_name, self.wake_name, self.user_name)]
         self.set_controls(editable=False)
 
+    def _require_creator_thread(self) -> None:
+        if threading.get_ident() != self._creator_thread:
+            raise RuntimeError("WRONG_THREAD")
+
+    def _dispatch(self, callback, *args):
+        self._require_creator_thread()
+        return callback(*args)
+
+    def _return(self, callback):
+        self._require_creator_thread()
+        callback()
+        return "break"
+
     def _destroyed(self, event):
+        self._require_creator_thread()
         if event.widget is self and self._alive:
             self._alive = False
             self._document = None
@@ -72,6 +88,7 @@ class PresentationWindow(ttk.Frame):
             self._on_destroy()
 
     def exists(self) -> bool:
+        self._require_creator_thread()
         if not self._alive:
             return False
         try:
@@ -82,9 +99,11 @@ class PresentationWindow(ttk.Frame):
             return False
 
     def dispose(self) -> None:
+        self._require_creator_thread()
         self.destroy()
 
     def destroy(self) -> None:
+        self._require_creator_thread()
         if not self._alive:
             return
         self._alive = False
@@ -101,12 +120,14 @@ class PresentationWindow(ttk.Frame):
         super().destroy()
 
     def _changed(self, *_):
+        self._require_creator_thread()
         if not self._alive or self._loading:
             return
         self.revision += 1
         self._on_change()
 
     def load_document(self, document: PresentationConfigurationDocumentV1, *, present: bool):
+        self._require_creator_thread()
         if type(document) is not PresentationConfigurationDocumentV1:
             raise TypeError("Exact presentation document required")
         self._document = document
@@ -123,6 +144,7 @@ class PresentationWindow(ttk.Frame):
         self.set_controls(editable=True)
 
     def build_draft(self) -> PresentationConfigurationDocumentV1:
+        self._require_creator_thread()
         if self._document is None:
             raise ValueError("No editable presentation document")
         assistant_name, wake_name, user_name = (
@@ -141,10 +163,12 @@ class PresentationWindow(ttk.Frame):
         return validated
 
     def clear_review(self) -> None:
+        self._require_creator_thread()
         self.summary_label.configure(text="No pending review. Review again after editing.")
         self.save_button.configure(state="disabled")
 
     def show_review(self, document: PresentationConfigurationDocumentV1) -> None:
+        self._require_creator_thread()
         self.summary_label.configure(text=(
             "Pending changes (not saved)\n"
             f"Assistant: {document.assistant.display_name}\n"
@@ -153,6 +177,7 @@ class PresentationWindow(ttk.Frame):
         self.status_label.configure(text="Review this frozen draft, then press Save to persist it.")
 
     def set_controls(self, *, editable: bool, reviewed: bool = False, busy: bool = False):
+        self._require_creator_thread()
         for entry in self.entries:
             entry.configure(state="normal" if editable and not busy else "disabled")
         self.review_button.configure(state="normal" if editable and not busy else "disabled")
@@ -160,7 +185,9 @@ class PresentationWindow(ttk.Frame):
         self.cancel_button.configure(state="disabled" if busy else "normal")
 
     def show_status(self, text: str) -> None:
+        self._require_creator_thread()
         self.status_label.configure(text=text)
 
     def focus_initial(self) -> None:
+        self._require_creator_thread()
         (self.entries[0] if self._document is not None else self.cancel_button).focus_set()

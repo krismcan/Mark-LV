@@ -185,56 +185,66 @@ class Phase831WorkspaceTests(unittest.TestCase):
                 self.root.withdraw()
 
 
-    def test_exactly_one_reset_timer_then_dismiss_confirm_and_navigation(self):
+    def test_exact_review_ownership_zero_timers_then_dismiss_confirm_navigation(self):
         def scheduled():
             info = self.root.tk.call("after", "info")
             return set(info if isinstance(info, tuple) else self.root.tk.splitlist(info))
         view = self.app._active_view
         baseline = scheduled()
+        prior = None
         for i in range(12):
             button = view.clear_button if i % 2 == 0 else view.new_session_button
             button.invoke()
-            active = self.app._conversation_timer
+            active = view._reset_review
             self.assertIsNotNone(active)
-            self.assertIn(active[1], scheduled())
-            self.assertLessEqual(len(scheduled() - baseline), 1)
-        last = self.app._conversation_timer
+            self.assertIsNot(active, prior)
+            self.assertIs(self.app._conversation._review, active)
+            if prior is not None:
+                self.assertFalse(self.app._conversation.dismiss_reset_review(
+                    self.app._conversation_root, prior))
+            self.assertEqual(scheduled(), baseline)
+            prior = active
         view.dismiss_button.invoke()
-        self.assertIsNone(self.app._conversation_timer)
-        self.assertNotIn(last[1], scheduled())
+        self.assertIsNone(view._reset_review)
+        self.assertIsNone(self.app._conversation._review)
         view.clear_button.invoke()
-        self.assertIsNotNone(self.app._conversation_timer)
+        self.assertIsNotNone(view._reset_review)
         view.confirm_button.invoke()
-        self.assertIsNone(self.app._conversation_timer)
+        self.assertIsNone(view._reset_review)
+        self.assertIsNone(self.app._conversation._review)
         view.new_session_button.invoke()
-        self.assertIsNotNone(self.app._conversation_timer)
+        self.assertIsNotNone(view._reset_review)
         self.app.show_connection()
-        self.assertIsNone(self.app._conversation_timer)
+        self.assertIsNone(self.app._conversation._review)
+        self.assertIsNone(view._reset_review)
         self.assertEqual(scheduled(), baseline)
 
-    def test_external_destroy_cancels_pending_expiry(self):
+    def test_external_destroy_revokes_pending_review_without_timer(self):
         view = self.app._active_view
         view.clear_button.invoke()
-        self.assertIsNotNone(self.app._conversation_timer)
+        self.assertIsNotNone(view._reset_review)
         view.destroy()
-        self.assertIsNone(self.app._conversation_timer)
+        self.assertIsNone(view._reset_review)
+        self.assertIsNone(self.app._conversation._review)
         self.assertIsNone(self.app._conversation_view)
         self.assertEqual(self.app._conversation.snapshot.entries, ())
 
-    def test_expired_review_does_not_reset_or_leave_timer(self):
+    def test_expired_review_does_not_reset_and_clears_lazily(self):
         self._send("first")
         view = self.app._active_view
         view.clear_button.invoke()
-        review, _after = self.app._conversation_timer
-        self.assertIs(view._reset_review, review)
+        review = view._reset_review
+        self.assertIsNotNone(review)
+        snapshot = self.app._conversation.snapshot
         with mock.patch.object(self.app, "_conversation_now",
                                return_value=review.expires_at_ms):
-            self.app._conversation_expire(
-                view, self.app._active_token, self.app._generation,
-                self.app._conversation_view, review)
-        self.assertIsNone(self.app._conversation_timer)
+            # Idle time alone cannot hide controls; exact TTL is owner-enforced.
+            self.assertIs(view._reset_review, review)
+            view.confirm_button.invoke()
+        self.assertIsNone(self.app._conversation._review)
         self.assertIsNone(view._reset_review)
-        self.assertEqual(len(self.app._conversation.snapshot.entries), 2)
+        self.assertIs(self.app._conversation.snapshot, snapshot)
+        self.assertIn("Select Review again", view.status.cget("text"))
 
     def test_render_failure_preserves_authoritative_accepted_pair(self):
         view = self.app._active_view
@@ -294,32 +304,34 @@ class Phase831WorkspaceTests(unittest.TestCase):
             if self.root.winfo_exists():
                 self.root.withdraw()
 
-    def test_external_root_destroy_revokes_session_and_timers(self):
+    def test_external_root_destroy_revokes_session_and_review(self):
         self._send("first")
-        self.app._active_view.clear_button.invoke()
-        self.assertIsNotNone(self.app._conversation_timer)
+        view = self.app._active_view
+        view.clear_button.invoke()
+        self.assertIsNotNone(view._reset_review)
         self.root.destroy()
         self.assertTrue(self.app._conversation.snapshot.closed)
-        self.assertIsNone(self.app._conversation_timer)
+        self.assertIsNone(self.app._conversation._review)
+        self.assertIsNone(view._reset_review)
         self.assertEqual(self.app._conversation.snapshot.entries, ())
 
-
-    def test_timer_registration_destroy_between_schedule_and_publication(self):
+    def test_destroy_between_owner_review_and_control_publication(self):
         view = self.app._active_view
         baseline = set(self.root.tk.call("after", "info"))
-        original = self.root.after
+        original = self.app._conversation.begin_reset_review
         invoked = []
-        def injected(ms, callback):
-            timer = original(ms, callback)
-            invoked.append(timer)
-            view.destroy()  # After registered but before owner publishes ID.
-            return timer
-        with mock.patch.object(self.root, "after", side_effect=injected):
+        def injected(*args, **kwargs):
+            review = original(*args, **kwargs)
+            invoked.append(review)
+            view.destroy()
+            return review
+        with (mock.patch.object(self.app._conversation, "begin_reset_review", side_effect=injected),
+              mock.patch.object(self.root, "after", side_effect=AssertionError("Reset timer forbidden"))):
             view.clear_button.invoke()
         self.assertEqual(len(invoked), 1)
-        self.assertIsNone(self.app._conversation_timer)
+        self.assertIsNone(self.app._conversation._review)
+        self.assertIsNone(view._reset_review)
         self.assertIsNone(self.app._conversation_view)
-        self.assertNotIn(invoked[0], set(self.root.tk.call("after", "info")))
         self.assertEqual(set(self.root.tk.call("after", "info")), baseline)
 
     def test_nested_update_and_child_destroy_during_render_preserve_exact_commit(self):
@@ -428,7 +440,7 @@ class Phase831WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.app._conversation.snapshot.entries, ())
         self.assertLessEqual(len(str(view.status.cget("text"))), 160)
 
-    def test_a_exception_cleanup_preserves_successor_b_ticket_review_and_timer(self):
+    def test_a_exception_cleanup_preserves_successor_b_ticket_review_and_foreign_timer(self):
         # Synthetically switch the owner during a trusted callback, just as a
         # nested event could retire A. Never disable the production busy gate.
         from nayeon.desktop_alpha.conversation_session import SubmissionState
@@ -446,7 +458,6 @@ class Phase831WorkspaceTests(unittest.TestCase):
             review_b = owner.begin_reset_review(root, next_auth,
                                                   ResetOperation.CLEAR, now_ms=now)
             timer_b = self.root.after(30000, lambda: None)
-            self.app._conversation_timer = (review_b, timer_b)
             state.update(view=next_auth, ticket=b, review=review_b, timer=timer_b)
             raise RuntimeError("A injected exception")
         with mock.patch.object(owner, "commit_submission", side_effect=inject):
@@ -454,7 +465,7 @@ class Phase831WorkspaceTests(unittest.TestCase):
             view.send_button.invoke()
         self.assertEqual(owner.snapshot.entries, ())
         self.assertIs(owner.active_submission_state, SubmissionState.ISSUED)
-        self.assertIs(self.app._conversation_timer[0], state["review"])
+        self.assertFalse(hasattr(self.app, "_conversation_timer"))
         self.assertIn(state["timer"], self.root.tk.call("after", "info"))
         self.assertIs(owner._review, state["review"])
         # A's exception cleanup has completed; finish B with the real method.
@@ -462,8 +473,8 @@ class Phase831WorkspaceTests(unittest.TestCase):
         result = original_commit(root, state["view"], state["ticket"])
         self.assertEqual(result.snapshot.entries[0].payload, "successor B")
         self.assertEqual(result.snapshot.entries[1].state.value, "UNSENT_OFFLINE")
-        self.assertTrue(self.app._cancel_conversation_timer(state["review"]))
-        self.assertIsNone(self.app._conversation_timer)
+        self.root.after_cancel(state["timer"])
+        self.assertIsNone(owner._review)
 
 
 def tearDownModule():

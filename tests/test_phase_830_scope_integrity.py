@@ -14,6 +14,20 @@ from unittest import mock
 
 from tests import phase_8_30_scope_migration as scope
 
+# Current-reader migration lives only in this approved consumer test module.
+# The historical helper and every immutable 8.30 SHA remain untouched.
+_historical_approved_source = scope._approved_source
+
+
+def _current_approved_source(relative):
+    if (scope.ROOT / "tests/phase_8_32_scope_migration.py").is_file():
+        from tests.phase_8_32_scope_migration import current_source_oid
+        return current_source_oid(relative)
+    return _historical_approved_source(relative)
+
+
+scope._approved_source = _current_approved_source
+
 OID = b"1" * 40
 
 
@@ -38,6 +52,80 @@ def replace_or_add_record(raw: bytes, path: str, replacement: bytes) -> bytes:
     else:
         rows.append(replacement.rstrip(b"\0"))
     return b"\0".join(rows) + b"\0"
+
+
+def _staged_application_error_pattern(historical_pattern):
+    """Validate the original snapshot before accepting an injection error."""
+    if (scope.ROOT / "tests/phase_8_32_scope_migration.py").is_file():
+        from tests.phase_8_32_scope_migration import assert_832_integrity
+        state = assert_832_integrity()
+        patterns = {
+            "COMPLETE_UNSTAGED": "^Partial 8.32 staged snapshot refused$",
+            "EXACT_STAGED": "^8.32 index/disk disagreement$",
+            "EXACT_CHILD": "^Partial 8.32 staged snapshot refused$",
+        }
+        if state not in patterns:
+            raise AssertionError("Expected complete 8.32 candidate baseline")
+        return patterns[state]
+    return "^(?:" + historical_pattern + ")$"
+
+
+def _assert_staged_application_topologies(case, guard, canary):
+    """Reuse the read-only raw snapshot fixture; never alter candidate pins.
+
+    Import lazily: that fixture imports this module for its current reader.
+    Real disk bytes and literal pins remain authoritative, including stale pins.
+    """
+    from tests import phase_8_32_scope_migration as successor
+    from tests.test_phase_832_scope_integrity import snapshot
+    target = "nayeon/desktop_alpha/application.py"
+    case.assertEqual(len(successor.ENVELOPE), 14)
+    for state in ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"):
+        with case.subTest(state=state), snapshot(state):
+            case.assertEqual(successor.assert_832_integrity(), state)
+            guard()
+            if state == "EXACT_STAGED":
+                base = successor._tree(successor.PROTECTED)
+                index = successor._index()
+                delta = {p for p in set(base) | set(index)
+                         if base.get(p) != index.get(p)}
+                case.assertEqual(delta, successor.ENVELOPE)
+            # Run the original malicious injection and its reached assertion.
+            canary()
+            guard()
+
+    # A rejection already present in the original snapshot must propagate
+    # before the canary's expected-error context can mistake it for its attack.
+    controls = (
+        ("EXACT_STAGED", {"corrupt_source": target},
+         "^8.32 index/disk disagreement$"),
+        ("EXACT_STAGED", {"stage_paths": {target}},
+         "^Partial 8.32 staged snapshot refused$"),
+        ("EXACT_STAGED", {"stage_paths": successor.ENVELOPE - {target}},
+         "^Partial 8.32 staged snapshot refused$"),
+        ("EXACT_CHILD", {"corrupt_source": target},
+         "^Partial 8.32 staged snapshot refused$"),
+        ("EXACT_CHILD", {"missing": target},
+         "^Partial 8.32 staged snapshot refused$"),
+        ("EXACT_CHILD", {"parent": "a" * 40},
+         "^8.32 wrong immediate product parent$"),
+    )
+    for state, kwargs, expected in controls:
+        with case.subTest(state=state, changes=kwargs), snapshot(state, **kwargs):
+            if state == "EXACT_STAGED" and "corrupt_source" in kwargs:
+                base = successor._tree(successor.PROTECTED)
+                index = successor._index()
+                wanted = dict(base)
+                for path in successor.ENVELOPE:
+                    wanted[path] = ("100644", scope._oid(successor._disk(path)))
+                wanted[target] = ("100644", "1" * 40)
+                case.assertEqual(index, wanted)
+                case.assertEqual({p for p in set(base) | set(index)
+                                  if base.get(p) != index.get(p)}, successor.ENVELOPE)
+            with case.assertRaisesRegex(AssertionError, expected):
+                guard()
+            with case.assertRaisesRegex(AssertionError, expected):
+                canary()
 
 
 class Phase830ScopeIntegrityTests(unittest.TestCase):
@@ -114,20 +202,27 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
     def test_staged_unapproved_new_ui_blob_refused(self):
         actual = scope._git
         relative = "nayeon/desktop_alpha/application.py"
+        reached = []
         def supplied(*args):
             result = actual(*args)
             if args[:3] == ("ls-files", "--stage", "-z"):
+                reached.append(relative)
                 return replace_or_add_record(result, relative, index_record(relative))
             return result
+        from tests.phase_8_31_scope_migration import PARENT_831
+        historical = ("Partial 8.31 staged production snapshot refused|Missing or unapproved staged 8.30 source|Unapproved staged 8.30 source|Unapproved staged 8.31 source"
+                      if actual("rev-parse", "HEAD").decode().strip() == PARENT_831
+                      else "8.31 staged/committed rollback refused")
+        expected = _staged_application_error_pattern(historical)
         with mock.patch.object(scope, "_git", side_effect=supplied):
-            # Both preparation and completed 8.31 states MUST reject the
-            # injected unknown index blob, but with state-specific messages.
-            from tests.phase_8_31_scope_migration import PARENT_831
-            expected = ("(?:Partial 8.31 staged production snapshot|Missing or unapproved staged|Unapproved staged)"
-                        if actual("rev-parse", "HEAD").decode().strip() == PARENT_831
-                        else "8.31 staged/committed rollback refused")
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
+        self.assertEqual(reached, [relative], "Forged application index blob was not reached")
+
+    def test_staged_application_canary_across_exact_832_topologies(self):
+        _assert_staged_application_topologies(
+            self, scope.assert_830_integrity,
+            self.test_staged_unapproved_new_ui_blob_refused)
 
     def test_committed_unapproved_new_ui_blob_refused(self):
         actual = scope._git

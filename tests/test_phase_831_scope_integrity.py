@@ -2,13 +2,37 @@
 from __future__ import annotations
 
 from pathlib import Path
+from functools import wraps
 import unittest
 from unittest import mock
 
 from tests import phase_8_30_scope_migration as previous
 from tests import phase_8_31_scope_migration as scope
 from tests.test_phase_830_scope_integrity import tree_record, index_record
+from tests.test_phase_830_scope_integrity import (
+    _staged_application_error_pattern, _assert_staged_application_topologies,
+)
 
+
+def _frozen_831_fixture(method):
+    """Private, enumerated synthetic tests only; disk is immutable product831.
+
+    Neither actual current-source admission nor public assert_831 selects this
+    route. A fixture cannot approve current bytes by changing historical pins.
+    """
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        saved_git = previous._git
+        def git(*command):
+            if command[:2] == ("branch", "--show-current"):
+                return b"nayeon-v1\n"
+            return saved_git(*command)
+        def frozen_disk(path):
+            return previous._normal(saved_git("show", scope.PRODUCT_COMMIT_831 + ":" + path))
+        with (mock.patch.object(previous, "_git", side_effect=git),
+              mock.patch.object(scope, "_disk", side_effect=frozen_disk)):
+            return method(self, *args, **kwargs)
+    return run
 
 class Phase831ScopeTests(unittest.TestCase):
     def test_current_831_preseal_exact_source_inventory(self):
@@ -32,32 +56,47 @@ class Phase831ScopeTests(unittest.TestCase):
                 scope.assert_831_integrity()
 
     def test_new_831_file_missing_fails_closed(self):
-        real = scope._disk
+        from tests import phase_8_32_scope_migration as successor
+        real = successor._raw_frozen_disk
+        target = "nayeon/desktop_alpha/conversation_session.py"
+        reached = []
         def missing(path):
-            if path in scope.NEW:
+            if path == target:
+                reached.append(path)
                 raise AssertionError("Missing, linked or nonregular 8.31 source")
             return real(path)
-        with mock.patch.object(scope, "_disk", side_effect=missing):
-            with self.assertRaisesRegex(AssertionError, "Missing"):
+        with mock.patch.object(successor, "_raw_frozen_disk", side_effect=missing):
+            with self.assertRaisesRegex(AssertionError, "^Missing, linked or nonregular 8.31 source$"):
                 scope.assert_831_integrity()
+        self.assertEqual(reached, [target], "Frozen owner missing-read injection was not reached")
 
     def test_index_tampered_working_tree_disagreement_refused(self):
         real = previous._git
         target = b"nayeon/desktop_alpha/application.py"
         fake = b"100644 " + b"1"*40 + b" 0\t" + target
+        reached = []
         def injected(*args):
             response = real(*args)
             if args[:3] == ("ls-files", "--stage", "-z"):
+                if any(entry.endswith(b"\t" + target) for entry in response.split(b"\0")):
+                    reached.append(target)
                 return b"\0".join(
                     fake if entry.endswith(b"\t"+target) else entry
                     for entry in response.split(b"\0"))
             return response
+        historical = ("Partial 8.31 staged production snapshot refused|Unapproved staged 8.30 source" if
+                      real("rev-parse", "HEAD").decode().strip() == scope.PARENT_831
+                      else "8.31 staged/committed rollback refused")
+        expected = _staged_application_error_pattern(historical)
         with mock.patch.object(previous, "_git", side_effect=injected):
-            expected = ("(?:Partial 8.31 staged production snapshot|Unapproved staged 8.30 source)" if
-                        previous._git("rev-parse", "HEAD").decode().strip() == scope.PARENT_831
-                        else "8.31 staged/committed rollback refused")
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_831_integrity()
+        self.assertEqual(reached, [target], "Forged application index blob was not reached")
+
+    def test_staged_application_canary_across_exact_832_topologies(self):
+        _assert_staged_application_topologies(
+            self, scope.assert_831_integrity,
+            self.test_index_tampered_working_tree_disagreement_refused)
 
     def test_unlisted_staged_and_untracked_paths_refused(self):
         real = previous._git
@@ -138,6 +177,7 @@ class Phase831ScopeTests(unittest.TestCase):
         self.assertIn(("ls-files","--others","--exclude-standard","-z"),calls)
         self.assertTrue(all(len(a)==5 for a in calls if a[0]=="ls-tree"))
 
+    @_frozen_831_fixture
     def _postcommit(self, *, stale_index_path=None, omit_head_new=False,
                     corrupt_head_path=None, immediate_parent=None,
                     merge_parent=None, index_staged_paths=None):
@@ -179,7 +219,7 @@ class Phase831ScopeTests(unittest.TestCase):
         with (mock.patch.object(previous, "_git", side_effect=git),
               mock.patch.object(previous, "_tree", side_effect=tree),
               mock.patch.object(previous, "_index", return_value=index)):
-            scope.assert_831_integrity()
+            scope._assert_831_historical_integrity()
 
     def test_synthetic_completed_commit_and_index_is_accepted(self):
         self._postcommit()
@@ -197,6 +237,7 @@ class Phase831ScopeTests(unittest.TestCase):
             self._postcommit(corrupt_head_path="nayeon/desktop_alpha/workspace_window.py")
 
 
+    @_frozen_831_fixture
     def test_partial_staging_of_each_phase_file_is_rejected(self):
         product = previous._tree(scope.PRODUCT_830)
         full = dict(product)
@@ -232,7 +273,7 @@ class Phase831ScopeTests(unittest.TestCase):
                       mock.patch.object(previous, "_tree", side_effect=precommit_tree),
                       mock.patch.object(previous, "_index", return_value=fake)):
                     with self.assertRaisesRegex(AssertionError, "Partial 8.31 staged"):
-                        scope.assert_831_integrity()
+                        scope._assert_831_historical_integrity()
             # The *same* partial index after a simulated valid product commit
             # must instead refuse the exact committed/index mismatch.
             with self.subTest(phase="postcommit", staged=subset):
@@ -240,12 +281,22 @@ class Phase831ScopeTests(unittest.TestCase):
                                             "8.31 staged/committed rollback refused|8.31 new-source committed/index rollback refused"):
                     self._postcommit(index_staged_paths=subset)
 
+    @_frozen_831_fixture
     def test_complete_precommit_staging_accepted(self):
         complete = previous._tree(scope.PRODUCT_830)
         for path in scope.ALL_831:
             complete[path] = (scope.OWNER_MODE, previous._oid(scope._disk(path)))
-        with mock.patch.object(previous, "_index", return_value=complete):
-            scope.assert_831_integrity()
+        saved_git, saved_tree = previous._git, previous._tree
+        def git(*args):
+            if args[:2] == ("rev-parse", "HEAD"):
+                return (scope.PARENT_831 + "\n").encode()
+            return saved_git(*args)
+        def tree(commit):
+            return saved_tree(scope.PRODUCT_830 if commit == scope.PARENT_831 else commit)
+        with (mock.patch.object(previous, "_index", return_value=complete),
+              mock.patch.object(previous, "_tree", side_effect=tree),
+              mock.patch.object(previous, "_git", side_effect=git)):
+            scope._assert_831_historical_integrity()
 
     def test_ancestor_but_wrong_immediate_parent_refused(self):
         with self.assertRaisesRegex(AssertionError, "wrong immediate product parent"):
@@ -255,6 +306,7 @@ class Phase831ScopeTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "wrong immediate product parent"):
             self._postcommit(merge_parent="b"*40)
 
+    @_frozen_831_fixture
     def _docs_descendant(self, *, changed=None, source_tamper=False,
                          merge=False, wrong_product_parent=False, deleted=False):
         """Synthetic exact product+one documentation-only child Git history."""
@@ -299,7 +351,7 @@ class Phase831ScopeTests(unittest.TestCase):
         with (mock.patch.object(previous, "_git", side_effect=git),
               mock.patch.object(previous, "_tree", side_effect=tree),
               mock.patch.object(previous, "_index", return_value=index)):
-            scope.assert_831_integrity()
+            scope._assert_831_historical_integrity()
 
     def test_single_docs_only_descendant_is_allowed(self):
         self._docs_descendant()
@@ -334,6 +386,7 @@ class Phase831ScopeTests(unittest.TestCase):
             self._docs_descendant(deleted=True)
 
 
+    @_frozen_831_fixture
     def _maintenance_descendant(self, *, paths=None, status="M",
                                 old_mode="100644", new_mode="100644",
                                 merge=False, wrong_docs_parent=False,
@@ -350,7 +403,7 @@ class Phase831ScopeTests(unittest.TestCase):
         if changed_source:
             full["nayeon/desktop_alpha/application.py"] = (
                 scope.OWNER_MODE, "1"*40)
-        index = dict(original_index())
+        index = dict(original_tree(scope.PRODUCT_COMMIT_831))
         if corrupt_index:
             index["nayeon/desktop_alpha/application.py"] = (
                 scope.OWNER_MODE, "2"*40)
@@ -389,7 +442,7 @@ class Phase831ScopeTests(unittest.TestCase):
         with (mock.patch.object(previous, "_git", side_effect=git),
               mock.patch.object(previous, "_tree", side_effect=tree),
               mock.patch.object(previous, "_index", return_value=index)):
-            scope.assert_831_integrity()
+            scope._assert_831_historical_integrity()
 
     def test_exact_maintenance_child_five_modified_files_allowed(self):
         self._maintenance_descendant()
@@ -430,6 +483,7 @@ class Phase831ScopeTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "Missing maintenance file"):
             self._maintenance_descendant(missing_document=True)
 
+    @_frozen_831_fixture
     def test_maintenance_second_descendant_is_not_admitted(self):
         oldgit = previous._git
         fakehead = "9"*40
@@ -445,7 +499,7 @@ class Phase831ScopeTests(unittest.TestCase):
             return oldgit(*args)
         with mock.patch.object(previous, "_git", side_effect=git):
             with self.assertRaisesRegex(AssertionError, "wrong immediate product parent"):
-                scope.assert_831_integrity()
+                scope._assert_831_historical_integrity()
 
 
 if __name__ == "__main__":
