@@ -178,6 +178,18 @@ def _approved_source(relative: str) -> str:
     if path.is_symlink() or not path.is_file():
         raise AssertionError("Missing, linked or nonregular 8.30 source")
     disk = _normal(path.read_bytes())
+    # Historical consumers inspect these two files directly. After 8.31
+    # starts, admit ONLY its reviewed SHA, and first verify the entire
+    # 8.30 product tree and complete 8.31 Git/index/disk gate. Historic
+    # 8.30 SHA pins themselves remain immutable and verified by that gate.
+    if ((ROOT / "nayeon/desktop_alpha/conversation_session.py").is_file()
+            and relative in {"nayeon/desktop_alpha/application.py",
+                             "nayeon/desktop_alpha/workspace_window.py"}):
+        from tests.phase_8_31_scope_migration import MODIFIED
+        assert_830_integrity()
+        if hashlib.sha256(disk).hexdigest() != MODIFIED[relative]:
+            raise AssertionError("Unapproved 8.31 source bytes")
+        return _oid(disk)
     if hashlib.sha256(disk).hexdigest() != APPROVED_SOURCE_SHA256[relative]:
         raise AssertionError("Unapproved 8.30 source bytes")
     return _oid(disk)
@@ -188,7 +200,13 @@ def _approved_owner() -> str:
 
 
 def assert_830_integrity() -> None:
-    """Fail closed for an unauthorized on-disk, staged or committed source."""
+    """Fail closed for frozen 8.30 or exact reviewed 8.31 product source."""
+    # A file actually present in the 8.31 approved inventory activates its
+    # separate fully pinned migration; historic disposable 8.30 fixtures retain
+    # this original assertion body, never a generic later-phase exemption.
+    if (ROOT / "nayeon/desktop_alpha/conversation_session.py").is_file():
+        from tests.phase_8_31_scope_migration import assert_831_integrity
+        return assert_831_integrity()
     if _git("rev-parse", "--show-object-format").decode("ascii").strip() != "sha1":
         raise AssertionError("Unsupported Git object format")
     current_head = _git("rev-parse", "HEAD").decode("ascii").strip()
@@ -285,14 +303,16 @@ def approved_830_scope(actual: set[str]) -> set[str]:
     assert_830_integrity()
     # A changed historic window.py is already part of some old sealed deltas.
     # Remove ONLY newly introduced 8.30 paths from those comparisons.
-    return actual - set(APPROVED_NEW_SHA256)
+    return actual - set(APPROVED_NEW_SHA256) - {
+        "nayeon/desktop_alpha/conversation_session.py"}
 
 
 def approved_830_files(actual: set[str]) -> set[str]:
     if type(actual) is not set or any(type(x) is not str for x in actual):
         raise AssertionError("Untrusted production inventory")
     assert_830_integrity()
-    return actual - set(APPROVED_NEW_SHA256)
+    return actual - set(APPROVED_NEW_SHA256) - {
+        "nayeon/desktop_alpha/conversation_session.py"}
 
 
 def _assert_exact_config_imports(relative: str) -> None:

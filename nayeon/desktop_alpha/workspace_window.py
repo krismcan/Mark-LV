@@ -5,7 +5,9 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from nayeon.desktop_alpha.controller import ChatReply, PreviewOnlyController
+from nayeon.desktop_alpha.conversation_session import (
+    EntrySource, ResetOperation, SessionRefused, validate_offline_text,
+)
 
 
 class WorkspaceWindow(ttk.Frame):
@@ -93,17 +95,17 @@ class WorkspacePane(ttk.Frame):
 
 
 class ConversationWindow(WorkspacePane):
-    def __init__(self, parent, *, controller: PreviewOnlyController, is_current,
+    def __init__(self, parent, *, on_send, on_reset, is_current,
                  on_destroy, assistant_name: str, user_name: str):
         super().__init__(parent, name="conversation_view", on_destroy=on_destroy)
-        if type(controller) is not PreviewOnlyController:
-            raise TypeError("Offline preview controller required")
-        self._controller = controller
+        self._on_send = on_send
         self._is_current = is_current
         self._assistant_name, self._user_name = assistant_name, user_name
         self._sending = False
+        self._reset_review = None
+        self._reset_confirm = self._reset_dismiss = None
         ttk.Label(self, text="Conversation", style="Heading.Offline.TLabel").pack(anchor="w")
-        ttk.Label(self, text="OFFLINE PREVIEW · Messages stay local. No actions can execute.",
+        ttk.Label(self, text="OFFLINE PREVIEW · Closing this window discards session history. No AI or actions.",
                   style="Muted.Offline.TLabel").pack(anchor="w", pady=(6, 14))
         transcript_row = ttk.Frame(self)
         transcript_row.pack(fill="both", expand=True)
@@ -115,15 +117,37 @@ class ConversationWindow(WorkspacePane):
         self.transcript.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.transcript.pack(side="left", fill="both", expand=True)
+        # Even if a nested Tk dispatch occurs during owner-only render, reject
+        # user keyboard/paste/cut/clear edits on this output-only surface.
+        for event_name in ("<KeyPress>", "<<Paste>>", "<<Cut>>", "<<Clear>>"):
+            self.transcript.bind(event_name, lambda event: "break")
+        self.transcript.tag_configure("USER", foreground="#24364b")
+        self.transcript.tag_configure("LOCAL_STATUS", foreground="#205c91",
+                                      font=("Segoe UI", 10, "bold"))
         row = ttk.Frame(self, style="Offline.TFrame")
         row.pack(fill="x", pady=(14, 0))
-        self.entry = ttk.Entry(row, name="message", font=("Segoe UI", 11))
+        self.entry = ttk.Entry(row, name="message", font=("Segoe UI", 11),
+                               validate="all",
+                               validatecommand=(self.register(self._proposed), "%P"))
         self.entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 10))
-        self.send_button = ttk.Button(row, name="send", text="Send preview", command=self._send)
+        self.send_button = ttk.Button(row, name="send", text="Save offline", command=self._send)
         self.send_button.pack(side="right", ipady=4)
         self.entry.bind("<Return>", self._send)
         self.send_button.bind("<Return>", self._send)
-        self._append(self._assistant_name, "Offline preview is ready. No actions can execute.")
+        self.status = ttk.Label(self, wraplength=680, style="Muted.Offline.TLabel",
+                                text="Offline session only. No AI request or action was performed.")
+        self.status.pack(anchor="w", pady=6)
+        reset_row = ttk.Frame(self, style="Offline.TFrame")
+        reset_row.pack(fill="x")
+        self.clear_button = ttk.Button(reset_row, text="Review Clear", command=lambda: on_reset(ResetOperation.CLEAR))
+        self.new_session_button = ttk.Button(reset_row, text="Review New Session", command=lambda: on_reset(ResetOperation.NEW_SESSION))
+        self.confirm_button = ttk.Button(reset_row, text="Confirm reset", state="disabled", command=self._confirm_reset)
+        self.dismiss_button = ttk.Button(reset_row, text="Dismiss", state="disabled", command=self._dismiss_reset)
+        for button in (self.clear_button, self.new_session_button, self.confirm_button, self.dismiss_button):
+            button.pack(side="left", padx=(0, 8))
+            button.bind("<Return>", lambda event, b=button: (b.invoke(), "break")[1])
+        self.reset_status = ttk.Label(self, text="", wraplength=680, style="Badge.Offline.TLabel")
+        self.reset_status.pack(anchor="w", pady=6)
 
     def exists(self) -> bool:
         if not super().exists():
@@ -137,42 +161,82 @@ class ConversationWindow(WorkspacePane):
     def focus_initial(self) -> None:
         self.entry.focus_set()
 
-    def _append(self, sender, message):
-        self.transcript.configure(state="normal")
-        self.transcript.insert("end", sender + "\n" + message + "\n\n")
-        if int(self.transcript.index("end-1c").split(".")[0]) > 180:
-            self.transcript.delete("1.0", "25.0")
-        self.transcript.see("end")
-        self.transcript.configure(state="disabled")
+    @staticmethod
+    def _proposed(candidate):
+        if candidate == "":
+            return True
+        try:
+            validate_offline_text(candidate)
+            return True
+        except (SessionRefused, UnicodeError):
+            return False
+
+    def show_status(self, text):
+        if len(text) > 160:
+            raise ValueError("Status exceeds display bound")
+        if self._is_current():
+            self.status.configure(text=text)
+
+    def render(self, snapshot):
+        # The bounded immutable owner snapshot is authoritative; never evict.
+        if not self._is_current():
+            return
+        try:
+            self.transcript.configure(state="normal")
+            if not self._is_current():
+                return
+            self.transcript.delete("1.0", "end")
+            for entry in snapshot.entries:
+                if not self._is_current():
+                    return
+                label = "USER" if entry.source is EntrySource.USER else "LOCAL_STATUS / UNSENT_OFFLINE"
+                self.transcript.insert("end", label + "\n" + entry.payload + "\n\n", entry.source.value)
+        finally:
+            if self._is_current():
+                self.transcript.configure(state="disabled")
+
+    def show_reset(self, review, confirm, dismiss):
+        self.clear_reset()
+        if not self._is_current():
+            return
+        self._reset_review = review
+        self._reset_confirm, self._reset_dismiss = confirm, dismiss
+        self.reset_status.configure(text="Review " + review.operation.value + ": discard all session history? Expires in 30 seconds.")
+        if self._is_current() and self._reset_review is review:
+            self.confirm_button.configure(state="normal")
+        if self._is_current() and self._reset_review is review:
+            self.dismiss_button.configure(state="normal")
+
+    def clear_reset(self, review=None):
+        if review is not None and self._reset_review is not review:
+            return
+        self._reset_review = None
+        self._reset_confirm = self._reset_dismiss = None
+        for widget in (self.confirm_button, self.dismiss_button):
+            if not self._is_current():
+                return
+            widget.configure(state="disabled")
+        if self._is_current():
+            self.reset_status.configure(text="")
+
+    def _confirm_reset(self):
+        callback = self._reset_confirm
+        if callback is not None and self._is_current():
+            callback()
+
+    def _dismiss_reset(self):
+        callback = self._reset_dismiss
+        if callback is not None and self._is_current():
+            callback()
 
     def _send(self, _event=None):
         if self._sending or not self._is_current():
             return "break"
         self._sending = True
         try:
-            self.entry.configure(state="disabled")
-            self.send_button.configure(state="disabled")
-            message = self.entry.get()
-            if not message.strip() or len(message) > 512:
-                self._append(self._assistant_name, "Enter a request of up to 512 characters.")
-                return "break"
-            message.encode("utf-8")
-            self.entry.configure(state="normal")
-            self.entry.delete(0, "end")
-            self.entry.configure(state="disabled")
-            self._append(self._user_name, message)
-            reply = self._controller.send(message)
-            if self._is_current():
-                text = reply.message if type(reply) is ChatReply else "Preview unavailable."
-                self._append(self._assistant_name, text)
-        except Exception:
-            if self._is_current():
-                self._append(self._assistant_name, "Preview unavailable. No result is verified.")
+            self._on_send()
         finally:
             self._sending = False
-            if self._is_current():
-                self.entry.configure(state="normal")
-                self.send_button.configure(state="normal")
         return "break"
 
 

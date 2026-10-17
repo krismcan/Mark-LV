@@ -10,9 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import tkinter as tk
+import time
 
 from nayeon.config.document import PresentationConfigurationDocumentV1
 from nayeon.desktop_alpha.controller import PreviewOnlyController
+from nayeon.desktop_alpha.conversation_session import (
+    OfflineConversationSession, ResetOperation, SessionRefused,
+)
 from nayeon.desktop_alpha.presentation_window import PresentationWindow
 from nayeon.desktop_alpha.workspace_window import (
     ConnectionWindow, ConversationWindow, WorkspaceWindow,
@@ -38,6 +42,10 @@ class OfflineWorkspaceApplication:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.controller = PreviewOnlyController()
+        self._conversation_root = object()
+        self._conversation = OfflineConversationSession(self._conversation_root)
+        self._conversation_view = None
+        self._conversation_timer = None  # one exact (review, after_id) at most
         self._root_alive = True
         self._closed = False
         self._busy = False
@@ -138,9 +146,29 @@ class OfflineWorkspaceApplication:
         # A nested callback never starts a second operation. Revoke the outer
         # operation too, so a caught reentrant event cannot restore consent.
         self._operation_token = None
+        self._revoke_conversation_view()
         self._invalidate_owner()
 
+    def _cancel_conversation_timer(self, review=None) -> bool:
+        current = self._conversation_timer
+        if current is None or (review is not None and current[0] is not review):
+            return False
+        # Retire identity BEFORE the potentially reentrant Tcl cancellation.
+        self._conversation_timer = None
+        try:
+            self.root.after_cancel(current[1])
+        except (tk.TclError, RuntimeError):
+            pass
+        return True
+
+    def _revoke_conversation_view(self) -> None:
+        self._cancel_conversation_timer()
+        view, self._conversation_view = self._conversation_view, None
+        if view is not None:
+            self._conversation.revoke_view(self._conversation_root, view)
+
     def _retire_view(self) -> None:
+        self._revoke_conversation_view()
         view = self._active_view
         self._active_view = self._active_token = None
         self._operation_token = None
@@ -153,6 +181,7 @@ class OfflineWorkspaceApplication:
         # Destroy handlers perform only Python-side revocation, never Tk calls.
         if (self._active_view is view and self._active_token is token
                 and self._generation == generation):
+            self._revoke_conversation_view()
             self._active_view = self._active_token = None
             self._operation_token = None
             self._generation += 1
@@ -160,6 +189,9 @@ class OfflineWorkspaceApplication:
 
     def _root_destroyed(self, event) -> None:
         if event.widget is self.root:
+            self._cancel_conversation_timer()
+            self._conversation.close(self._conversation_root)
+            self._conversation_view = None
             self._root_alive = False
             self._closed = True
             self._active_view = self._active_token = None
@@ -171,6 +203,9 @@ class OfflineWorkspaceApplication:
         if self._closed:
             return
         was_alive = self._root_exists()
+        self._cancel_conversation_timer()
+        self._conversation.close(self._conversation_root)
+        self._conversation_view = None
         # Revoke before widget destruction dispatches any Destroy bindings.
         self._closed = True
         self._root_alive = False
@@ -212,9 +247,12 @@ class OfflineWorkspaceApplication:
             token, generation = object(), self._generation
             if page is _Page.CONVERSATION:
                 view = ConversationWindow(
-                    self.workspace.content, controller=self.controller,
+                    self.workspace.content,
                     assistant_name=self._published_document.assistant.display_name,
                     user_name=self._published_document.user.display_name or "You",
+                    on_send=lambda: self._conversation_send(view, token, generation),
+                    on_reset=lambda operation: self._conversation_review(
+                        view, token, generation, operation),
                     is_current=lambda: self._current(view, token, generation),
                     on_destroy=lambda: self._view_destroyed(view, token, generation))
             elif page is _Page.CONNECTION:
@@ -233,7 +271,12 @@ class OfflineWorkspaceApplication:
             else:
                 raise ValueError("Unsupported offline page")
             self._active_view, self._active_token = view, token
+            if page is _Page.CONVERSATION:
+                self._conversation_view = self._conversation.activate_view(
+                    self._conversation_root, object())
             view.pack(fill="both", expand=True)
+            if page is _Page.CONVERSATION and self._current(view, token, generation):
+                view.render(self._conversation.snapshot)
             if page is _Page.SETTINGS:
                 self._load_settings(view, token, generation)
             if self._current(view, token, generation):
@@ -242,6 +285,151 @@ class OfflineWorkspaceApplication:
             self._busy = False
             if self._root_exists():
                 self.workspace.set_busy(False)
+
+    def _conversation_current(self, view, token, generation, authority) -> bool:
+        return (authority is not None and self._conversation_view is authority
+                and self._current(view, token, generation))
+
+    def _conversation_send(self, view, token, generation) -> None:
+        if not self._current(view, token, generation):
+            return
+        if self._busy:
+            self._interrupt_operation()
+            return
+        authority = self._conversation_view
+        if authority is None:
+            return
+        self._busy = True
+        ticket = None
+        current = lambda: self._conversation_current(view, token, generation, authority)
+        try:
+            candidate = view.entry.get()
+            if not current():
+                return
+            ticket = self._conversation.issue_submission(
+                self._conversation_root, authority, candidate)
+            if not current():
+                return
+            self._conversation.claim_submission(self._conversation_root, authority, ticket)
+            result = self._conversation.commit_submission(
+                self._conversation_root, authority, ticket)
+            self._cancel_conversation_timer()
+            if not current():
+                return
+            view.clear_reset()
+            if not current():
+                return
+            view.entry.delete(0, "end")
+            if current():
+                view.render(result.snapshot)
+            if current():
+                view.show_status("Saved in this session only. No AI request or action was performed.")
+        except SessionRefused as error:
+            if current():
+                view.show_status(error.code.value)
+        except Exception:
+            if current():
+                view.show_status("Display unavailable. No AI request or action was performed. Reopen Conversation.")
+        finally:
+            if ticket is not None:
+                self._conversation.revoke_submission(self._conversation_root, ticket)
+            self._busy = False
+
+    @staticmethod
+    def _conversation_now() -> int:
+        return time.monotonic_ns() // 1_000_000
+
+    def _conversation_review(self, view, token, generation, operation) -> None:
+        if not self._current(view, token, generation):
+            return
+        if self._busy:
+            self._interrupt_operation()
+            return
+        authority = self._conversation_view
+        if authority is None:
+            return
+        self._busy = True
+        review = None
+        current = lambda: self._conversation_current(view, token, generation, authority)
+        try:
+            prior = view._reset_review
+            if prior is not None:
+                self._conversation.dismiss_reset_review(self._conversation_root, prior)
+                if current():
+                    view.clear_reset(prior)
+            self._cancel_conversation_timer()  # replacement retires A, never B
+            review = self._conversation.begin_reset_review(
+                self._conversation_root, authority, operation, now_ms=self._conversation_now())
+            if not current():
+                return
+            view.show_reset(
+                review,
+                lambda: self._conversation_reset(view, token, generation, authority, review, True),
+                lambda: self._conversation_reset(view, token, generation, authority, review, False))
+            if current():
+                # Root owns the callback and its Tcl command; cancel on root.
+                after_id = self.root.after(30000, lambda: self._conversation_expire(
+                    view, token, generation, authority, review))
+                if current() and view._reset_review is review:
+                    self._conversation_timer = (review, after_id)
+                else:
+                    try:
+                        self.root.after_cancel(after_id)
+                    except (tk.TclError, RuntimeError):
+                        pass
+        except Exception:
+            if review is not None:
+                self._cancel_conversation_timer(review)
+                self._conversation.dismiss_reset_review(self._conversation_root, review)
+            if current():
+                view.show_status("Reset review unavailable. Review again before clearing.")
+        finally:
+            self._busy = False
+
+    def _conversation_expire(self, view, token, generation, authority, review) -> None:
+        if not self._conversation_current(view, token, generation, authority):
+            return
+        if not self._cancel_conversation_timer(review):
+            return
+        if self._conversation.expire_reset_review(
+                self._conversation_root, authority, review, now_ms=self._conversation_now()):
+            view.clear_reset(review)
+
+    def _conversation_reset(self, view, token, generation, authority, review, confirm) -> None:
+        current = lambda: self._conversation_current(view, token, generation, authority)
+        if not current():
+            return
+        if self._busy:
+            self._interrupt_operation()
+            return
+        self._busy = True
+        try:
+            if confirm:
+                snapshot = self._conversation.confirm_reset(
+                    self._conversation_root, authority, review, review.operation,
+                    now_ms=self._conversation_now())
+                self._cancel_conversation_timer(review)
+                if current():
+                    view.clear_reset(review)
+                if current():
+                    view.render(snapshot)
+                if current():
+                    view.show_status("Session history cleared locally. No AI request or action was performed.")
+            elif self._conversation.dismiss_reset_review(self._conversation_root, review):
+                self._cancel_conversation_timer(review)
+                if current():
+                    view.clear_reset(review)
+        except SessionRefused:
+            self._cancel_conversation_timer(review)
+            if current():
+                view.clear_reset(review)
+        except Exception:
+            self._cancel_conversation_timer(review)
+            self._conversation.dismiss_reset_review(self._conversation_root, review)
+            if current():
+                view.show_status("Display unavailable. Reopen Conversation to inspect session history.")
+        finally:
+            self._busy = False
 
     def _load_settings(self, view, token, generation) -> None:
         try:

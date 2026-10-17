@@ -120,7 +120,13 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 return replace_or_add_record(result, relative, index_record(relative))
             return result
         with mock.patch.object(scope, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, "(?:Missing or unapproved staged|Unapproved staged) 8.30 source"):
+            # Both preparation and completed 8.31 states MUST reject the
+            # injected unknown index blob, but with state-specific messages.
+            from tests.phase_8_31_scope_migration import PARENT_831
+            expected = ("(?:Partial 8.31 staged production snapshot|Missing or unapproved staged|Unapproved staged)"
+                        if actual("rev-parse", "HEAD").decode().strip() == PARENT_831
+                        else "8.31 staged/committed rollback refused")
+            with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
 
     def test_committed_unapproved_new_ui_blob_refused(self):

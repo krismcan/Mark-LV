@@ -5,11 +5,15 @@ import os
 from pathlib import Path
 import tkinter as tk
 import unittest
+import weakref
 from unittest import mock
 
 from tests import test_phase_830_application as storage_fixture
 from nayeon.desktop_alpha.application import OfflineWorkspaceApplication
 from nayeon.desktop_alpha.controller import ChatOutcome
+
+
+_retired_tk_roots = []  # weak refs only; no change to historical product
 
 
 @unittest.skipUnless(os.name == "nt", "Native Windows Tk proof required")
@@ -18,6 +22,7 @@ class Phase830WorkspaceTests(unittest.TestCase):
         # Never resolve or open the actual product-known-folder location.
         storage_fixture.Phase830ProductionAdmissionTests.setUp(self)
         self.root = tk.Tk()
+        _retired_tk_roots.append(weakref.ref(self.root))
         self.addCleanup(self._cleanup_root)
         self.root.withdraw()
         self.app = OfflineWorkspaceApplication(self.root)
@@ -100,6 +105,7 @@ class Phase830WorkspaceTests(unittest.TestCase):
         PresentationConfigurationFileStore(self.profile_leaf).save(wanted)
         before = self.profile_leaf.read_bytes()
         self.root = tk.Tk()
+        _retired_tk_roots.append(weakref.ref(self.root))
         self.root.withdraw()
         self.app = OfflineWorkspaceApplication(self.root)
         self.assertEqual(self.app.workspace.name_label.cget("text"), "Restarted Synthetic")
@@ -114,6 +120,7 @@ class Phase830WorkspaceTests(unittest.TestCase):
         native_fixture._private_directory(self, self.profile_dir)
         self.profile_leaf.write_bytes(b'{"invalid":true}')
         self.root = tk.Tk()
+        _retired_tk_roots.append(weakref.ref(self.root))
         self.root.withdraw()
         self.app = OfflineWorkspaceApplication(self.root)
         self.assertIn("unavailable", self.app.workspace.profile_status.cget("text").lower())
@@ -167,6 +174,19 @@ class Phase830WorkspaceTests(unittest.TestCase):
         self.app.close()
         self.app._save(old, token, generation)
         self.assertFalse(self.app_dir.exists())
+
+
+def tearDownModule():
+    """Collect retired 8.30 Tk interpreters on their creating UI thread."""
+    import gc
+    import threading
+    if threading.current_thread() is not threading.main_thread():
+        raise AssertionError("Phase 8.30 Tk cleanup must run on its UI thread")
+    gc.collect()
+    survivors = sum(ref() is not None for ref in _retired_tk_roots)
+    if survivors:
+        raise AssertionError(f"{survivors} retired 8.30 Tk roots still live")
+    _retired_tk_roots.clear()
 
 
 if __name__ == "__main__":
