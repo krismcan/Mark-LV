@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a101e">
+  <meta name="description" content="Read-only Nayeon v1 programme dashboard. Architecture closure, capability scope and release evidence from a curated public snapshot.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Nayeon v1 · Verified Programme Dashboard</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+  <div id="app" aria-busy="true">
+    <main class="loading" id="main"><span class="brand-mark" aria-hidden="true">n</span><h1>Nayeon v1</h1><p role="status">Loading the verified snapshot…</p></main>
+  </div>
+  <noscript><p class="error">JavaScript is required for this interactive dashboard. The <a href="./data/status.json">public status snapshot</a> is available as JSON.</p></noscript>
+</body>
+</html>

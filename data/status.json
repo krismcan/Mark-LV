@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-10-17",
+  "title": "Nayeon v1",
+  "subtitle": "Verified programme and capability readiness",
+  "publicSnapshot": true,
+  "scope": "This dashboard reports auditable progress. No overall capability-readiness percentage has an approved denominator.",
+  "formal": {
+    "phaseTotal": 19,
+    "phaseRange": "0–18",
+    "releaseGates": 12,
+    "capabilityScore": "NOT SCORED",
+    "closeDefinition": "Build Plan phases 0–18 marked COMPLETE. This is a phase-closure fraction, not percentage of product finished.",
+    "source": "Original 16-sheet Nayeon v1 master audit workbook, saved 17 Oct 2026."
+  },
+  "metrics": {
+    "fullRegression": {
+      "passed": 2572,
+      "total": 2572
+    },
+    "latestClosed": "8.31",
+    "next": "8.32",
+    "githubVerified": true,
+    "masterUpdated": true
+  },
+  "phases": [
+    {
+      "id": 0,
+      "name": "Reference Freeze",
+      "status": "COMPLETE",
+      "group": "Core & Infrastructure"
+    },
+    {
+      "id": 1,
+      "name": "Environment Foundation",
+      "status": "COMPLETE",
+      "group": "Core & Infrastructure"
+    },
+    {
+      "id": 2,
+      "name": "AI Service / Provider Abstraction",
+      "status": "IN PROGRESS",
+      "group": "Intelligence & Memory"
+    },
+    {
+      "id": 3,
+      "name": "Trusted Agent Runtime & Generic Orchestration",
+      "status": "IN PROGRESS",
+      "group": "Intelligence & Memory"
+    },
+    {
+      "id": 4,
+      "name": "Policy, Safety & Verification",
+      "status": "IN PROGRESS",
+      "group": "Security & Control"
+    },
+    {
+      "id": 5,
+      "name": "Filesystem",
+      "status": "COMPLETE",
+      "group": "Core & Infrastructure"
+    },
+    {
+      "id": 6,
+      "name": "Computer Control",
+      "status": "COMPLETE",
+      "group": "Security & Control"
+    },
+    {
+      "id": 7,
+      "name": "User Identity & Configuration",
+      "status": "COMPLETE",
+      "group": "Interaction"
+    },
+    {
+      "id": 8,
+      "name": "Secure Secrets & BYOK Onboarding",
+      "status": "IN PROGRESS",
+      "group": "Security & Control"
+    },
+    {
+      "id": 9,
+      "name": "Memory",
+      "status": "NOT STARTED",
+      "group": "Intelligence & Memory"
+    },
+    {
+      "id": 10,
+      "name": "Vision / Perception",
+      "status": "NOT STARTED",
+      "group": "Interaction"
+    },
+    {
+      "id": 11,
+      "name": "Browser",
+      "status": "NOT STARTED",
+      "group": "Interaction"
+    },
+    {
+      "id": 12,
+      "name": "Voice",
+      "status": "NOT STARTED",
+      "group": "Interaction"
+    },
+    {
+      "id": 13,
+      "name": "Events & Proactive",
+      "status": "NOT STARTED",
+      "group": "Product & Operations"
+    },
+    {
+      "id": 14,
+      "name": "Specialist Services & Integrations",
+      "status": "NOT STARTED",
+      "group": "Product & Operations"
+    },
+    {
+      "id": 15,
+      "name": "Desktop Runtime & UI",
+      "status": "NOT STARTED",
+      "group": "Interaction"
+    },
+    {
+      "id": 16,
+      "name": "Security & Compliance Release Readiness",
+      "status": "IN PROGRESS",
+      "group": "Security & Control"
+    },
+    {
+      "id": 17,
+      "name": "Packaging, Signing & Updates",
+      "status": "NOT STARTED",
+      "group": "Product & Operations"
+    },
+    {
+      "id": 18,
+      "name": "Autonomy",
+      "status": "NOT STARTED",
+      "group": "Intelligence & Memory"
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "OpenApp reference",
+      "group": "Core & Infrastructure",
+      "stage": "Reference demonstration complete",
+      "note": "The OpenApp reference is a bounded proof, not a complete multi-tool UI.",
+      "kind": "bounded"
+    },
+    {
+      "name": "Trusted core",
+      "group": "Core & Infrastructure",
+      "stage": "Foundation built; orchestration integration ongoing",
+      "note": "Security contracts and tests exist; end-to-end agent release is not certified.",
+      "kind": "progress"
+    },
+    {
+      "name": "Filesystem",
+      "group": "Core & Infrastructure",
+      "stage": "Bounded Phase 5 complete",
+      "note": "Limited file read/list/create/copy/delete. Recursive or full file manager behavior not claimed.",
+      "kind": "bounded"
+    },
+    {
+      "name": "Security / compliance",
+      "group": "Security & Control",
+      "stage": "Phase 16 in progress",
+      "note": "Reviewed controls and engineering evidence; compliance/release assurance remains open.",
+      "kind": "progress"
+    },
+    {
+      "name": "Computer control",
+      "group": "Security & Control",
+      "stage": "Bounded Phase 6 complete",
+      "note": "Exact target/keyboard/pointer controls tested. NOT unrestricted autonomous computer use.",
+      "kind": "bounded"
+    },
+    {
+      "name": "Secure BYOK",
+      "group": "Security & Control",
+      "stage": "Phase 8 in progress",
+      "note": "Safe secret architecture and fake-only flows; live consumer key flow not verified.",
+      "kind": "progress"
+    },
+    {
+      "name": "Memory",
+      "group": "Intelligence & Memory",
+      "stage": "Phase 9 not started",
+      "note": "Persistent user-controlled memory and retrieval not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Voice",
+      "group": "Interaction",
+      "stage": "Phase 12 not started",
+      "note": "Microphone/STT/TTS/interruptions not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Assistant identity / config",
+      "group": "Interaction",
+      "stage": "Bounded Phase 7 complete",
+      "note": "Presentation identity/config works in bounded scope; installable onboarding still open.",
+      "kind": "bounded"
+    },
+    {
+      "name": "Vision",
+      "group": "Interaction",
+      "stage": "Phase 10 not started",
+      "note": "Controlled visual observation not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Browser",
+      "group": "Interaction",
+      "stage": "Phase 11 not started",
+      "note": "Browser inspect/act/verify not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Proactive / events",
+      "group": "Product & Operations",
+      "stage": "Phase 13 not started",
+      "note": "Proactive workflows not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Desktop UI",
+      "group": "Interaction",
+      "stage": "Offline prototype delivered; Phase 15 not started",
+      "note": "Offline Tk workspace/session from 8.30–8.31, not an installable normal-user client.",
+      "kind": "prototype"
+    },
+    {
+      "name": "Autonomy",
+      "group": "Intelligence & Memory",
+      "stage": "Phase 18 not started",
+      "note": "Bounded multi-step autonomy not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Packaging / installer",
+      "group": "Product & Operations",
+      "stage": "Phase 17 not started",
+      "note": "Signed install/update/rollback not delivered.",
+      "kind": "not-started"
+    },
+    {
+      "name": "Commercial backend",
+      "group": "Product & Operations",
+      "stage": "Optional future Phase 19",
+      "note": "Outside formal 0–18 architecture closure denominator.",
+      "kind": "future"
+    }
+  ],
+  "releaseGates": [
+    {
+      "id": 1,
+      "name": "Installed desktop app starts without Python/Git/VS Code",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 2,
+      "name": "Guided assistant identity and permissions onboarding works",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 3,
+      "name": "BYOK key securely entered, stored, replaced and deleted",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 4,
+      "name": "Provider key explicitly validated with safe status display",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 5,
+      "name": "Normal GUI chat starts, continues, cancels conversations",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 6,
+      "name": "Sensitive local action reviewed and approved in GUI",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 7,
+      "name": "GUI request → action → observed verification end-to-end",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 8,
+      "name": "Microphone + TTS conversation with interruption",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 9,
+      "name": "Screen/camera observation with privacy controls",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 10,
+      "name": "Controlled browser inspect/act/verify workflow",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 11,
+      "name": "User-controlled persistent memory and bounded proactive events",
+      "status": "NOT VERIFIED"
+    },
+    {
+      "id": 12,
+      "name": "Signed clean-device installer and tested update/rollback",
+      "status": "NOT VERIFIED"
+    }
+  ],
+  "milestones": [
+    {
+      "phase": "8.29",
+      "date": "16 Oct 2026",
+      "name": "First-run integration acceptance",
+      "note": "Scoped synthetic first-run, security and fault-recovery work completed; no real provider calls.",
+      "tests": 2393
+    },
+    {
+      "phase": "8.30",
+      "date": "16 Oct 2026",
+      "name": "Offline Windows Workspace",
+      "note": "Tk Conversation, Settings, Connection and local profile handling.",
+      "tests": 2467
+    },
+    {
+      "phase": "8.31",
+      "date": "17 Oct 2026",
+      "name": "Trusted Offline Conversation Session",
+      "note": "In-memory user/status pairs, one-use confirmed reset, stale-callback safeguards, audited Tk teardown.",
+      "tests": 2572
+    }
+  ],
+  "evidence": {
+    "github": "https://github.com/krismcan/Mark-LV/tree/nayeon-v1",
+    "finalCommit": "c9d1b012b79b01897439775fb344819a9cf5367a",
+    "productCommit": "79f17ca5211d7e1a97ef99b83dd613885d693bef",
+    "sourceDocument": "Private Nayeon v1 master audit workbook (not exposed on this public site)",
+    "lastVerified": "17 Oct 2026"
+  },
+  "flags": {
+    "noPublicEdits": true,
+    "noProviderCalls": true,
+    "noPrivateMasterContents": true
+  },
+  "notes": [
+    "Computer Control: the verified Phase 6 bounded milestone is COMPLETE. Neither 10% nor 15% is an audited current maturity score.",
+    "Memory: Phase 9 is NOT STARTED. Historical 10%/15% figures are unsupported as current delivered readiness.",
+    "Security & Control is explicitly tracked: Phase 6 complete; phases 4, 8 and 16 in progress.",
+    "16 historical capability percentages and the 40% headline were retired because their weighting and denominator were not audited.",
+    "0/12 release gates are verified. No live AI conversation, voice, memory, browser, installer or unattended autonomy is claimed."
+  ]
+}
