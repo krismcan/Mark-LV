@@ -334,5 +334,119 @@ class Phase831ScopeTests(unittest.TestCase):
             self._docs_descendant(deleted=True)
 
 
+    def _maintenance_descendant(self, *, paths=None, status="M",
+                                old_mode="100644", new_mode="100644",
+                                merge=False, wrong_docs_parent=False,
+                                wrong_product_parent=False, changed_source=False,
+                                missing_document=False, corrupt_index=False):
+        """Synthetic child of the exact PRODUCT→DOCS history, fake-only Git."""
+        maint = "f" * 40
+        original_git, original_tree, original_index = (
+            previous._git, previous._tree, previous._index
+        )
+        allowed = sorted(scope.MAINTENANCE_FILES)
+        changed = allowed if paths is None else paths
+        full = dict(original_tree(scope.DOC_COMMIT_831))
+        if changed_source:
+            full["nayeon/desktop_alpha/application.py"] = (
+                scope.OWNER_MODE, "1"*40)
+        index = dict(original_index())
+        if corrupt_index:
+            index["nayeon/desktop_alpha/application.py"] = (
+                scope.OWNER_MODE, "2"*40)
+        def git(*args):
+            if args[:2] == ("rev-parse", "HEAD"):
+                return (maint + "\n").encode()
+            if args[:2] == ("merge-base", "--is-ancestor"):
+                return b""
+            if args[:4] == ("rev-list", "--parents", "-n", "1"):
+                if args[4] == maint:
+                    return (maint + " " + scope.DOC_COMMIT_831 +
+                            (" " + "a"*40 if merge else "") + "\n").encode()
+                if args[4] == scope.DOC_COMMIT_831:
+                    parent = "a"*40 if wrong_docs_parent else scope.PRODUCT_COMMIT_831
+                    return (scope.DOC_COMMIT_831 + " " + parent + "\n").encode()
+                if args[4] == scope.PRODUCT_COMMIT_831:
+                    parent = "a"*40 if wrong_product_parent else scope.PARENT_831
+                    return (scope.PRODUCT_COMMIT_831 + " " + parent + "\n").encode()
+            if args[:4] == ("diff", "--no-renames", "--raw", "-z"):
+                records = []
+                for path in changed:
+                    meta = (f":{old_mode} {new_mode} " + "a"*40 + " " +
+                            "b"*40 + f" {status}").encode()
+                    records.append(meta + b"\0" + path.encode() + b"\0")
+                return b"".join(records)
+            if args[:2] == ("cat-file", "-e"):
+                if missing_document and args[2].startswith(maint + ":"):
+                    raise AssertionError("Missing maintenance file")
+                if args[2].startswith(maint + ":"):
+                    return b""
+            return original_git(*args)
+        def tree(commit):
+            if commit == maint:
+                return full
+            return original_tree(commit)
+        with (mock.patch.object(previous, "_git", side_effect=git),
+              mock.patch.object(previous, "_tree", side_effect=tree),
+              mock.patch.object(previous, "_index", return_value=index)):
+            scope.assert_831_integrity()
+
+    def test_exact_maintenance_child_five_modified_files_allowed(self):
+        self._maintenance_descendant()
+
+    def test_maintenance_missing_extra_duplicate_and_renamed_paths_refused(self):
+        expected = set(scope.MAINTENANCE_FILES)
+        for paths in (sorted(expected)[:-1],
+                      sorted(expected) + ["tests/extra.py"],
+                      sorted(expected) + [sorted(expected)[0]],
+                      sorted(expected-{sorted(expected)[0]}) + ["tests/swap.py"]):
+            with self.subTest(paths=paths):
+                with self.assertRaisesRegex(AssertionError, "maintenance scope"):
+                    self._maintenance_descendant(paths=paths)
+
+    def test_maintenance_file_add_delete_modes_and_types_refused(self):
+        for kwargs in ({"status": "A"}, {"status": "D"},
+                       {"status": "R100"}, {"old_mode": "100755"},
+                       {"new_mode": "120000"}, {"new_mode": "000000"}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(AssertionError, "maintenance scope"):
+                    self._maintenance_descendant(**kwargs)
+
+    def test_maintenance_merge_wrong_docs_and_product_parent_refused(self):
+        for kwargs in ({"merge": True}, {"wrong_docs_parent": True},
+                       {"wrong_product_parent": True}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(AssertionError,
+                                            "wrong.*parent"):
+                    self._maintenance_descendant(**kwargs)
+
+    def test_maintenance_production_change_and_staged_rollback_refused(self):
+        with self.assertRaisesRegex(AssertionError, "Maintenance descendant modified production"):
+            self._maintenance_descendant(changed_source=True)
+        with self.assertRaisesRegex(AssertionError, "8.31 staged/committed rollback refused"):
+            self._maintenance_descendant(corrupt_index=True)
+
+    def test_maintenance_deleted_or_unverifiable_file_refused(self):
+        with self.assertRaisesRegex(AssertionError, "Missing maintenance file"):
+            self._maintenance_descendant(missing_document=True)
+
+    def test_maintenance_second_descendant_is_not_admitted(self):
+        oldgit = previous._git
+        fakehead = "9"*40
+        def git(*args):
+            if args[:2] == ("rev-parse", "HEAD"):
+                return (fakehead + "\n").encode()
+            if args[:2] == ("merge-base", "--is-ancestor"):
+                return b""
+            if args[:4] == ("rev-list", "--parents", "-n", "1") and args[4] == fakehead:
+                return (fakehead + " " + "f"*40 + "\n").encode()
+            if args[:4] == ("rev-list", "--parents", "-n", "1") and args[4] == "f"*40:
+                return ("f"*40 + " " + scope.DOC_COMMIT_831 + "\n").encode()
+            return oldgit(*args)
+        with mock.patch.object(previous, "_git", side_effect=git):
+            with self.assertRaisesRegex(AssertionError, "wrong immediate product parent"):
+                scope.assert_831_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()

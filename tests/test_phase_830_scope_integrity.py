@@ -140,12 +140,16 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 if len(seen) == 2:
                     return replace_or_add_record(result, relative, tree_record(relative))
             return result
-        expected = ("Unexpected precommit 8.30 product source"
+        # The exact malicious ls-tree injection remains required to fail.
+        # Once the separately sealed 8.31 docs child exists, its stronger
+        # ancestor-consistency guard can reject it before the old 8.30 guard.
+        expected = ("^Unexpected precommit 8.30 product source$"
                     if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
-                    else "Missing or unapproved committed 8.30 source")
+                    else "^(?:Missing or unapproved committed 8.30 source|Documentation descendant modified production|Maintenance descendant modified production)$")
         with mock.patch.object(scope, "_git", side_effect=supplied):
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
+        self.assertGreaterEqual(len(seen), 2, "Malicious second ls-tree was not exercised")
 
     def test_approved_diff_scope_does_not_swallow_unrelated_changes(self):
         allow = set(scope.APPROVED_SOURCE_SHA256)

@@ -16,6 +16,15 @@ from tests import phase_8_30_scope_migration as prior
 ROOT = prior.ROOT
 PRODUCT_830 = "6030f9b7afacd0543912bfb4a8b4fe610ebd9632"
 PARENT_831 = "8b2fecf00d48324a187d931156cfa463bbd0aa67"
+PRODUCT_COMMIT_831 = "79f17ca5211d7e1a97ef99b83dd613885d693bef"
+DOC_COMMIT_831 = "c40ab89e0a749d9579583eb4dce93cf508d7ef0f"
+MAINTENANCE_FILES = {
+    "tests/test_phase_830_scope_integrity.py",
+    "tests/phase_8_31_scope_migration.py",
+    "tests/test_phase_831_scope_integrity.py",
+    ".codex/CURRENT_STATE.md",
+    "docs/pre_829_shutdown_ownership_failure_ledger.md",
+}
 NEW = {
     "nayeon/desktop_alpha/conversation_session.py":
         "cddffbba99b557381a415f2a13c861069c41b8694dfbdcdf0b77a0ab552ffa92",
@@ -92,6 +101,8 @@ def assert_831_integrity() -> None:
         raise AssertionError("Wrong production branch")
     _read_git("merge-base", "--is-ancestor", PARENT_831, head_ref)
     first_product = None
+    maintenance_head = None
+    docs_head = head_ref
     if head_ref != PARENT_831:
         # The FIRST product commit must directly descend from the sealed 8.30
         # documentation HEAD. Permit exactly ONE later docs-only reconciliation
@@ -100,8 +111,39 @@ def assert_831_integrity() -> None:
                             ).decode("ascii").split()
         if len(current) != 2 or current[0] != head_ref:
             raise AssertionError("8.31 wrong immediate product parent")
+        if current[1] == DOC_COMMIT_831:
+            # One reviewed TEST/LEDGER repair after immutable product/docs.
+            maintenance_head = head_ref
+            docs_head = DOC_COMMIT_831
+            doc_parents = _read_git(
+                "rev-list", "--parents", "-n", "1", docs_head
+            ).decode("ascii").split()
+            if doc_parents != [DOC_COMMIT_831, PRODUCT_COMMIT_831]:
+                raise AssertionError("8.31 maintenance wrong docs parent")
+            raw = _read_git("diff", "--no-renames", "--raw", "-z",
+                            docs_head, maintenance_head)
+            records = raw.split(b"\0")
+            if records and records[-1] == b"":
+                records.pop()
+            if len(records) != 2 * len(MAINTENANCE_FILES):
+                raise AssertionError("Unapproved 8.31 maintenance scope")
+            seen_maintenance = set()
+            for meta, path_bytes in zip(records[::2], records[1::2]):
+                fields = meta.split()
+                path = path_bytes.decode("utf-8", "strict")
+                if (len(fields) != 5 or fields[0] != b":100644"
+                        or fields[1] != b"100644" or fields[4] != b"M"
+                        or path not in MAINTENANCE_FILES
+                        or path in seen_maintenance):
+                    raise AssertionError("Unapproved 8.31 maintenance scope")
+                _read_git("cat-file", "-e", docs_head + ":" + path)
+                _read_git("cat-file", "-e", maintenance_head + ":" + path)
+                seen_maintenance.add(path)
+            if seen_maintenance != MAINTENANCE_FILES:
+                raise AssertionError("Incomplete 8.31 maintenance scope")
+            current = doc_parents
         if current[1] == PARENT_831:
-            first_product = head_ref
+            first_product = docs_head
         else:
             first_product = current[1]
             # Refuse unrelated descendants BEFORE consulting their document
@@ -118,7 +160,7 @@ def assert_831_integrity() -> None:
                 "docs/phase_8_31_offline_conversation_session_review.md",
                 "docs/pre_829_shutdown_ownership_failure_ledger.md",
             }
-            raw = _read_git("diff", "--no-renames", "--name-only", "-z", first_product, head_ref)
+            raw = _read_git("diff", "--no-renames", "--name-only", "-z", first_product, docs_head)
             changed = [name.decode("utf-8", "strict")
                        for name in raw.split(b"\0") if name]
             if (not changed or len(changed) != len(set(changed))
@@ -126,10 +168,12 @@ def assert_831_integrity() -> None:
                 raise AssertionError("Unapproved 8.31 documentation-only descendant")
             for filename in changed:
                 # Historical evidence must not disappear in a doc-only seal.
-                _read_git("cat-file", "-e", head_ref + ":" + filename)
+                _read_git("cat-file", "-e", docs_head + ":" + filename)
             # The exact previously reviewed production tree is retained.
-            if prior._tree(first_product) != prior._tree(head_ref):
+            if prior._tree(first_product) != prior._tree(docs_head):
                 raise AssertionError("Documentation descendant modified production")
+            if maintenance_head is not None and prior._tree(docs_head) != prior._tree(maintenance_head):
+                raise AssertionError("Maintenance descendant modified production")
         parents = _read_git("rev-list", "--parents", "-n", "1", first_product
                             ).decode("ascii").split()
         if (len(parents) != 2 or parents[0] != first_product
