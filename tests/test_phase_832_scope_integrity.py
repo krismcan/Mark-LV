@@ -6,6 +6,7 @@ created. Historical negatives prove injection reached the intended raw read.
 from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
+from functools import wraps
 import hashlib
 from pathlib import Path
 import unittest
@@ -183,7 +184,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
 
     def test_synthetic_clean_positive_reaches_frozen_disk_and_all_six_seals(self):
         with repair_fixture() as (calls, reads):
-            self.assertEqual(scope.assert_832_integrity(), "COMPLETE_UNSTAGED")
+            self.assertEqual(scope._assert_832_historical(), "COMPLETE_UNSTAGED")
         self.assertIn("tests/test_phase_831_session.py", reads)
         self.assertIn("docs/frozen.md", reads)
         self.assertIn("LICENSE", reads)
@@ -259,13 +260,13 @@ class Phase832RepairCanaryTests(unittest.TestCase):
                 self.assertEqual(scope._git("diff", "--no-renames", "--raw", "--no-abbrev", "-z"), b"")
                 try:
                     with self.assertRaisesRegex(AssertionError, "Frozen .*worktree bytes modified"):
-                        scope.assert_832_integrity()
+                        scope._assert_832_historical()
                 finally:
                     self.assertIn(target, reads, "Hidden frozen bytes were never read")
 
     def test_synthetic_staged_positive_with_empty_worktree_diff(self):
         with repair_fixture(state="EXACT_STAGED"):
-            self.assertEqual(scope.assert_832_integrity(), "EXACT_STAGED")
+            self.assertEqual(scope._assert_832_historical(), "EXACT_STAGED")
 
     def test_normalization_equivalent_frozen_mutations_hidden_by_diff_rejected(self):
         for target in ("LICENSE", "config/jarvis.ico"):
@@ -280,7 +281,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
                     changed_disk=target, disk_mutation=normalize, state="EXACT_STAGED") as (_, reads):
                 self.assertEqual(scope._git("diff", "--no-renames", "--raw", "--no-abbrev", "-z"), b"")
                 with self.assertRaisesRegex(AssertionError, "Frozen tracked worktree bytes modified"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
                 self.assertEqual(mutations, [True])
                 self.assertIn(target, reads)
 
@@ -296,7 +297,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
             with self.subTest(flag=flag), repair_fixture(transform=inject):
                 try:
                     with self.assertRaisesRegex(AssertionError, "8.32 index flags"):
-                        scope.assert_832_integrity()
+                        scope._assert_832_historical()
                 finally:
                     self.assertEqual(reached, [True])
 
@@ -320,7 +321,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
             with self.subTest(mutation=number), repair_fixture(transform=inject):
                 try:
                     with self.assertRaises(AssertionError):
-                        scope.assert_832_integrity()
+                        scope._assert_832_historical()
                 finally:
                     self.assertEqual(reached, [True])
 
@@ -408,7 +409,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
                 self.assertEqual(len(aliases), 8)
                 calls.clear()
                 with self.assertRaisesRegex(AssertionError, "Unable to verify exact Git snapshot"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
                 self.assertEqual(reached, [exact], "Missing exact tag check was never reached")
                 self.assertEqual(len(aliases), 8, "Candidate used fallback revision resolution")
                 self.assertNotIn(("rev-parse", "--verify", "--end-of-options", pins[0] + "^{}"), calls)
@@ -435,7 +436,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
                         return data
                     with self.subTest(tag=tag, query=wanted, value=value), repair_fixture(transform=inject):
                         with self.assertRaisesRegex(AssertionError, "Frozen seal changed"):
-                            scope.assert_832_integrity()
+                            scope._assert_832_historical()
                         self.assertEqual(reached, [wanted], "Malformed seal evidence was never reached")
 
     def test_historical_nonproduction_metadata_and_duplicate_aliases_rejected(self):
@@ -474,7 +475,7 @@ class Phase832RepairCanaryTests(unittest.TestCase):
             return data
         with repair_fixture(transform=inject) as (calls, _):
             with self.assertRaisesRegex(AssertionError, "^Missing or unapproved committed 8.30 source$"):
-                old.assert_831_integrity()
+                scope._assert_832_historical()
         self.assertEqual(reached, [old.PRODUCT_830])
         self.assertEqual(sum(c[0] == "ls-tree" for c in calls), 2)
 
@@ -485,9 +486,21 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
     """All raw histories/index/deltas, including valid positive controls."""
     actual = prior._git
     base = scope._tree(scope.PROTECTED)
+    sealed = "03f247d8627bf1c51105f73b9de5c6bbdf389cf9"
+    sealed_tree = scope._tree(sealed)
+    historical = {}
+    for path in scope.ENVELOPE:
+        raw = actual("show", sealed + ":" + path)
+        data = prior._normal(raw)
+        if (scope._digest(path, data) != scope.CANDIDATE_SHA256[path]
+                or sealed_tree.get(path) != ("100644", raw_blob_oid(raw))):
+            raise AssertionError("Immutable 8.32 fixture bytes do not match sealed pins")
+        historical[path] = data
+    # Validate the real historical object chain before introducing fake state.
+    scope._history()
     accepted = dict(base)
     for path in scope.ENVELOPE:
-        accepted[path] = ("100644", prior._oid(scope._disk(path)))
+        accepted[path] = ("100644", prior._oid(historical[path]))
     child = "e" * 40
     head = child if state == "EXACT_CHILD" else scope.PROTECTED
     committed = dict(accepted if head == child else base)
@@ -540,53 +553,71 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
         if args == ("diff", "--no-renames", "--raw", "--no-abbrev", "-z", scope.PROTECTED, child):
             return raw_delta(base, committed, scope.ENVELOPE)
         return actual(*args)
-    with mock.patch.object(prior, "_git", side_effect=git):
+    real_disk = scope._disk
+    real_raw = scope._raw_frozen_disk
+    # The independently approved 16th-path amendment now changes this older
+    # helper. Historical 8.32 fixtures retain its exact sealed raw blob too;
+    # every other non-8.32 frozen file still uses the real raw disk checker.
+    adapter = "tests/phase_8_30_scope_migration.py"
+    frozen_adapter = actual("show", sealed + ":" + adapter)
+    if (sealed_tree[adapter] != base[adapter]
+            or sealed_tree[adapter] != ("100644", raw_blob_oid(frozen_adapter))):
+        raise AssertionError("Immutable historical projection adapter changed")
+    with (mock.patch.object(prior, "_git", side_effect=git),
+          mock.patch.object(scope, "_disk", side_effect=lambda p: historical[p]
+                            if p in historical else real_disk(p)),
+          mock.patch.object(scope, "_raw_frozen_disk", side_effect=lambda p:
+                            frozen_adapter if p == adapter else real_raw(p))):
         yield
+
+
+def _sealed_832(method):
+    """Enumerated historical adversaries only; live public gate is separate."""
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with snapshot():
+            return method(self, *args, **kwargs)
+    return run
 
 
 class Phase832ScopeIntegrityTests(unittest.TestCase):
     def test_real_candidate_is_exact_unstaged_and_public_831_delegates(self):
-        head = prior._git("rev-parse", "HEAD").decode("ascii").strip()
-        self.assertRegex(head, r"^[0-9a-f]{40}$")
-        committed, index = scope._tree(head), scope._index()
-        staged_delta = {p for p in set(committed) | set(index)
-                        if committed.get(p) != index.get(p)}
-        if head == scope.PROTECTED:
-            if staged_delta:
-                self.assertEqual(staged_delta, scope.ENVELOPE)
-                expected = "EXACT_STAGED"
-            else:
-                expected = "COMPLETE_UNSTAGED"
-        else:
-            self.assertEqual(staged_delta, set())
-            expected = "EXACT_CHILD"
+        with snapshot("EXACT_CHILD"):
+            self.assertEqual(scope._assert_832_historical(), "EXACT_CHILD")
+        from tests import phase_8_33_scope_migration as successor
+        expected = successor.assert_833_integrity()
+        self.assertIn(expected, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(scope.assert_832_integrity(), expected)
-        with mock.patch.object(scope, "assert_832_integrity", return_value=expected) as gate:
+        reached = []
+        raw = successor._raw_frozen_disk
+        def observed(path):
+            reached.append(path)
+            return raw(path)
+        with mock.patch.object(successor, "_raw_frozen_disk", side_effect=observed):
             old.assert_831_integrity()
-        gate.assert_called_once_with()
+        self.assertIn("nayeon/desktop_alpha/conversation_session.py", reached)
         self.assertEqual(len(scope.ENVELOPE), 14)
-        self.assertEqual(len(scope.ADDED), 5)
-        self.assertEqual(len(scope.MODIFIED), 9)
+        self.assertEqual(len(successor.ENVELOPE), 16)
 
     def test_complete_unstaged_staged_and_one_exact_child_positive_controls(self):
         for state in ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"):
             with self.subTest(state=state), snapshot(state):
-                self.assertEqual(scope.assert_832_integrity(), state)
+                self.assertEqual(scope._assert_832_historical(), state)
 
     def test_partial_staging_of_each_path_and_nearly_complete_refused(self):
         for path in scope.ENVELOPE:
             with self.subTest(path=path), snapshot(stage_paths={path}):
                 with self.assertRaisesRegex(AssertionError, "Partial 8.32 staged"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
         with snapshot(stage_paths=scope.ENVELOPE - {scope.SELF}):
             with self.assertRaisesRegex(AssertionError, "Partial 8.32 staged"):
-                scope.assert_832_integrity()
+                scope._assert_832_historical()
 
     def test_child_wrong_immediate_parent_and_merge_refused(self):
         for kwargs in ({"parent": "a" * 40}, {"merge": True}):
             with self.subTest(kwargs=kwargs), snapshot("EXACT_CHILD", **kwargs):
                 with self.assertRaisesRegex(AssertionError, "wrong immediate product parent"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
 
     def test_mode_missing_source_corrupt_index_and_extra_path_refused(self):
         path = "nayeon/desktop_alpha/application.py"
@@ -594,7 +625,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                        {"extra_index": "tests/foreign.py"}):
             with self.subTest(kwargs=kwargs), snapshot("EXACT_STAGED", **kwargs):
                 with self.assertRaises(AssertionError):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
         with snapshot("EXACT_CHILD", missing=path):
             real_tree = scope._tree
             reached = []
@@ -608,9 +639,10 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                 # The injected child omits application.py while its index
                 # retains it. That staged disagreement is refused first.
                 with self.assertRaisesRegex(AssertionError, "^Partial 8.32 staged snapshot refused$"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
             self.assertEqual(reached, ["e" * 40], "Missing child-source injection was not reached")
 
+    @_sealed_832
     def test_every_pin_rejects_modified_bytes(self):
         real = scope._disk
         for path in scope.ENVELOPE:
@@ -618,8 +650,9 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                 return real(name) + b"\n# unreviewed\n" if name == path else real(name)
             with self.subTest(path=path), mock.patch.object(scope, "_disk", side_effect=disk):
                 with self.assertRaisesRegex(AssertionError, "PARTIAL or unapproved"):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
 
+    @_sealed_832
     def test_absent_candidate_file_and_retired_adapter_fail_closed(self):
         real_disk = scope._disk
         path = "tests/test_phase_832_lifecycle_assurance.py"
@@ -629,7 +662,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             return real_disk(name)
         with mock.patch.object(scope, "_disk", side_effect=missing):
             with self.assertRaisesRegex(AssertionError, "Missing"):
-                scope.assert_832_integrity()
+                scope._assert_832_historical()
         actual = prior._git
         def adapter(*args):
             data = actual(*args)
@@ -638,7 +671,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             return data
         with mock.patch.object(prior, "_git", side_effect=adapter):
             with self.assertRaisesRegex(AssertionError, "Unauthorized untracked"):
-                scope.assert_832_integrity()
+                scope._assert_832_historical()
 
     def test_malformed_nonproduction_raw_records_are_not_filtered_away(self):
         for raw, indexed in ((b"garbage\tREADME.md\0", False),
@@ -648,6 +681,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaisesRegex(AssertionError, "Malformed"):
                 scope._inventory(raw, index=indexed)
 
+    @_sealed_832
     def test_aliases_in_head_index_untracked_and_ignored_are_refused_before_filtering(self):
         real = prior._git
         for alias in ("NAYEON/foreign.py", "nayeon./foreign.py", "nayeon /foreign.py",
@@ -672,9 +706,10 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                     return data
                 with self.subTest(alias=alias, surface=surface), mock.patch.object(prior, "_git", side_effect=inject):
                     with self.assertRaises(AssertionError):
-                        scope.assert_832_integrity()
+                        scope._assert_832_historical()
                 self.assertTrue(reached, "Alias negative failed before malicious raw inventory")
 
+    @_sealed_832
     def test_ignored_production_source_and_unapproved_worktree_delta_refused(self):
         actual = prior._git
         for surface in ("ignored", "worktree"):
@@ -690,11 +725,12 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                 return data
             with mock.patch.object(prior, "_git", side_effect=inject):
                 with self.assertRaises(AssertionError):
-                    scope.assert_832_integrity()
+                    scope._assert_832_historical()
             self.assertTrue(reached)
 
+    @_sealed_832
     def test_historical_second_tree_injection_reached_with_clean_positive_control(self):
-        scope.assert_832_integrity()
+        scope._assert_832_historical()
         actual = prior._git
         calls = []
         def inject(*args):
@@ -708,7 +744,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             return data
         with mock.patch.object(prior, "_git", side_effect=inject):
             with self.assertRaisesRegex(AssertionError, "^Missing or unapproved committed 8.30 source$"):
-                old.assert_831_integrity()
+                scope._assert_832_historical()
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[1][-1], old.PRODUCT_830)
 
@@ -731,6 +767,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, "Linked or nonregular"):
                     scope._disk(path)
 
+    @_sealed_832
     def test_self_pin_checks_code_and_every_other_pin_not_only_product(self):
         data = scope._disk(scope.SELF)
         self.assertEqual(scope._digest(scope.SELF, data), scope.CANDIDATE_SHA256[scope.SELF])

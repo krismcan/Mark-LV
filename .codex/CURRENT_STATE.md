@@ -1,3 +1,13 @@
+## 18 October 2026 — Controlling checkpoint: Phase 8.32 sealed / Phase 8.33 development
+
+Latest completed product phase: 8.32 Lifecycle Assurance. Branch nayeon-v1, Git commit 03f247d8627bf1c51105f73b9de5c6bbdf389cf9, annotated tag nayeon-v1-phase-8-32-lifecycle-assurance-01, tag object 9fb0f2da5d0e3666fad0c1534fe80fc3b6086c34 peeled to commit. Full 18 Oct native Windows 3.12 LF-checkout baseline: 2,617 / 2,617 PASS, exit 0 (nayeon_833_lf_baseline_full_verbose_20261018.log). Original C:\AI\mark-lii checkout and six historical candidate files remain untouched.
+
+Next restart point: Phase 8.33 — bounded threadless one-shot offline fake-only delayed local status, isolated LF checkout C:\Users\krist\AppData\Local\Temp\nayeon_833_lf_isolated_work_20261018, protected HEAD above, core.autocrlf=false. Independent v0.3 DESIGN_GO (nayeon_833_independent_design_review_result_v03_20261018.txt) and exact 16-path amended SCOPE_GO (nayeon_833_scope_amendment_review_result_20261018.txt) were issued; these do NOT approve source or release. Independent SOURCE_GO, staged/postcommit authoritative regression, immutable annotated Git seal, remote sync, existing same-ID master Drive update and public dashboard still required. Do not claim 8.33 complete before these.
+
+Architecture invariant: offline entry cannot become an AI reply or action authority. Tk creator thread exclusively owns a bounded one-shot simulation, exact postcommit snapshot/root/pane/generation, fail-closed cancellation and teardown. Preserve historical 8.29-8.32 immutable exact guards and adversarial tests. Formal architecture progress 5/19, release acceptance 0/12 until separately verified.
+
+The historical checkpoint text below is preserved verbatim; its earlier HOLD/locally sealed statements describe their own dates and are superseded by later verified Git facts above.
+
 # Nayeon v1 — Codex current state
 
 ## 17 October 2026 — Phase 8.31 post-documentation historical-test mismatch: bounded maintenance candidate (latest)

@@ -303,16 +303,30 @@ def approved_830_scope(actual: set[str]) -> set[str]:
     assert_830_integrity()
     # A changed historic window.py is already part of some old sealed deltas.
     # Remove ONLY newly introduced 8.30 paths from those comparisons.
-    return actual - set(APPROVED_NEW_SHA256) - {
+    projected = actual - set(APPROVED_NEW_SHA256) - {
         "nayeon/desktop_alpha/conversation_session.py"}
+    if "nayeon/desktop_alpha/offline_completion_admission.py" in actual:
+        from tests.phase_8_33_scope_migration import assert_833_integrity
+        state = assert_833_integrity()
+        if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.33 production projection")
+        projected = projected - {"nayeon/desktop_alpha/offline_completion_admission.py"}
+    return projected
 
 
 def approved_830_files(actual: set[str]) -> set[str]:
     if type(actual) is not set or any(type(x) is not str for x in actual):
         raise AssertionError("Untrusted production inventory")
     assert_830_integrity()
-    return actual - set(APPROVED_NEW_SHA256) - {
+    projected = actual - set(APPROVED_NEW_SHA256) - {
         "nayeon/desktop_alpha/conversation_session.py"}
+    if "nayeon/desktop_alpha/offline_completion_admission.py" in actual:
+        from tests.phase_8_33_scope_migration import assert_833_integrity
+        state = assert_833_integrity()
+        if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.33 production projection")
+        projected = projected - {"nayeon/desktop_alpha/offline_completion_admission.py"}
+    return projected
 
 
 def _assert_exact_config_imports(relative: str) -> None:

@@ -57,8 +57,8 @@ def replace_or_add_record(raw: bytes, path: str, replacement: bytes) -> bytes:
 def _staged_application_error_pattern(historical_pattern):
     """Validate the original snapshot before accepting an injection error."""
     if (scope.ROOT / "tests/phase_8_32_scope_migration.py").is_file():
-        from tests.phase_8_32_scope_migration import assert_832_integrity
-        state = assert_832_integrity()
+        from tests.phase_8_32_scope_migration import _assert_832_historical
+        state = _assert_832_historical()
         patterns = {
             "COMPLETE_UNSTAGED": "^Partial 8.32 staged snapshot refused$",
             "EXACT_STAGED": "^8.32 index/disk disagreement$",
@@ -82,8 +82,8 @@ def _assert_staged_application_topologies(case, guard, canary):
     case.assertEqual(len(successor.ENVELOPE), 14)
     for state in ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"):
         with case.subTest(state=state), snapshot(state):
-            case.assertEqual(successor.assert_832_integrity(), state)
-            guard()
+            case.assertEqual(successor._assert_832_historical(), state)
+            successor._assert_832_historical()
             if state == "EXACT_STAGED":
                 base = successor._tree(successor.PROTECTED)
                 index = successor._index()
@@ -91,8 +91,8 @@ def _assert_staged_application_topologies(case, guard, canary):
                          if base.get(p) != index.get(p)}
                 case.assertEqual(delta, successor.ENVELOPE)
             # Run the original malicious injection and its reached assertion.
-            canary()
-            guard()
+            canary(_historical=True)
+            successor._assert_832_historical()
 
     # A rejection already present in the original snapshot must propagate
     # before the canary's expected-error context can mistake it for its attack.
@@ -123,9 +123,9 @@ def _assert_staged_application_topologies(case, guard, canary):
                 case.assertEqual({p for p in set(base) | set(index)
                                   if base.get(p) != index.get(p)}, successor.ENVELOPE)
             with case.assertRaisesRegex(AssertionError, expected):
-                guard()
+                successor._assert_832_historical()
             with case.assertRaisesRegex(AssertionError, expected):
-                canary()
+                canary(_historical=True)
 
 
 class Phase830ScopeIntegrityTests(unittest.TestCase):
@@ -199,7 +199,12 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
 
-    def test_staged_unapproved_new_ui_blob_refused(self):
+    def test_staged_unapproved_new_ui_blob_refused(self, _historical=False):
+        from tests.test_phase_832_scope_integrity import snapshot
+        from tests.phase_8_32_scope_migration import _assert_832_historical
+        if not _historical:
+            with snapshot():
+                return self.test_staged_unapproved_new_ui_blob_refused(_historical=True)
         actual = scope._git
         relative = "nayeon/desktop_alpha/application.py"
         reached = []
@@ -216,7 +221,7 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
         expected = _staged_application_error_pattern(historical)
         with mock.patch.object(scope, "_git", side_effect=supplied):
             with self.assertRaisesRegex(AssertionError, expected):
-                scope.assert_830_integrity()
+                _assert_832_historical()
         self.assertEqual(reached, [relative], "Forged application index blob was not reached")
 
     def test_staged_application_canary_across_exact_832_topologies(self):

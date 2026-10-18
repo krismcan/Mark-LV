@@ -19,6 +19,9 @@ from nayeon.desktop_alpha.conversation_session import (
     OfflineConversationSession, ResetOperation, SessionRefused,
 )
 from nayeon.desktop_alpha.presentation_window import PresentationWindow
+from nayeon.desktop_alpha.offline_completion_admission import (
+    CANCELLED, UNAVAILABLE, WAITING, DelayedOfflineCompletion,
+)
 from nayeon.desktop_alpha.workspace_window import (
     ConnectionWindow, ConversationWindow, WorkspaceWindow,
 )
@@ -46,6 +49,7 @@ class OfflineWorkspaceApplication:
         self.controller = PreviewOnlyController()
         self._conversation_root = object()
         self._conversation = OfflineConversationSession(self._conversation_root)
+        self._completion = DelayedOfflineCompletion(root)
         self._conversation_view = None
         self._root_alive = True
         self._closed = False
@@ -162,6 +166,8 @@ class OfflineWorkspaceApplication:
 
     def _revoke_conversation_view(self, *, clear_ui=True) -> None:
         self._require_creator_thread()
+        if clear_ui:
+            self._completion.cancel()
         ui, token, generation = self._active_view, self._active_token, self._generation
         review = ui._reset_review if isinstance(ui, ConversationWindow) else None
         view, self._conversation_view = self._conversation_view, None
@@ -186,6 +192,7 @@ class OfflineWorkspaceApplication:
         # Destroy handlers perform only Python-side revocation, never Tk calls.
         if (self._active_view is view and self._active_token is token
                 and self._generation == generation):
+            self._completion.pane_destroyed()
             self._revoke_conversation_view(clear_ui=False)
             self._active_view = self._active_token = None
             self._operation_token = None
@@ -195,6 +202,7 @@ class OfflineWorkspaceApplication:
     def _root_destroyed(self, event) -> None:
         self._require_creator_thread()
         if event.widget is self.root:
+            self._completion.destroyed()
             self._conversation.close(self._conversation_root)
             self._conversation_view = None
             self._root_alive = False
@@ -209,6 +217,8 @@ class OfflineWorkspaceApplication:
         if self._closed:
             return
         was_alive = self._root_exists()
+        self._completion.cancel()
+        self._completion.destroyed()
         self._conversation.close(self._conversation_root)
         self._conversation_view = None
         # Revoke before widget destruction dispatches any Destroy bindings.
@@ -260,6 +270,11 @@ class OfflineWorkspaceApplication:
                     assistant_name=self._published_document.assistant.display_name,
                     user_name=self._published_document.user.display_name or "You",
                     on_send=lambda: self._conversation_send(view, token, generation),
+                    on_cancel_simulation=lambda: self._conversation_cancel_simulation(
+                        view, token, generation),
+                    on_before_destroy=lambda: self._completion.cancel()
+                        if (self._active_view is view and self._active_token is token
+                            and self._generation == generation) else None,
                     on_reset=lambda operation: self._conversation_review(
                         view, token, generation, operation),
                     is_current=lambda: self._current(view, token, generation),
@@ -337,6 +352,7 @@ class OfflineWorkspaceApplication:
             return
         self._busy = True
         ticket = None
+        completion_attempted = False
         prior = view._reset_review
         current = lambda: self._conversation_current(view, token, generation, authority)
         try:
@@ -350,6 +366,7 @@ class OfflineWorkspaceApplication:
             self._conversation.claim_submission(self._conversation_root, authority, ticket)
             result = self._conversation.commit_submission(
                 self._conversation_root, authority, ticket)
+            self._completion.cancel()
             # Only an accepted commit invalidates the pending review. Rejected
             # text/capacity leaves transcript and review untouched.
             if not current():
@@ -367,11 +384,33 @@ class OfflineWorkspaceApplication:
             if current():
                 view.render(result.snapshot)
             if current():
+                # Preserve the synchronous offline-save display boundary and
+                # its historical fault tests before requesting any simulation.
                 view.show_status("Saved in this session only. No AI request or action was performed.")
+                if not current():
+                    return
+                snapshot = result.snapshot
+                def completion_current():
+                    self._require_creator_thread()
+                    return current() and self._conversation.snapshot is snapshot
+                completion_attempted = True
+                admitted = self._completion.start(
+                    result, pane=token, generation=generation,
+                    read_snapshot=lambda: self._conversation.snapshot,
+                    current=completion_current,
+                    render=lambda text, eligible: view.show_simulation_status(
+                        text, lambda: completion_current() and eligible()))
+                if completion_current() and self._completion.is_pending_for(snapshot):
+                    view.show_simulation_status(WAITING,
+                        lambda: completion_current() and self._completion.is_pending_for(snapshot))
+                elif completion_current() and not admitted:
+                    view.show_simulation_status(UNAVAILABLE, completion_current)
         except SessionRefused as error:
             if current():
                 self._reset_status(view, token, generation, error.code.value)
         except Exception:
+            if completion_attempted:
+                self._completion.publication_failed()
             if current():
                 self._reset_status(view, token, generation,
                     "Display unavailable. No AI request or action was performed. Reopen Conversation.")
@@ -379,6 +418,29 @@ class OfflineWorkspaceApplication:
             if ticket is not None:
                 self._conversation.revoke_submission(self._conversation_root, ticket)
             self._busy = False
+
+    def _conversation_cancel_simulation(self, view, token, generation) -> None:
+        self._require_creator_thread()
+        if not self._current(view, token, generation):
+            return
+        snapshot = self._conversation.snapshot
+        self._completion.cancel()
+        def eligible():
+            return (self._current(view, token, generation)
+                    and self._conversation.snapshot is snapshot
+                    and not self._completion.is_pending_for(snapshot))
+        if eligible():
+            try:
+                # Recheck the captured cancellation after the view-current seam;
+                # a nested Send may already own the successor status and timer.
+                view.show_simulation_status(CANCELLED, eligible)
+            except (tk.TclError, RuntimeError):
+                # A cancellation cannot silently leave a stale WAITING status.
+                # Fail closed only for A when it is still current; a reentrant
+                # successor or destroyed root must retain its own authority.
+                if eligible():
+                    self._completion.publication_failed()
+                raise RuntimeError("CANCEL_STATUS_PUBLICATION_FAILED") from None
 
     def _conversation_now(self) -> int:
         self._require_creator_thread()
@@ -439,6 +501,7 @@ class OfflineWorkspaceApplication:
                 snapshot = self._conversation.confirm_reset(
                     self._conversation_root, authority, review, review.operation,
                     now_ms=self._conversation_now())
+                self._completion.cancel()
                 cleaned = self._cleanup_reset(view, token, generation, review)
                 if current() and cleaned:
                     view.render(snapshot)

@@ -23,14 +23,26 @@ def _frozen_831_fixture(method):
     @wraps(method)
     def run(self, *args, **kwargs):
         saved_git = previous._git
+        saved_rglob = Path.rglob
+        frozen_tree = previous._tree(scope.PRODUCT_COMMIT_831)
+        frozen_python = tuple(previous.ROOT / p for p in sorted(frozen_tree) if p.endswith(".py"))
         def git(*command):
             if command[:2] == ("branch", "--show-current"):
                 return b"nayeon-v1\n"
+            if command == ("ls-files", "--others", "--exclude-standard", "-z"):
+                # This is a committed historical fixture, not a projection of
+                # today's candidate. Current admission is tested separately.
+                return b""
             return saved_git(*command)
+        def rglob(path, pattern):
+            if path == previous.ROOT / "nayeon" and pattern == "*.py":
+                return iter(frozen_python)
+            return saved_rglob(path, pattern)
         def frozen_disk(path):
             return previous._normal(saved_git("show", scope.PRODUCT_COMMIT_831 + ":" + path))
         with (mock.patch.object(previous, "_git", side_effect=git),
-              mock.patch.object(scope, "_disk", side_effect=frozen_disk)):
+              mock.patch.object(scope, "_disk", side_effect=frozen_disk),
+              mock.patch.object(Path, "rglob", rglob)):
             return method(self, *args, **kwargs)
     return run
 
@@ -57,6 +69,7 @@ class Phase831ScopeTests(unittest.TestCase):
 
     def test_new_831_file_missing_fails_closed(self):
         from tests import phase_8_32_scope_migration as successor
+        from tests.test_phase_832_scope_integrity import snapshot
         real = successor._raw_frozen_disk
         target = "nayeon/desktop_alpha/conversation_session.py"
         reached = []
@@ -65,12 +78,17 @@ class Phase831ScopeTests(unittest.TestCase):
                 reached.append(path)
                 raise AssertionError("Missing, linked or nonregular 8.31 source")
             return real(path)
-        with mock.patch.object(successor, "_raw_frozen_disk", side_effect=missing):
+        with snapshot(), mock.patch.object(successor, "_raw_frozen_disk", side_effect=missing):
             with self.assertRaisesRegex(AssertionError, "^Missing, linked or nonregular 8.31 source$"):
-                scope.assert_831_integrity()
+                successor._assert_832_historical()
         self.assertEqual(reached, [target], "Frozen owner missing-read injection was not reached")
 
-    def test_index_tampered_working_tree_disagreement_refused(self):
+    def test_index_tampered_working_tree_disagreement_refused(self, _historical=False):
+        from tests.test_phase_832_scope_integrity import snapshot
+        from tests.phase_8_32_scope_migration import _assert_832_historical
+        if not _historical:
+            with snapshot():
+                return self.test_index_tampered_working_tree_disagreement_refused(_historical=True)
         real = previous._git
         target = b"nayeon/desktop_alpha/application.py"
         fake = b"100644 " + b"1"*40 + b" 0\t" + target
@@ -90,7 +108,7 @@ class Phase831ScopeTests(unittest.TestCase):
         expected = _staged_application_error_pattern(historical)
         with mock.patch.object(previous, "_git", side_effect=injected):
             with self.assertRaisesRegex(AssertionError, expected):
-                scope.assert_831_integrity()
+                _assert_832_historical()
         self.assertEqual(reached, [target], "Forged application index blob was not reached")
 
     def test_staged_application_canary_across_exact_832_topologies(self):

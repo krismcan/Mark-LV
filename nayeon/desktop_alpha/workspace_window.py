@@ -132,8 +132,13 @@ class WorkspacePane(ttk.Frame):
 
 class ConversationWindow(WorkspacePane):
     def __init__(self, parent, *, on_send, on_reset, is_current,
-                 on_destroy, assistant_name: str, user_name: str):
+                 on_destroy, assistant_name: str, user_name: str,
+                 on_cancel_simulation=None, on_before_destroy=None):
         super().__init__(parent, name="conversation_view", on_destroy=on_destroy)
+        # Explicit owner-thread destroy may retire a known timer BEFORE Tk
+        # deletes its registered Tcl callback command. Destroy event bindings
+        # remain Python-only, including unexpected native destruction.
+        self._on_before_destroy = on_before_destroy
         self._on_send = on_send
         self._is_current = is_current
         self._assistant_name, self._user_name = assistant_name, user_name
@@ -173,6 +178,11 @@ class ConversationWindow(WorkspacePane):
         self.status = ttk.Label(self, wraplength=680, style="Muted.Offline.TLabel",
                                 text="Offline session only. No AI request or action was performed.")
         self.status.pack(anchor="w", pady=6)
+        if on_cancel_simulation is not None:
+            self.cancel_simulation_button = ttk.Button(
+                self, text="Cancel local simulation",
+                command=lambda: self._dispatch(on_cancel_simulation))
+            self.cancel_simulation_button.pack(anchor="w", pady=(0, 6))
         reset_row = ttk.Frame(self, style="Offline.TFrame")
         reset_row.pack(fill="x")
         self.clear_button = ttk.Button(reset_row, text="Review Clear", command=lambda: self._dispatch(on_reset, ResetOperation.CLEAR))
@@ -214,6 +224,15 @@ class ConversationWindow(WorkspacePane):
         if len(text) > 160:
             raise ValueError("Status exceeds display bound")
         if self._is_current():
+            self.status.configure(text=text)
+
+    def show_simulation_status(self, text, eligible):
+        self._require_creator_thread()
+        if len(text) > 160:
+            raise ValueError("Status exceeds display bound")
+        # View-current may dispatch nested application callbacks. Recheck exact
+        # completion authority AFTER that seam, immediately before the widget.
+        if self._is_current() and eligible():
             self.status.configure(text=text)
 
     def render(self, snapshot):
@@ -278,6 +297,9 @@ class ConversationWindow(WorkspacePane):
 
     def destroy(self) -> None:
         self._require_creator_thread()
+        before, self._on_before_destroy = self._on_before_destroy, None
+        if self._alive and before is not None:
+            before()
         self._reset_review = None
         self._reset_confirm = self._reset_dismiss = None
         super().destroy()

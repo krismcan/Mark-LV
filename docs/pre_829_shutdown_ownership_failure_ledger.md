@@ -663,3 +663,112 @@ Static Git/whitespace evidence and final fourteen-file raw SHA256 manifest are r
 - Phase 8.31 historical canary now intercepts real successor `_raw_frozen_disk` for the frozen `conversation_session.py`, retaining the negative injection and reached-path assertion. Phase 8.32 real-state test now derives expected `COMPLETE_UNSTAGED`, `EXACT_STAGED` or `EXACT_CHILD` from exact HEAD/index, not one hardcoded state. The injected missing-child test validates the actual earlier fail-closed rejection.
 - The previously authorised one-time host-side exact append of 4,822 bytes to `.codex/CURRENT_STATE.md` was performed with exclusive FileStream and SHA256 prefix/suffix, identical NTFS file ID, ACL SDDL, Git index and protected HEAD; new raw SHA256 `6F1432C27A13E0C37BBA707881D766899148A9E14A937B95317F8B3AC164C58F`. No ACL modification or bypass; original checkout untouched.
 - These are SOURCE-REPAIR CANDIDATE facts, not a Phase 8.32 security GO, seal, GitHub push, workbook update or release gate. Source guard pins must be refreshed to exact final fourteen-file bytes, followed by complete scope, affected and authoritative Windows full suite, independent full source/staged reviews, controlled one-child Git seal and remote verification. No real providers, credentials, native WinCred or new desktop action authority. Stop on any remaining HIGH/MEDIUM or red test.
+
+### 18 October 2026 - Phase 8.33 static implementation scope STOP
+
+**833-SCOPE-01 / MEDIUM design-scope blocker / HOLD.** The required new production
+helper `nayeon/desktop_alpha/offline_completion_admission.py` survives the fixed
+`approved_830_scope` and `approved_830_files` projections in
+`tests/phase_8_30_scope_migration.py:297,308`, and the downstream 8.29 migration
+only removes its two historical lifecycle/onboarding paths. Even after exact
+8.33 admission succeeds, historical tests requiring exact production deltas
+and filesystem inventories will still see this additional helper. Concrete
+callers include `tests/test_presentation_identity_contracts.py:246,253` and
+`tests/test_bound_credential_lifecycle.py:448,451`, plus other adapter consumers.
+Root cause: the approved v0.3 envelope migrated integrity admission and selected
+canaries but omitted the shared historical inventory projection for a new
+production addition. This is static causal evidence, not an executed RED test.
+
+The shared 8.30 helper and affected older consumer modules are outside the
+reviewed fifteen paths. No runtime monkeypatch, allowlist mutation, import-order
+bypass, skipped test or weakened historical pin was introduced to hide the
+gap. The user explicitly required STOP if the exact envelope cannot handle an
+actual historical caller. Forward implementation stopped; partial unstaged
+source/fixture edits are preserved, not a completed candidate. Proposed next
+step is independent review of a bounded scope amendment for the shared adapter
+while preserving historical object/hash proof. No independent source GO exists.
+Full evidence and restart obligations are in
+`docs/phase_8_33_offline_delayed_completion_review.md`.
+
+Supplied host LF baseline: 2617/2617 PASS, exit 0, 1158.098 seconds; baseline log
+raw SHA256 `BCE8B9C0857D4BD30856B611B1731BDCC186D48189EDBF2789E5B5CAF8FDCB58`
+verified. Independent v0.3 design report raw SHA256
+`DCEA166F3A7B9D87885A909BC1110FA8002CD3B2768E2E5E43CF9BD81EA99FFC` verified;
+that design GO is not implementation approval. Protected HEAD and 8.32 tag are
+unchanged. Codex could not launch the host Python executable; no post-edit
+tests, native Tk or compileall ran, and that sandbox limitation was not the
+reason for stopping static work.
+
+The v05 host-document exception was honored: `.codex/CURRENT_STATE.md` was
+never written or attempted; raw SHA256 remains
+`6F1432C27A13E0C37BBA707881D766899148A9E14A937B95317F8B3AC164C58F`.
+The other fourteen paths are not yet prepared; the host-write prerequisite is
+therefore outstanding. No staging, commit, tag, push, ACL changes, external
+service, master workbook, dashboard, credential or live action effects.
+Disposition: **SOURCE_REVIEW_PENDING / HOLD**, no milestone or release claim.
+
+### 18 October 2026 - Phase 8.33 approved 16-path completion handoff
+
+The independent scope-amendment review returned conditional SCOPE_GO for exactly
+one additional modified path, `tests/phase_8_30_scope_migration.py`: seven
+additions and nine modifications total. This supersedes the earlier envelope
+blocker for implementation only; the preceding static STOP evidence remains
+historical. No independent final-source or runtime GO is inferred.
+
+833-SCOPE-01 repair: both shared adapters preserve exact set/string input checks
+and the original `assert_830_integrity()` call. Only literal presence of the new
+production helper triggers a lazy 8.33 import/check, and only explicit
+COMPLETE_UNSTAGED/EXACT_STAGED/EXACT_CHILD permits its subtraction. LEGACY,
+unknown results, import failures and verification failures refuse. Caller sets,
+similarly named paths, old allowlists, original SHA pins and old tag objects are
+unchanged. The proof graph stays acyclic: successor uses low-level 8.32 history,
+never public predecessor admission or projections. New tests use complete
+positive controls, specific rejection and injection-reached assertions for pin,
+index, unauthorized source and historical second-tree attacks; they also cover
+both actual adapters, migrated composition, invalid input/status, bounded double
+successor checks and predecessor recursion tripwires.
+
+M02/M05 completion source now uses a creator-thread one-shot controller with
+exact postcommit snapshot/pair and opaque ticket authority, serialized
+registration/cancellation, fixed 150-ms delay and permanent poison after
+uncertainty. External child Destroy revokes/poisons in Python without declaring
+the actual root CLOSED; external root Destroy is also Python-only. Delayed
+completion is consumed before callbacks; UI eligibility is checked after view
+callbacks so stale A cannot overwrite B, cancellation or completed status.
+No production worker, queue, polling, provider, network, credential, native
+action, persistent transcript or fake assistant entry is introduced.
+
+M06 fixtures retain immutable historical source: 8.32 synthetic data uses sealed
+H and its exact old raw 8.30 helper, while 8.31 private fixtures enumerate the
+sealed product Python inventory and model its committed no-untracked state.
+Live source tests still traverse the public 8.33 route. Historical checker
+bodies, hashes, tags, exact rejection texts and second-tree attack reach remain
+required. The existing synchronous save-status fault seam is retained before
+simulation admission. Independent reviewer must inspect these precise fixture
+migrations and all completed production/test paths.
+
+Native tests are authored for actual timer inventories and before/after-effect
+faults, foreign timers, reentrancy, accepted/rejected reset, wrong-thread ingress,
+pure Destroy and unchanged transcript. A separate bounded child-process test
+uses test-only worker GC during pending/navigation/close/root retirement and
+asserts creator-thread collection before later GC. M04/native Tcl closure remains
+unverified until authoritative host execution. No RED/GREEN or compileall result
+is claimed from this sandbox. User-supplied full LF baseline remains 2617 PASS /
+exit 0 before these edits; Python unavailability is an environment restriction,
+not a reason to abandon implementation or a candidate validation result.
+
+Exactly fifteen Codex-writable paths are prepared. `.codex/CURRENT_STATE.md` was
+read only, never written or attempted; unchanged raw SHA256 is
+`6F1432C27A13E0C37BBA707881D766899148A9E14A937B95317F8B3AC164C58F`.
+Its exact reserved host append proposal and exclusive-writer/pin/test/review
+sequence are in the 8.33 completion review. All sixteen candidate manifest
+entries remain zero/fail-closed until that host write and final pinning; the
+zeroed-self convention is explicit and is not a raw self-hash claim.
+
+No stage/commit/tag/push, tag movement, original checkout access, service,
+credential/user-data access, network or workbook/dashboard write occurred.
+Disposition: **implementation prepared, SOURCE_REVIEW_PENDING / HOLD for host
+context, pins, focused/affected/full runtime and independent source review**.
+M01-M06/SCOPE-01 verified closure and all later seal gates remain required.
+
+18 October 2026, Phase 8.33 v0.10 follow-up: older Phase 8.31 workspace tests initially emitted two Tcl orphan-callback errors despite 26/26 unittest passes. Root cause was a direct conversation-pane `destroy()` deleting a pending 8.33 Tk callback while the internal timer remained scheduled. Within existing 16-path reviewed envelope, the before-destroy owner callback cancels only the exact current-pane timer on its creator thread; external `Destroy` handlers remain Python-only. Cancellation publication now explicitly reports sanitized errors and contains failure only for still-current A, preserving B/CLOSED. Independent v0.9 SOURCE_GO, 66/66 combined focused v0.10 PASS with zero Tcl warning, and additional reentrant/stale-pane tests are documented in docs/phase_8_33_offline_delayed_completion_review.md. Previous 2,674/2,674 candidate unittest PASS with Tcl warnings remains invalid for release, and a partial later full run was stopped to incorporate reviewer-requested tests. New full and staged/postcommit GO still required; Phase 8.33 remains HOLD.

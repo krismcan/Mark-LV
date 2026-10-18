@@ -273,7 +273,7 @@ def _others(*args):
     return result
 
 
-def assert_832_integrity():
+def _assert_832_historical():
     """Return LEGACY / COMPLETE_UNSTAGED / EXACT_STAGED / EXACT_CHILD.
 
     This proves candidate shape and pinned bytes only; independent GO and full
@@ -402,6 +402,12 @@ def assert_832_integrity():
                 raise AssertionError("Wrong 8.32 raw status/mode/blob")
             seen.add(path)
     return state
+
+
+def assert_832_integrity():
+    """Live admission always traverses the bounded 8.33 successor."""
+    from tests.phase_8_33_scope_migration import assert_833_integrity
+    return assert_833_integrity()
 
 
 def current_source_oid(path):
