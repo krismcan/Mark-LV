@@ -63,6 +63,26 @@ class Phase836IntegrityTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError,"Missing or extra untracked"):
                 scope.assert_836_integrity()
 
+    def test_ignored_bytecode_must_never_authorize_importable_code(self):
+        # -B only stops bytecode writes; Python may still read existing pyc.
+        # Production source and test caches cannot bypass raw SHA256 pins.
+        real=scope._others
+        for path in (
+            "nayeon/desktop_alpha/__pycache__/offline_request_review.cpython-312.pyc",
+            "tests/__pycache__/test_phase_836_scope_integrity.cpython-312.pyc",
+            "core/__pycache__/llm_client.cpython-312.pyc",
+        ):
+            def inject(*args):
+                existing=real(*args)
+                if args == ("--ignored", "--exclude-standard"):
+                    return existing | {path}
+                return existing
+            with self.subTest(path=path), mock.patch.object(
+                scope, "_others", side_effect=inject):
+                with self.assertRaisesRegex(
+                    AssertionError, "Ignored 8.36 executable or source"):
+                    scope.assert_836_integrity()
+
     def test_wrong_branch_refused_before_expensive_seal(self):
         actual=scope._git
         def fake(*args):
