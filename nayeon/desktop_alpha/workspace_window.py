@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 
+from nayeon.desktop_alpha.offline_request_review import (
+    DISCLOSURE, ReviewContext, ReviewRefused, ReviewState,
+    OfflineRequestReviewOwner,
+)
+
 from nayeon.desktop_alpha.conversation_session import (
-    EntrySource, ResetOperation, SessionRefused, validate_offline_text,
+    EntrySource, ResetOperation, SessionRefused, SessionSnapshot,
+    validate_offline_text,
 )
 from nayeon.desktop_alpha.reply_contracts import ERROR_TEXT, SIMULATED_TEXT
 
@@ -245,8 +252,15 @@ class ConversationWindow(WorkspacePane):
     def __init__(self, parent, *, on_send, on_reset, is_current,
                  on_destroy, assistant_name: str, user_name: str,
                  on_cancel_simulation=None, on_before_destroy=None,
-                 on_reply=None, on_cancel_reply=None):
+                 on_reply=None, on_cancel_reply=None, on_request_snapshot=None):
         super().__init__(parent, name="conversation_view", on_destroy=on_destroy)
+        self._request_snapshot = on_request_snapshot
+        self._request_root = object()
+        self._request_pane = object()
+        self._request_owner = OfflineRequestReviewOwner(self._request_root)
+        self._request_context = self._request_prompt = self._request_ticket = None
+        self._request_serial = 0
+        self._request_busy = self._request_pending_clear = False
         # Explicit owner-thread destroy may retire a known timer BEFORE Tk
         # deletes its registered Tcl callback command. Destroy event bindings
         # remain Python-only, including unexpected native destruction.
@@ -295,6 +309,24 @@ class ConversationWindow(WorkspacePane):
         self.reply_status = ttk.Label(self, text="SIMULATED REPLY / NO AI REQUEST",
                                       wraplength=680, style="Badge.Offline.TLabel")
         self.reply_status.pack(anchor="w", pady=6)
+        request_row = ttk.Frame(self, style="Offline.TFrame")
+        request_row.pack(fill="x", pady=(4, 4))
+        request_ready = "normal" if on_request_snapshot is not None else "disabled"
+        self.request_review_button = ttk.Button(request_row, text="Review offline prompt",
+            state=request_ready, command=self._begin_request_review)
+        self.request_confirm_button = ttk.Button(request_row, text="Confirm offline review",
+            state="disabled", command=self._confirm_request_review)
+        self.request_cancel_button = ttk.Button(request_row, text="Cancel review",
+            state=request_ready, command=self._cancel_request_review)
+        for button in (self.request_review_button, self.request_confirm_button,
+                       self.request_cancel_button):
+            button.pack(side="left", padx=(0, 7))
+        self.request_disclosure = ttk.Label(self, text="", wraplength=680,
+            style="Muted.Offline.TLabel")
+        self.request_disclosure.pack(anchor="w", pady=(1, 3))
+        self.request_status = ttk.Label(self, text="No AI request or action was performed.",
+            wraplength=680, style="Badge.Offline.TLabel")
+        self.request_status.pack(anchor="w", pady=(0, 5))
         if on_reply is not None:
             self.reply_button = ttk.Button(self, text="Simulate reply (no AI)",
                 command=lambda: self._dispatch(on_reply))
@@ -319,6 +351,160 @@ class ConversationWindow(WorkspacePane):
             button.bind("<Return>", lambda event, b=button: self._return(b.invoke))
         self.reset_status = ttk.Label(self, text="", wraplength=680, style="Badge.Offline.TLabel")
         self.reset_status.pack(anchor="w", pady=6)
+
+    def _request_now(self):
+        self._require_creator_thread()
+        return time.monotonic_ns() // 1_000_000
+
+    def _request_pure_current(self, context, serial, state):
+        # No Tcl calls: this predicate can run AFTER final widget observation.
+        return (self._alive and self._request_context is context
+                and self._request_serial == serial
+                and not self._request_pending_clear
+                and self._request_owner.state is state)
+
+    def _cancel_request_review(self):
+        self._require_creator_thread()
+        self._request_serial += 1
+        self._request_context = self._request_prompt = self._request_ticket = None
+        self._request_owner.abort()
+        if self._request_busy:
+            self._request_pending_clear = True
+            return False
+        self._request_busy = True
+        self._request_pending_clear = False
+        failed = False
+        try:
+            if self._alive:
+                # Clear the old success receipt FIRST. A later button or
+                # disclosure fault cannot leave stale success visible.
+                # Each surface has independent best-effort hidden fallback.
+                for widget, options in (
+                    (self.request_status,
+                     {"text": "No AI request or action was performed."}),
+                    (self.request_confirm_button, {"state": "disabled"}),
+                    (self.request_disclosure, {"text": ""})):
+                    try:
+                        widget.configure(**options)
+                    except (tk.TclError, RuntimeError):
+                        failed = True
+                        try:
+                            widget.pack_forget()
+                        except (tk.TclError, RuntimeError):
+                            pass
+        finally:
+            self._request_busy = False
+        if failed:
+            self._request_pending_clear = True
+        return not failed and not self._request_pending_clear
+
+    def _begin_request_review(self):
+        self._require_creator_thread()
+        if self._request_snapshot is None or not self._alive or self._request_busy:
+            return False
+        self._request_serial += 1
+        self._request_owner.abort()
+        self._request_context = self._request_prompt = self._request_ticket = None
+        self._request_owner.reset()
+        self._request_busy = True
+        serial = self._request_serial
+        complete = False
+        try:
+            self.request_confirm_button.configure(state="disabled")
+            if not self._is_current() or self._request_pending_clear:
+                return False
+            snapshot = self._request_snapshot()
+            if type(snapshot) is not SessionSnapshot or snapshot.closed:
+                return False
+            prompt = self.entry.get()
+            context = ReviewContext(self._request_root, self._request_pane,
+                snapshot.session_identity, serial, snapshot.epoch, snapshot.revision)
+            preview = self._request_owner.offer(context, prompt, self._request_now())
+            self._request_context, self._request_prompt = context, prompt
+            complete = self._publish_request_review(
+                context, prompt, snapshot, serial, preview)
+            return complete
+        except (ReviewRefused, tk.TclError, RuntimeError, ValueError):
+            return False
+        finally:
+            self._request_busy = False
+            if not complete or self._request_pending_clear:
+                self._cancel_request_review()
+
+    def _publish_request_review(self, context, prompt, snapshot, serial, preview):
+        display = "PROPOSED PROMPT (NOT SENT): " + preview.prompt + "\n" + DISCLOSURE
+        self.request_disclosure.configure(text=display)
+        if not self._request_pure_current(context, serial, ReviewState.PREVIEW):
+            return False
+        if self.request_disclosure.cget("text") != display:
+            return False
+        self.request_status.configure(
+            text="Review the prompt above. Nothing will be sent.")
+        if not self._request_pure_current(context, serial, ReviewState.PREVIEW):
+            return False
+        self._request_owner.begin_enable(context, prompt, self._request_now())
+        self.request_confirm_button.configure(state="normal")
+        # All potentially reentrant Tcl-backed checks precede final instate.
+        if not self._is_current() or self.entry.get() != prompt:
+            return False
+        if self.request_disclosure.cget("text") != display:
+            return False
+        if self._request_snapshot() is not snapshot:
+            return False
+        if not self.request_confirm_button.winfo_exists():
+            return False
+        if not self._request_pure_current(context, serial, ReviewState.ENABLING):
+            return False
+        # LAST TCL SEAM. No widget queries or yielding between this and arm.
+        enabled = self.request_confirm_button.instate(("!disabled",))
+        if not enabled or not self._request_pure_current(
+                context, serial, ReviewState.ENABLING):
+            return False
+        self._request_ticket = self._request_owner.arm_after_last_tk(
+            context, prompt, self._request_now())
+        return True
+
+    def _confirm_request_review(self):
+        self._require_creator_thread()
+        if self._request_busy:
+            self._cancel_request_review()  # Reentrant before/after Tcl effects.
+            return False
+        context, prompt, ticket = (
+            self._request_context, self._request_prompt, self._request_ticket)
+        if not self._alive or context is None or ticket is None:
+            return False
+        self._request_busy = True
+        serial = self._request_serial
+        complete = False
+        try:
+            if not self._is_current() or self.entry.get() != prompt:
+                return False
+            snapshot = self._request_snapshot()
+            if (type(snapshot) is not SessionSnapshot or snapshot.closed
+                    or snapshot.session_identity is not context.session
+                    or snapshot.epoch != context.epoch
+                    or snapshot.revision != context.revision
+                    or not self._request_pure_current(
+                        context, serial, ReviewState.ARMED)):
+                return False
+            receipt = self._request_owner.confirm(
+                ticket, context, prompt, self._request_now())
+            self._request_ticket = None
+            self.request_confirm_button.configure(state="disabled")
+            self.request_disclosure.configure(text="")
+            if not self._request_pure_current(
+                    context, serial, ReviewState.IDLE):
+                return False
+            self.request_status.configure(text=receipt.status)
+            complete = self._request_pure_current(
+                context, serial, ReviewState.IDLE)
+            return complete
+        except (ReviewRefused, tk.TclError, RuntimeError, ValueError):
+            return False
+        finally:
+            self._request_busy = False
+            if not complete or self._request_pending_clear:
+                self._cancel_request_review()
 
     def exists(self) -> bool:
         self._require_creator_thread()
@@ -400,6 +586,7 @@ class ConversationWindow(WorkspacePane):
 
     def render(self, snapshot):
         self._require_creator_thread()
+        self._cancel_request_review()
         # The bounded immutable owner snapshot is authoritative; never evict.
         if not self._is_current():
             return
@@ -423,6 +610,7 @@ class ConversationWindow(WorkspacePane):
 
     def show_reset(self, review, confirm, dismiss):
         self._require_creator_thread()
+        self._cancel_request_review()
         prior = self._reset_review
         self.clear_reset(prior)
         if not self._is_current() or self._reset_review is not None:
@@ -472,6 +660,9 @@ class ConversationWindow(WorkspacePane):
     def _destroyed(self, event):
         self._require_creator_thread()
         if event.widget is self:
+            self._request_serial += 1
+            self._request_context = self._request_prompt = self._request_ticket = None
+            self._request_owner.close()
             self._reset_review = None
             self._reset_confirm = self._reset_dismiss = None
         super()._destroyed(event)
@@ -492,6 +683,7 @@ class ConversationWindow(WorkspacePane):
         self._require_creator_thread()
         if self._sending or not self._is_current():
             return "break"
+        self._cancel_request_review()
         self._sending = True
         try:
             self._on_send()
