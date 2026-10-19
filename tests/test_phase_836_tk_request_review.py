@@ -142,10 +142,11 @@ class Phase836NativeReviewTests(unittest.TestCase):
         self.assertEqual(fired, [True])
         self.assertIsNone(self.view._request_ticket)
         worker = self.app._reply_owner._thread
-        if worker is not None and worker.ident is not None:
-            worker.join(2)
-            self.assertFalse(worker.is_alive())
-            self.assertTrue(self.app.retry_reply_retirement())
+        self.assertIsNotNone(worker, "Worker race must exercise a real admission")
+        self.assertIsNotNone(worker.ident, "Worker must actually have started")
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(self.app.retry_reply_retirement())
 
     def test_receipt_cleared_even_if_following_button_disable_fails(self):
         self.arm()
