@@ -1,89 +1,80 @@
-# Phase 8.36 — Model-ready conversation, consent-bound OFFLINE preview
+# Phase 8.36 — OFFLINE prompt review: minimal integration contract (v0.4)
 
-**Design v0.3 — independent rereview requested, not approved.** 19 October 2026.  
-**Draft review PR only. DO NOT MERGE.** No executable product code or release change.  
-**Protected product commit:** `b0490cd9e72104a74a32dc5315cbc55bc4034676` (Phase 8.34 fake-only reply lifecycle).  
-**Exact remote annotated tag:** `nayeon-v1-phase-8-34-fake-reply-lifecycle-01`; Git tag object `b503ce088ee4a787990534ea862be2936fa55767` peels to that commit.
+**Decision sought:** independent DESIGN_GO/HOLD and SCOPE_GO/HOLD on exact sealed Phase 8.34 parent `b0490cd9e72104a74a32dc5315cbc55bc4034676`. **This draft is NOT production or release approval.** Supersedes design v0.3 on this review branch. 19 October 2026.
 
-## Scope and deliberately narrow product claim
+## Purpose, value and non-goals
 
-Phase 8.36's **first increment** shall provide a user-visible **OFFLINE request review** with an exact, bounded proposed prompt, optional cached provider/model **informational metadata**, and a complete "NO MESSAGE SENT" disclosure. Completing a review returns a fixed **NON-AUTHORIZING offline receipt**. This phase does **not** activate live AI, verify remote model support, establish the presence or correctness of API credentials, authorise data transmission, or produce a real AI response. There is no future-live permission hidden in a saved review ticket.
+One additional **usable Nayeon desktop action**: from the existing Conversation pane, the user selects *Review offline prompt*, sees exactly what would hypothetically be submitted plus a prominently visible "**OFFLINE REVIEW ONLY — NO AI REQUEST, CREDENTIAL ACCESS, OR ACTION**" disclosure, then selects *Confirm offline review*. The app displays a fixed **non-authorising** confirmation receipt. Existing *Save offline*, *Simulate reply*, *Review Clear*, *Review New Session* and navigation remain unchanged. No actual AI request, provider readiness claim, transmission, credential lookup, change to offline history, action authority or implied future send approval. No arbitrary model-ready transcript replay.
 
-The existing Save Offline / Reset / Simulate Reply behaviour is unchanged. Never convert offline history into provider input, never forge AI replies, and never turn user/model-generated text into action permissions.
+**Deliberate scope reduction resolving v0.3 latent-capability finding:** Phase 8.36 has **NO provider/model metadata extraction at all**. Show a literal "MODEL NOT CONNECTED — OFFLINE PREVIEW ONLY". Do not construct, import on a new path, capture or retain `ProviderConnectionService`, `ProviderConnectionFileStore`, `BoundSecretResolver`, `AIService`, `OpenAIProvider`, `compose_provider_ai_service`, filesystem/secret providers, network clients or an observer/callback pointing to those. Do not place one on `OfflineWorkspaceApplication`. Explicit text and simple opaque identity only. A future independently reviewed *live* phase must separately solve external-writer A→B→A freshness and real outbound approval; the 8.36 receipt gives **zero** send authority.
 
-**Required future live-request phase:** separately designed atomic transmission authority and network lifecycle. Any provider-connection metadata, candidate transcript bytes and outbound consent must be re-observed under that future trust boundary, not inherited from this offline-only phase.
+## Full creator-owned protocol; resolve v0.3 widget-state P2 without unsafe proof
 
-## Trusted sources and reviewed exact paths
+The existing `OfflineWorkspaceApplication` owns the unique Tk root and current conversation pane/generation/session. Its new offline review controller uses pure in-memory owner state and exact non-secret prompt data, plus opaque identity. There is only one creator-thread writer. No callback based on caller-supplied `human_clicked=True`. Exact bound Review/Confirm buttons and commands may be invoked programmatically within the process: never claim cryptographic proof of physical human presence. A stale, copied, foreign or direct owner confirmation fails if its generation/callback/ticket does not match.
 
-- `nayeon/desktop_alpha/application.py`, `workspace_window.py`: creator-thread Tk root, pane/window, explicit callback route, lifecycle.
-- `nayeon/desktop_alpha/conversation_session.py`: ephemeral OFFLINE/UNSENT status; never implicitly included in a transmission.
-- `nayeon/desktop_alpha/reply_owner.py`, `reply_worker.py`, `reply_contracts.py`: sealed fake-only reply worker, fixed status and physical lifetime, not transport authority.
-- `nayeon/brain/connection_service.py`, `connection_document.py`, `connection_readiness.py`, `connection_persistence.py`: provider **cached metadata only**, no secret or remote availability proof.
-- `nayeon/brain/service.py`, `connection_composition.py`, `providers/openai.py`, `providers/openai_client.py`: existing lazy provider authority. **Forbidden by design in the new offline review ownership graph.**
-- Existing tests for callback ordering, reset, undo, thread identity, real root Destroy, and original 8.30–8.34 history/source/tag/index/alias tamper injection.
+0. **Admission:** only the currently bound *Review offline prompt* command for the current active conversation pane, creator thread and exact generation may initiate a new proposal. `reply_owner` must report no outstanding worker, drain, poison or reply transaction; any concurrent Cancel, Reset, navigation or root Destroy revokes proposal A. Prompt must be 1–512 NFC codepoints and <=2048 UTF-8 bytes with no Unicode control/format/surrogates; no secret store or provider call.
+1. **UNARMED:** Confirm widget begins DISABLED. Owner records current opaque root/pane/session/generation and canonical prompt snapshot and absolute deadline from actual monotonic clock (`time.monotonic_ns() // 1_000_000`, 30,000-ms TTL; validate clock monotonicity using injected clock in tests). No ticket exists. Any Confirm attempt before arming **poisons** A. No Tk or user callbacks inside pure owner state transitions.
+2. **Complete render:** publish exact prompt with the literal offline non-transmission disclosure, then verify entire published text, current pane/root, entry value, no stale/cancel/Reset/Destroy and owner UNARMED **after every potentially reentrant Tcl call**. A failed/partial/before-or-after-effect render revokes A.
+3. **Enable seam (still UNARMED):** issue `ttk.Button.configure(state="normal")`; a nested Confirm or Reset/Cancel always poisons/revokes. A normal return from Configure is **NOT** evidence the button is enabled.
+4. **Separate post-enable Tk observation:** after Configure returns, still UNARMED, call the exact current Confirm button's `instate(("!disabled",))` (or equivalent verified Tk state query) and check the returned result. The observation is **reentrant and untrusted until revalidation**. **Explicit negative canary:** an instrumented normal-return Configure that silently leaves or resets the button to DISABLED must fail and never arm. A missing/destroyed widget or Tcl exception fails closed.
+5. **Final pure revalidation, then PURE ARM:** after the Tk observation has returned, recheck root/pane/session/generation, prompt, clock, disclosure identity, receipt freshness, no poison or pending navigation/reset; ensure the exact verified widget is still the bound current Confirm (using opaque object identity and cached generation, NOT another Tcl query inside pure arm). The trusted creator-thread controller now passes the single current verified observation identity into a **separate callback-free, Tk-free, side-effect-free** pure transition; that transition issues a fresh single-use ticket. It must **not** invoke Tk to "verify state" and must never accept a public caller-supplied boolean as widget-state proof. No Tcl, callback or result publication occurs during arm. Because all Tk operations are serial on the creator thread, no further Tk seam runs between the final pure validation and arming. Reentrant state changes during prior Tcl work poison the proposal.
+6. **Later distinct Confirm:** exact bound Confirm callback, creator thread and current ticket are required. Consume the ticket and revoke A **before** any potentially reentrant publication. Recheck prompt and context. Return the **fixed offline-only non-authorising receipt**. Guard before/after status/disable/clear Tcl effects so A cannot overwrite B after nested Reset, Cancel, navigation or Destroy. Repeated/foreign/copy/expired Confirm fails, no worker, action, secret or network path.
+7. **Invalidation:** cancel, changed text, Reset, new session, navigation, destroyed pane/root, clock jump/expiry and uncertain Tcl state always deny the old proposal. Any safely recovered UI state is explicitly local and never a send permission.
 
-## Two-stage presentation-before-arm protocol (remediation to P2)
+## Eliminate v0.3 retained writable service graph issue
 
-**Stage A, unarmed preview proposal:**
-1. The genuine current application's owned Tk callback initiates **Review** on creator thread; mere `human_clicked=True` input is NOT proof of a gesture.
-2. Validate the exact NFC prompt (512 codepoints, 2048 UTF-8 bytes; no Unicode control/format/surrogate), root/pane/generation/session/epoch/revision identity, current fake worker fully retired/idle, monotonic clock and optional cached metadata.
-3. Create **display-only data**. The review owner is **UNARMED**: it cannot confirm even if a nested callback or directly invoked confirmation method supplies the data or an opaque token.
-4. Keep Confirm disabled while rendering the **entire** exact prompt + cached provider/model label (if any) + **explicit NO SEND** disclosure. After **each** potentially reentrant Tcl or callback boundary, revalidate exact root/pane/session/prompt and verify no cancellation, Reset, model/metadata change within owned snapshot, unknown widget state or partial display.
-5. **TWO SEPARATE NON-OVERLAPPING TRANSITIONS:** (a) After complete preview and final owner/context checks, the owner remains **UNARMED** while the Tk Confirm widget is changed from disabled to enabled. The owner is not capable of confirming before or **during** the `configure(state="normal")` call, including any nested or before/after-effect callback. Any nested Confirm attempt during enable **poisons** the proposal and it must not subsequently arm. (b) Only after the enable call returns successfully, a separate **pure, callback-free, creator-thread state transition** checks all tokens, clock, no poison, widget state, current prompt, pane/session and disclosure snapshot, then issues/arms a fresh one-use ticket. **No Tk call and no user callback is permitted inside this arm transition.** If anything fails, revoke; clear/disable the widget using the existing safe deferred/invalidation path. A nested Confirm triggered by enable can never consume an armed ticket. The UI is not claiming it can detect malicious same-process manipulation.
+The tested product's existing `ConversationWindow` contains callbacks that close over `OfflineWorkspaceApplication`, so simply limiting a new owner's constructor arguments to primitives is NOT a sufficient graph boundary. **Do not inject or retain a provider/store/secret service at the application or widget composition layer in this milestone.** The only optional metadata label is the constant literal "MODEL NOT CONNECTED — OFFLINE PREVIEW ONLY"; do not read any cached connection metadata. Review owner accepts exact primitive/frozen types; refuse `ProviderConnectionService`, `ProviderConnectionFileStore`, arbitrary callable/closure, resolver, SDK client, writable wrapper and mutable metadata. No late dynamic provider factories captured by callbacks.
 
-**Stage B, subsequent user-visible offline confirmation:**
-6. Confirmation can be reached only from the exact current, root-owned Confirm widget/callback identity and current creator thread; it consumes the **armed** ticket before any reentrant effect.
-7. Recheck exact rendered proposal identity, current pane/context, prompt, immutable provider/model **informational snapshot**, expiry, no in-flight worker and all owner generations. A Cancel/Reset/Destroy or changed input revokes A. A changed upstream metadata cache is **not** guaranteed detectable here; this receipt never authorises transmission and the preview must say it may be stale. Uncertainty fails closed.
-8. Return fixed **REVIEWED OFFLINE / NO AI REQUEST SENT**, without accepting the ticket as network/action authority, creating an AI transcript entry or touching WinCred. Never publish A's status over successor B after nested Save/Reset/Cancel/Close.
+The negative graph test must start at the root-owned new Review and Confirm callable entries AND the retained `ConversationWindow` callbacks, traverse Python closure cells, `functools.partial` captures, bound `__self__`, callable object fields and relevant container/object fields with an explicit finite budget, and fail if any provider/store/resolver/composer/network/writable-provider capability is reachable. Do not claim this proof is an arbitrary same-process sandbox. The pre-existing presentation-profile Save remains separate and untouched; this scope contains no new persistence. A test that injects a `ProviderConnectionService` onto the actual application or into a captured wrapper before review must fail before arm. Do not inspect credentials.
 
-**Human-origin boundary:** Tk `button.invoke()` and synthetic UI events are indistinguishable from some programmatic actions to same-process Python code. The first increment can establish **trusted application-owned callback provenance within a non-compromised process**, not cryptographic proof of a physical human. Do **not** call an unvalidated Boolean a human proof. Physical human verification against malicious same-process code is out of scope and must not be asserted as the guarantee behind live transmission.
+## Exact changed-file allowlist — independent SCOPE decision required
 
-## Metadata snapshot boundary and no writable graph (remediation to second-round P2)
+All paths relative to protected repo root. No wildcard, incidental rename, broad legacy migration, existing tag rewrite, permission bypass or extra dependency. A SCOPE_GO must explicitly approve each increment envelope. If testing demonstrates another necessary changed path, **HOLD** and amend/rereview before editing.
 
-- The **trusted application composition layer**, not a consent owner or Tk review widget, may **once** inspect existing cached provider metadata for display. If it has no current eligible metadata, use a fixed "not configured/unsupported" label. Do not initialize a store or load a file on the preview path; do not resolve credentials or compose a provider.
-- Transfer into the review owner/renderer ONLY an **exact frozen primitive display snapshot** (bounded provider string, model string, descriptive source label). The review owner and renderer **must not retain**, even indirectly, `ProviderConnectionService`, `ProviderConnectionFileStore`, a revision observer with a closure to one, `ProviderConnectionConfiguration` holding a `SecretIdentifier`, secret resolver/backend, filesystem path, writable callback, or arbitrary object graph.
-- Do **not** send a live owner to the review graph under the label "cached metadata owner": the existing `ProviderConnectionService` retains `_store` with `save()`/file write methods. A merely *read-only use* of a writable service is still a latent capability. A direct object-graph negative test must reject a service/store or a closure that captures either, before presentation/arming; constructor signatures should accept only exact primitive/frozen display types.
-- This strict separation intentionally **does not attest cross-process freshness**. Display must say **SNAPSHOT / CACHED METADATA / MAY BE STALE / NOT API VERIFIED**. The review confirmation only proves that the same displayed snapshot was reviewed and returns **no send authority**. An independent writer can perform A→B→A while old in-memory bytes remain identical; a synthetic Windows reproduction confirms this. Do not promise prompt/config freshness beyond the trusted UI snapshot.
-- A future *live network* phase requires an independently reviewed authoritative multi-writer revision/provenance protocol (OS coordination or equivalent covering every writer) and a distinct explicit outbound-approval authority; if out-of-band writers are possible, **HOLD live send**. The offline review receipt and informational metadata cannot be reused.
+**Increment A — pure owner (new only, 2 files):**
+- `nayeon/desktop_alpha/offline_request_review.py` (NEW)
+- `tests/test_phase_836_offline_request_review.py` (NEW)
 
-## Direct denial of composition and latent capability (remediation to first-round P1)
+**Increment B — actual Tk/product composition (2 modified, 2 new; 4 files):**
+- `nayeon/desktop_alpha/application.py` (MODIFY)
+- `nayeon/desktop_alpha/workspace_window.py` (MODIFY)
+- `tests/test_phase_836_tk_request_review.py` (NEW)
+- `tests/test_phase_836_application_review.py` (NEW)
 
-The offline review owner/renderer must contain only exact primitive/frozen display values, opaque root/pane token identities and in-memory review lifecycle state. It shall not **call, capture or retain** `compose_provider_ai_service`, `AIService`, `OpenAIProvider`, `BoundSecretResolver`, `create_openai_client`, SDK clients, `SecretBackend`, `ProviderConnectionService`, `ProviderConnectionFileStore`, filesystems/paths, WinCred handlers, HTTP/sockets, network/process executors, tool/action dispatchers, message writers/history loaders or functions/closures pointing to any of them.
+**Increment C — required exact successor Git scope/migration, evidence and administration (2 new tests, 9 existing tracked modified, 2 new docs; 13 files):**
+- `tests/phase_8_36_scope_migration.py` (NEW)
+- `tests/test_phase_836_scope_integrity.py` (NEW)
+- `tests/phase_8_30_scope_migration.py` (MODIFY)
+- `tests/phase_8_34_scope_migration.py` (MODIFY)
+- `tests/test_phase_830_scope_integrity.py` (MODIFY)
+- `tests/test_phase_831_scope_integrity.py` (MODIFY)
+- `tests/test_phase_832_scope_integrity.py` (MODIFY)
+- `tests/test_phase_833_scope_integrity.py` (MODIFY)
+- `tests/test_phase_834_scope_integrity.py` (MODIFY)
+- `.codex/CURRENT_STATE.md` (MODIFY)
+- `docs/pre_829_shutdown_ownership_failure_ledger.md` (MODIFY)
+- `docs/phase_8_36_offline_request_review_rfc.md` (NEW)
+- `docs/phase_8_36_offline_request_review_review.md` (NEW)
 
-The only metadata transfer is via a strict **data-only** constructor; no service/store/read-only revision observer remains reachable from the review object graph. Tripwires must cover provider composition, provider/resolver/client construction, secret resolution, SDK/network and file writes **plus a causal graph-reachability test**, not merely absence of calls in the happy path.
+**Total proposed envelope: exactly 19 distinct paths**, with A/B/C separate preflights. The five old integrity consumers may require targeted test-contract migration because they pin source ancestry; preserve exact old sealed tags/commits/alias and index/disk attack insertion hooks. Never weaken a security test to allow a new source. Earlier legacy root folders, `reply_owner.py`, `reply_worker.py`, `conversation_session.py`, `connection_service.py`, `connection_persistence.py`, `connection_composition.py`, `service.py`, `providers/`, `secrets/`, original nonisolated user work, package manifest, all existing tags and prior milestone docs are EXCLUDED and MUST remain unmodified. No scope guard code work before actual independent SCOPE_GO.
 
-The application trust layer may independently own previously constructed services outside the review graph, but no delegation of those capabilities is permitted through review callbacks. Direct Tk widget references in the renderer do not confer permission to transmit.
- 
-## Adversarial acceptance matrix before product integration
+## Acceptance negatives & release gates
 
-| ID | Case | Required test result |
-|---|---|---|
-| A01 | Nested Confirm before full disclosure **and specifically inside Confirm-enable `configure(state=normal)`** | **UNARMED** throughout enable; poison on nested call; never arm late |
-| A02 | Enable throws before/after effect; reentrant Cancel/Reset; pure arm after successful enable | No armed ticket on uncertainty; pure arm has zero callbacks/Tk; no stale status |
-| A03 | Confirm after entire disclosure from distinct valid current callback | One *offline* non-authorizing receipt |
-| A04 | Foreign, copied, expired, repeated ticket / wrong thread / root/pane | Reject without consuming successor B |
-| A05 | Prompt changed, Unicode invalid, model changed, session reset/navigation | Refuse, no status leakage |
-| A06 | Source snapshot is copied to UI and upstream cache changes after capture | No claim of live freshness; review holds only immutable displayed snapshot; never authorises network |
-| A07 | External store writes B→A while local cache remains A | Reproduce limitation; do **not** assert external-freshness guarantee or grant live authority |
-| A08 | Provider unconfigured/mismatched credential identifier/uninitialised | Fixed local refusal, **no secret read** |
-| A09 | Provider/resolver/composer/SDK/socket/action/file-writer constructors or alternate network path reachable from review graph | Explicit negative tripwire and graph-reachability refusal, including exact writable service/store as constructor argument |
-| A10 | Save/Simulate Reply/Reset normal paths | Never submit a provider request/review implicitly |
-| A11 | Child/Root Destroy during publication/confirmation | No worker/Tcl orphan/cross-thread graph use |
-| A12 | Existing 8.30–8.34 historical guard tags, trees, worktree, index and injection seams tampered | Original tests fail closed and reach injected path |
-| A13 | Attempt to reuse REVIEWED_OFFLINE receipt for future live transmission | Deny: receipt lacks network authority |
-| A14 | Unsupported external mutation detection for actual network send | **Separate future design HOLD**, no implicit support |
+A01: Confirm invoked synchronously before/after preview rendering; refuse, no late arm.
+A02: Confirm injected before/after `configure(state="normal")`; refuse and poison.
+A03: **Configure returns normally but button state remains DISABLED**; actual post-enable Tk query must fail and not arm.
+A04: `instate` query itself dispatches Reset/Cancel/Destroy or raises; refuse and no stale A.
+A05: Direct/foreign/stale/copy/replayed/expired/off-thread ticket/callback; refuse and do not consume successor B.
+A06: Exact prompt changes/NFC invalid/reset/reply worker not retired; refuse.
+A07: Metadata/store/provider injection via closure/bound method/partial or app attribute; causal graph walk detects, refuse.
+A08: Provider composition, OpenAIProvider, BoundSecretResolver, SDK, socket, filesystem writer and network call tripwires; zero invocations.
+A09: Confirm status widget `configure` before/after-effect nested Reset/Cancel; B wins, old A no success.
+A10: Ordinary offline Save/Simulate Reply/Reset and pane/root Destroy unchanged, no leaked Tk/worker.
+A11: Historical frozen Git/tag/staged-index/alias/tamper-injection suites retain their original reachable refusal.
+A12: Non-authorizing receipt cannot be used to send, execute, persist or alter conversation history.
 
-## Read-only prototype observations, NOT implementation/security GO
+**Mandatory review chain:** independent DESIGN_GO and exact pathwise SCOPE_GO; then per-increment SOURCE/TEST_GO with native focused/affected Windows tests; full Windows `unittest` pre-stage, staged and postcommit 3 times under the established release discipline (Phase 8.34 three such runs cost ~208 minutes); compileall, whitespace, read-only single-writer exact head/index guard review; immutable annotated tag and nonforce GitHub push; update original existing same-ID 16-sheet Google Drive workbook and read back; then publish sanitised dashboard. Unresolved material HIGH/MEDIUM remains HOLD.
 
-- Selected existing native Windows baseline: **170/170** PASS (7 affected suites plus 8 existing review tests).
-- Synthetic pure consent: **19/19**; actual Tk review: **15/15**; cached-metadata owner: **21/21** including direct composition/provider/resolver/SDK/socket tripwires; actual Tk+cached metadata: **10/10**; strict sealed Phase 8.34 input equivalence **1,129/1,129**.
-- Most recent combined off-repo candidate test run: **65/65** PASS plus **1,129/1,129** parity cases. These are NOT release regressions. External-writer A→B→A weakness separately **reproduced by synthetic filesystem test**. Tests do not establish full consent security.
-- An earlier native Tk research prototype exposed/fixed a stale confirmation status after nested Reset. This remains a required direct-source review concern.
+**Source truth:** annotated Phase 8.34 tag object `b503ce088ee4a787990534ea862be2936fa55767` peels to protected `b0490cd9e72104a74a32dc5315cbc55bc4034676`. Historical PRESEAL text in old documents is historical and needs separate evidence reconciliation, not fabricated missing-tag proof. No real credentials, external model requests or desktop actions.
 
-## Git baseline and required release gates
-
-**Actual GitHub tag fact:** `refs/tags/nayeon-v1-phase-8-34-fake-reply-lifecycle-01` is an annotated tag object `b503ce088ee4a787990534ea862be2936fa55767` and peels to `b0490cd9e72104a74a32dc5315cbc55bc4034676`; `refs/heads/nayeon-v1` points to that commit. Older files within the sealed product tree still contain PRESEAL/HOLD text and the tag message references pending postcommit work: those are **documentation/evidence reconciliation questions**. Their text alone does not prove the remote tag is missing. Reviewer must separately validate postcommit regression evidence.
-
-**No product change authorised by this doc:** independent `DESIGN_GO`, specific `SCOPE_GO`, source/test/staged review; exact staged hash inventory, compile/whitespace, true native Tk/adversarial, three full authoritative Windows pre-stage/staged/postcommit runs (not weakened), immutable Git commit+annotated tag, non-force remote verification, original same-ID 16-sheet macro-enabled Drive workbook update/readback and then sanitised dashboard publication. Historical tags/old primary checkout are protected. Phase 8.35 Git batching proposal remains separate security HOLD.
-
-**Pending reviewer decision:** `DESIGN_HOLD` and `SCOPE_HOLD` until v0.3 risks and mandatory tests are independently accepted. Experimental v0.2 tests are not proof of the redesigned v0.3 arm/data graph; v0.3 focused tests remain required. Draft PR cannot be merged as a release.
+**Current state:** v0.4 design-only proposal, not yet signed off. Off-repo v0.3 research 22/22 tests per run x3, 1,129/1,129 prompt parity x3; those DO NOT prove this modified design or release. PR remains DRAFT/UNMERGED; protected product unchanged.

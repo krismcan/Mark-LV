@@ -1,31 +1,15 @@
-# Phase 8.36 independent design and scope rereview (v0.3)
+# Phase 8.36 independent design + exact scope request — v0.4
 
-**Requested:** separate independent `DESIGN_GO/HOLD` and `SCOPE_GO/HOLD` on the amended `docs/reviews/phase_8_36_consent_design.md`, against exact sealed Phase 8.34 parent. This is a **draft docs-only PR**; no source/tests have been integrated or product release approved. **Do not merge.**
+**Review exact doc-only commit on draft PR #1, not v0.3.** Product at sealed Phase 8.34 parent `b0490cd9e72104a74a32dc5315cbc55bc4034676`. **DO NOT MERGE OR START LIVE AI.**
 
-## First Codex code-review findings addressed in DESIGN, not yet signed off
+This review addresses Codex v0.3 findings from **19:18:44–45Z**:
 
-1. **P1 Git seal concern:** Exact remote Git API refs demonstrate annotated tag object `b503ce088ee4a787990534ea862be2936fa55767` exists and peels to protected HEAD `b0490cd9e72104a74a32dc5315cbc55bc4034676`. Historical 8.34 committed review docs/tag message contain stale PRESEAL notes; separately verify postcommit evidence rather than infer tag absence. No historical Git objects are changed.
-2. **P1 external writer A→B→A:** Synthetic Windows repro confirmed cached A remains identical after a *different store owner* writes B→A on disk. v0.3 expressly narrows prototype guarantee to **cached informational metadata only**, never remote freshness, eligibility for live transmission or proven user consent. Future live phase requires separately reviewed shared multi-writer revision/lock/equivalent mutation detection. If unsupported, HOLD send.
-3. **P1 latent provider authority:** v0.3 bans lazy composer, `AIService`, OpenAI provider/resolver/client, SDK loader, secret handling, socket/network and actions even **before generate()**. Add construction and reachability tripwires.
-4. **P2 disclosure-before-confirm:** v0.3 mandates distinct UNARMED/presentation/ARMED phases and a fresh single-use ticket only after complete visible disclosure and final eligibility check; nested Confirm mid-render always refuses.
-5. **P2 human callback:** v0.3 specifies exact root-owned current widget/callback ingress and explicitly rejects any claim that `human_clicked=True` or Tk `.invoke()` proves a physical human against same-process compromise. First increment is OFFLINE only; future live consent needs its own reviewed authority.
+1. **P2 DESIGN_HOLD: pure arm widget-state contradiction.** New design keeps owner **UNARMED** while Configure runs and through a separate real Tk `instate(("!disabled",))` observation. The creator-thread pure arm transition happens only after that state query successfully returns and all exact identities/context are revalidated. The pure transition performs NO Tk call. Critical canary: instrumented `configure(state="normal")` returns normally but leaves Confirm DISABLED; cannot arm. Query callback reentrancy canary also required.
+2. **P2 DESIGN_HOLD: callback closure captures application/writable service.** Instead of passing a provider metadata owner into an app that is reachable from widget callbacks, v0.4 **removes all optional provider metadata inspection from the initial increment** and prohibits composition/retention of ANY provider connection/file store/service/resolver/client in the application and new review graph. Display is literal "MODEL NOT CONNECTED — OFFLINE PREVIEW ONLY". A09 closure/bound-object/partial graph test must find a deliberately injected provider service/store even when reachable via application callback, and refuse before arm. The existing presentation profile path is separate and unchanged.
+3. **P2 SCOPE_HOLD: unspecified file envelope.** v0.4 explicitly enumerates increment A (2 files), B (4 files), C (13 files), exactly **19 distinct approved-path candidates**, MODIFIED or NEW, and enumerates exclusions. No products/tests may be edited outside the approved per-increment envelope. Reviewer must inspect existing 8.30–8.34 source/integrity guards and decide whether every path is sufficient; if not, **SCOPE_HOLD with exact additions and tests**, not a wildcard.
 
-## Recheck obligations
+Please return **SEPARATE DESIGN_GO/DESIGN_HOLD** and **SCOPE_GO/SCOPE_HOLD** with numbered findings, severity, exact causal source evidence and bounded test canaries. Evaluate whether the narrowed feature has meaningful minimum offline-user value without implying it is real AI. Do not grant an implementation GO based on off-repository v0.3 prototype tests, and do not treat sealed 8.34 historical docs' obsolete PRESEAL text as proof the remote annotated tag is missing.
 
-- Read current committed `application.py`, `workspace_window.py`, all relevant provider/connection sources and Phase 8.30–8.34 history/source/tag/index/disk guard source directly. Do not rely on our summary.
-- For each finding, report `OPEN/CLOSED/NEEDS_EVIDENCE`, severity, exact file/line, causal problem, required design changes and negative tests.
-- Confirm exact changed-file envelope for a first **pure no-network** increment vs separate actual native Tk integration; do not allow wildcard historical scope migration.
-- Decide if an offline user-visible review without real send is sufficient milestone value. Do not sign off consumer release or model connection just from an informational review.
-- If no unresolved HIGH/MEDIUM and all new invariants are adequate, issue `DESIGN_GO`; separately define `SCOPE_GO` or HOLD. Otherwise clearly HOLD.
+Future outbound consent, multiwriter provider freshness, real credentials/network, model action and app installer are **outside 8.36**. Reject any attempt to reuse the offline review receipt as send authority.
 
-External off-repository research tests: 170 baseline; 65 combined candidate; 1,129 prompt equivalence; a deliberate stale-cache A→B→A repro. These are **not published production tests**, not a security review and not three full Windows release gates.
-
-**Protected branch remains at Phase 8.34**; Phase 8.36 product OPEN, proposed batching from 8.35 HOLD, no live AI/credential/network effects.
-
-## Second Codex rereview findings on v0.2 — explicitly addressed in v0.3 design only
-
-- **P2 enable-seam race:** v0.3 says enable the Tk Confirm widget **while the owner is UNARMED**. Any nested Confirm call during enable poisons the preview. Only after `configure(state=normal)` has returned and a final state check passes may the creator thread perform **callback-free pure arming**. Direct test must synchronously invoke the stored Confirm callback from the `configure` enable seam and demonstrate refusal plus no late arm.
-- **P2 writable metadata graph:** v0.3 removes `ProviderConnectionService` and `ProviderConnectionFileStore` and any closure-backed observer from the review owner/renderer. A trusted external composition seam extracts **immutable informational display values only** and hands those strict values to the review. The owner must not even indirectly retain file-write authority. Direct graph-reachability test supplies service/store/writable wrapper and refuses. Future transmission needs a separate full review and freshness solution.
-- The old synthetic A→B→A on-disk reproduction is not a solved freshness claim; the first increment only displays a potentially stale advisory snapshot. Its receipt is explicitly **non-authorising**.
-
-**Please rereview the precise v0.3 design changes** and return distinct DESIGN_GO/HOLD and SCOPE_GO/HOLD. No user-facing feature is yet integrated or approved by this doc. All historical/protected regressions and original same-ID workbook/dashboard gates remain untouched.
+No live calls. No merge. No product commit yet. Historical Git tags, user primary checkout, canonical same-ID Drive master workbook and public product metrics remain unchanged.
