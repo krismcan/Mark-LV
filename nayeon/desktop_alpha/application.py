@@ -659,6 +659,8 @@ class OfflineWorkspaceApplication:
                     on_cancel_reply=lambda: self._conversation_cancel_reply(view, token, generation),
                     on_before_destroy=lambda: self._before_conversation_destroy(
                         view, token, generation),
+                    on_request_snapshot=lambda: self._request_review_snapshot(
+                        view, token, generation),
                     on_reset=lambda operation: self._conversation_review(
                         view, token, generation, operation),
                     is_current=lambda: self._current(view, token, generation),
@@ -694,6 +696,16 @@ class OfflineWorkspaceApplication:
             self._busy = False
             if self._root_exists():
                 self.workspace.set_busy(False)
+
+    def _request_review_snapshot(self, view, token, generation):
+        """No I/O; only current immutable session data when the worker is idle."""
+        self._require_creator_thread()
+        if (self._busy or self._reply_busy or self._reply_closing
+                or self._reply_owner.has_worker or self._reply_ticket is not None
+                or not self._current(view, token, generation)
+                or self._conversation_view is None):
+            return None
+        return self._conversation.snapshot
 
     def _conversation_current(self, view, token, generation, authority) -> bool:
         self._require_creator_thread()
