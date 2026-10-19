@@ -49,10 +49,10 @@ CANDIDATE_SHA256 = {
     "docs/pre_829_shutdown_ownership_failure_ledger.md": "deec2c18965afcc9eb40cadfd63caf88daac2fba692959fcd648e741dc29fefb",
     "nayeon/desktop_alpha/application.py": "aadbd471f58d9d1e212e0d67b7e788e63a9f0eaf8d257c041733c910a229387b",
     "nayeon/desktop_alpha/offline_request_review.py": "5b4fb379d9f907cd14cd2711e651d58445834c01c4ddf067376176ae5fb98884",
-    "nayeon/desktop_alpha/workspace_window.py": "d958c3fd2d62ae6d8d344b75762bc1896a800f34e49a42e64f73bc0d32ef95ef",
+    "nayeon/desktop_alpha/workspace_window.py": "400d1dd3df829d9354d02dbf8de47f5373ea4cc7e26c0303cf380ac58d757fb5",
     "tests/phase_8_30_scope_migration.py": "7aaa31f0c32825fa2ee6cc463c66b6a9a00165bdbb5b1509bf3dae598af2ed48",
     "tests/phase_8_34_scope_migration.py": "59442121254b42949640161fb7dbd47e90f3e77e6045f258a1da130b640c8d43",
-    "tests/phase_8_36_scope_migration.py": "cc346a0767382a3bbaad62d7359458682fd45b96095563f20c55dc6840845996",
+    "tests/phase_8_36_scope_migration.py": "9929aa9686275ba0bc3ebfad5e6dbe82dc7ee3954451388ff1a3dda5bca407f2",
     "tests/test_phase_830_scope_integrity.py": "62335a22c7045ffcb85c9412b5c55c1dc8bb17155dfcb7fab528b85855a10464",
     "tests/test_phase_831_scope_integrity.py": "5163816aa3647c074f4ef434dff63891d877f54ad3af02b42f98c6903d933da1",
     "tests/test_phase_832_scope_integrity.py": "861a1a19dce7e38a38c1c8a02deb4d971e813df4dfbfdd8150e8aa0f3e694e70",
@@ -60,8 +60,8 @@ CANDIDATE_SHA256 = {
     "tests/test_phase_834_scope_integrity.py": "a19dba9f9be0f89ff59e5a659be0196aa0f3d4f50b0d96c904e06d87edee2924",
     "tests/test_phase_836_application_review.py": "f2d71381b3f02f455148c38ce03bf8aa56d8b727391b57af8c26e8ec69f28e4c",
     "tests/test_phase_836_offline_request_review.py": "fe94785b754bcbffa26f66d5201ed9b97154d9b2bf8425634ac842c1ec0367da",
-    "tests/test_phase_836_scope_integrity.py": "cf20bf69b0083c2c2ddb3fc20bfb6472ad92e62651678de978cf3a5e37bbc53e",
-    "tests/test_phase_836_tk_request_review.py": "3b54651f97cb6510ac691e75a8a2c53b0b68cdbe88de53ed111da8cd4c1b0420",
+    "tests/test_phase_836_scope_integrity.py": "220cba032f0ab448a1235c1be6c58161b438d3a74e981b4c4a5ae6b33b83224f",
+    "tests/test_phase_836_tk_request_review.py": "e2e415e8a8eb9caac7c1bdd9b16f0bac5fc275ab69141a9362d263a147f12b64",
 }
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 SELF_PIN = re.compile(rb'("tests/phase_8_36_scope_migration.py": ")[0-9a-f]{64}(",)')
@@ -209,13 +209,12 @@ def assert_836_integrity():
     untracked = _others("--exclude-standard")
     ignored = _others("--ignored", "--exclude-standard")
     disk_raw = _git("diff", "--no-renames", "--raw", "--no-abbrev", "-z")
-    for name in ignored:
-        # Python can import bytecode despite source pins, even under -B.
-        # No ignored executable artifact is authorised by this manifest.
-        if (name.endswith((".pyc", ".pyo")) or "/__pycache__/" in name
-                or prior.prior._production_git_path(name)
-                or name.startswith(("tests/", "docs/", ".codex/"))):
-            raise AssertionError("Ignored 8.36 executable or source")
+    # A sealed checkout must not contain ANY ignored untracked path.
+    # Bytecode (.pyc), native loaders (.pyd/.dll/.so), sitecustomize,
+    # and DLL search-path payloads can execute despite valid source hashes.
+    # An allowlist of suffixes would miss a new loader type; fail closed.
+    if ignored:
+        raise AssertionError("Ignored 8.36 executable or source")
     if (not ENVELOPE or len(ENVELOPE) != 19
             or len(ADDED) != 8 or len(MODIFIED) != 11
             or set(CANDIDATE_SHA256) != ENVELOPE):

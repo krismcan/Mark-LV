@@ -71,6 +71,11 @@ class Phase836IntegrityTests(unittest.TestCase):
             "nayeon/desktop_alpha/__pycache__/offline_request_review.cpython-312.pyc",
             "tests/__pycache__/test_phase_836_scope_integrity.cpython-312.pyc",
             "core/__pycache__/llm_client.cpython-312.pyc",
+            "sitecustomize.pyd",  # ignored root-level native import, P1
+            "sitecustomize.so",
+            "nayeon/desktop_alpha/unchecked_extension.pyd",
+            "bin/untrusted_loader.dll",
+            "sitecustomize.py",  # avoid treating extension allowlists as safety
         ):
             def inject(*args):
                 existing=real(*args)

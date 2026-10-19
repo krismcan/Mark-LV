@@ -192,6 +192,50 @@ class Phase836NativeReviewTests(unittest.TestCase):
         self.assertEqual(fired,[True])
         self.assertNotEqual(self.view.request_status.cget("text"),RECEIPT_TEXT)
 
+    def test_nested_save_during_review_cleanup_with_successor_prompt_is_denied(self):
+        self.arm()
+        original = ttk.Label.configure
+        invoked = []
+        def injected(widget, cnf=None, **kwargs):
+            outcome = original(widget, cnf, **kwargs)
+            if (widget is self.view.request_status
+                    and kwargs.get("text") == "No AI request or action was performed."
+                    and not invoked):
+                invoked.append(True)
+                # Nested Save would have bypassed the old late _sending guard.
+                self.view.send_button.invoke()
+                # The same gesture must not save the successor entry instead.
+                self.view.entry.delete(0, "end")
+                self.view.entry.insert(0, "successor should not be saved")
+            return outcome
+        before = self.app._conversation.snapshot
+        with mock.patch.object(ttk.Label, "configure", new=injected):
+            self.view.send_button.invoke()
+        self.assertEqual(invoked, [True])
+        self.assertIs(self.app._conversation.snapshot, before)
+        self.assertEqual(len(self.app._conversation.snapshot.entries), 0)
+        self.assertFalse(self.view._sending)
+        self.assertIsNone(self.view._request_ticket)
+
+    def test_nested_save_during_cleanup_without_entry_change_saves_only_once(self):
+        self.arm()
+        original = ttk.Label.configure
+        calls = []
+        def injected(widget, cnf=None, **kwargs):
+            outcome = original(widget, cnf, **kwargs)
+            if (widget is self.view.request_status
+                    and kwargs.get("text") == "No AI request or action was performed."
+                    and not calls):
+                calls.append(True)
+                self.view.send_button.invoke()
+            return outcome
+        with mock.patch.object(ttk.Label, "configure", new=injected):
+            self.view.send_button.invoke()
+        self.assertEqual(calls, [True])
+        self.assertEqual(len(self.app._conversation.snapshot.entries), 2)
+        self.assertFalse(self.view._sending)
+        self.assertIsNone(self.view._request_ticket)
+
     def test_save_offline_revokes_review(self):
         self.arm()
         self.view.send_button.invoke()

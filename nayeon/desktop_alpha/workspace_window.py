@@ -681,11 +681,21 @@ class ConversationWindow(WorkspacePane):
 
     def _send(self, _event=None):
         self._require_creator_thread()
-        if self._sending or not self._is_current():
+        if self._sending:
             return "break"
-        self._cancel_request_review()
+        # Set the reentrancy gate BEFORE the first Tcl-backed current/view
+        # check and BEFORE cancellation's three potentially nested configures.
         self._sending = True
         try:
+            if not self._is_current():
+                return "break"
+            original_prompt = self.entry.get()
+            if self._cancel_request_review() is not True:
+                return "break"
+            # A nested callback may change the entry or navigate despite the
+            # send gate; never send a successor prompt on the same gesture.
+            if not self._is_current() or self.entry.get() != original_prompt:
+                return "break"
             self._on_send()
         finally:
             self._sending = False
