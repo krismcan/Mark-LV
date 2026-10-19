@@ -584,8 +584,8 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
     def test_real_candidate_is_exact_unstaged_and_public_831_delegates(self):
         with snapshot("EXACT_CHILD"):
             self.assertEqual(scope._assert_832_historical(), "EXACT_CHILD")
-        from tests import phase_8_33_scope_migration as successor
-        expected = successor.assert_833_integrity()
+        from tests import phase_8_34_scope_migration as successor
+        expected = successor.assert_834_integrity()
         self.assertIn(expected, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(scope.assert_832_integrity(), expected)
         reached = []
@@ -597,7 +597,7 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             old.assert_831_integrity()
         self.assertIn("nayeon/desktop_alpha/conversation_session.py", reached)
         self.assertEqual(len(scope.ENVELOPE), 14)
-        self.assertEqual(len(successor.ENVELOPE), 16)
+        self.assertEqual(len(successor.ENVELOPE), 20)
 
     def test_complete_unstaged_staged_and_one_exact_child_positive_controls(self):
         for state in ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"):

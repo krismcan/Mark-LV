@@ -242,7 +242,7 @@ def _others(*args):
     return result
 
 
-def assert_833_integrity():
+def _assert_833_historical():
     """Return LEGACY / COMPLETE_UNSTAGED / EXACT_STAGED / EXACT_CHILD.
 
     This proves candidate shape and pinned bytes only; independent GO and full
@@ -374,3 +374,13 @@ def assert_833_integrity():
                 raise AssertionError("Wrong 8.33 raw status/mode/blob")
             seen.add(path)
     return state
+
+
+def assert_833_integrity():
+    """Live admission always requires the exact pinned 8.34 successor.
+
+    The private historical body above remains executable for explicit synthetic
+    8.33 fixtures only. Never select historical logic from HEAD or missing files.
+    """
+    from tests.phase_8_34_scope_migration import assert_834_integrity
+    return assert_834_integrity()

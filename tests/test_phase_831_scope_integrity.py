@@ -48,6 +48,9 @@ def _frozen_831_fixture(method):
 
 class Phase831ScopeTests(unittest.TestCase):
     def test_current_831_preseal_exact_source_inventory(self):
+        from tests import phase_8_34_scope_migration as successor
+        expected = successor.assert_834_integrity()
+        self.assertIn(expected, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         scope.assert_831_integrity()
         self.assertEqual(set(scope.NEW), {
             "nayeon/desktop_alpha/conversation_session.py"})

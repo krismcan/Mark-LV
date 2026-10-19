@@ -106,6 +106,11 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         return disk_mutation(path, value) if disk_mutation else value
 
     with ExitStack() as guards:
+        # Explicit synthetic 8.33 topology: execute the original private guard,
+        # including history, pins, raw inventories and causal failure seams.
+        # Public production callers never select this test-owned route.
+        guards.enter_context(mock.patch.object(scope, "assert_833_integrity",
+                            side_effect=scope._assert_833_historical))
         guards.enter_context(mock.patch.object(prior, "_git", side_effect=git))
         guards.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
         guards.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
@@ -127,24 +132,25 @@ class Phase833CandidateTests(unittest.TestCase):
         self.assertEqual(scope.PROTECTED_TAG_OBJECT, "9fb0f2da5d0e3666fad0c1534fe80fc3b6086c34")
 
     def test_real_candidate_exact_bytes_and_live_predecessor_route(self):
-        # Intentionally RED/HOLD until the exclusive host context write and all
-        # literal pins are final. No skip or partial-candidate waiver.
-        state = scope.assert_833_integrity()
+        from tests import phase_8_34_scope_migration as successor
+        state = successor.assert_834_integrity()
         self.assertIn(state, STATES)
+        self.assertEqual(scope.assert_833_integrity(), state)
         self.assertEqual(set(scope.CANDIDATE_SHA256), ADDED | MODIFIED)
+        # Historical 8.33 literal pins bind the immutable seal, never today's
+        # intentionally modified 8.34 files. Raw full-tree/OID proof is retained.
+        sealed = successor._tree(successor.PROTECTED)
         for path in sorted(ADDED | MODIFIED):
-            data = (scope.ROOT / path).read_bytes()
-            if path == scope.SELF:
-                data, count = SELF_PATTERN.subn(lambda m: m[1] + b"0" * 64 + m[2], data)
-                self.assertEqual(count, 1)
-            self.assertEqual(hashlib.sha256(data).hexdigest(), scope.CANDIDATE_SHA256[path], path)
+            data = prior._git("show", successor.PROTECTED + ":" + path)
+            self.assertEqual(scope._digest(path, data), scope.CANDIDATE_SHA256[path], path)
+            self.assertEqual(sealed[path], ("100644", raw_blob_oid(data)))
         reached = []
-        actual = scope._raw_frozen_disk
+        actual = successor._raw_frozen_disk
         target = "nayeon/desktop_alpha/conversation_session.py"
         def read(path):
             reached.append(path)
             return actual(path)
-        with mock.patch.object(scope, "_raw_frozen_disk", side_effect=read):
+        with mock.patch.object(successor, "_raw_frozen_disk", side_effect=read):
             old.assert_831_integrity()
         self.assertEqual(reached.count(target), 1)
 

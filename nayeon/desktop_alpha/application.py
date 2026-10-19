@@ -24,7 +24,18 @@ from nayeon.desktop_alpha.offline_completion_admission import (
 )
 from nayeon.desktop_alpha.workspace_window import (
     ConnectionWindow, ConversationWindow, WorkspaceWindow,
+    REPLY_CANCELLED, REPLY_DRAINING, REPLY_HOLD, REPLY_WAITING,
 )
+from nayeon.desktop_alpha.reply_contracts import (
+    DEADLINE_MS, ERROR_TEXT, ReplyContext, ReplyRefused, ReplyState,
+)
+from nayeon.desktop_alpha.reply_owner import ReplyOwner
+
+
+# A physical worker must never become the last owner of an interpreter graph.
+# This creator-thread registry survives timer loss, view revocation and mainloop
+# unwind. Only positively observed physical retirement permits removal.
+_REPLY_LIFETIMES = {}
 
 
 class _Page(Enum):
@@ -42,6 +53,17 @@ class _PendingDraft:
     document: PresentationConfigurationDocumentV1
 
 
+@dataclass(frozen=True, slots=True, eq=False, repr=False)
+class _ReplyBinding:
+    view: ConversationWindow
+    token: object
+    generation: int
+    context: ReplyContext
+    snapshot: object
+    deadline: int
+    serial: int
+
+
 class OfflineWorkspaceApplication:
     def __init__(self, root: tk.Tk):
         self._creator_thread = threading.get_ident()
@@ -50,6 +72,18 @@ class OfflineWorkspaceApplication:
         self._conversation_root = object()
         self._conversation = OfflineConversationSession(self._conversation_root)
         self._completion = DelayedOfflineCompletion(root)
+        self._reply_owner = ReplyOwner(self._conversation_root)
+        self._reply_context = self._reply_binding = self._reply_ticket = None
+        self._reply_serial = 0
+        self._reply_busy = self._reply_closing = False
+        self._reply_destroy_save = None
+        self._reply_navigation = None
+        self._reply_invalidation = None
+        self._reply_graph = None
+        # Disposed panes can still own Python/Tcl variable cycles. Keep the
+        # managed graph on its creator through this root's lifetime, including
+        # panes retired before the first worker (not just the current timer).
+        self._reply_views = []
         self._conversation_view = None
         self._root_alive = True
         self._closed = False
@@ -71,7 +105,7 @@ class OfflineWorkspaceApplication:
         root.bind("<Destroy>", self._root_destroyed, add="+")
         self.workspace = WorkspaceWindow(
             root, on_conversation=self.show_conversation, on_settings=self.show_settings,
-            on_connection=self.show_connection)
+            on_connection=self.show_connection, on_reply_retire=self.retry_reply_retirement)
         self._bootstrap_readonly_presentation()
         self.show_conversation()
 
@@ -129,7 +163,7 @@ class OfflineWorkspaceApplication:
         self._require_creator_thread()
         # Identity is checked before any Tk access; stale callbacks cannot even
         # query a destroyed interpreter or disturb a successor's owner.
-        return (not self._closed and self._root_alive
+        return (not self._closed and not self._reply_closing and self._root_alive
                 and self._active_view is view and self._active_token is token
                 and self._generation == generation and self._root_exists()
                 and view.exists())
@@ -164,6 +198,313 @@ class OfflineWorkspaceApplication:
         if threading.get_ident() != self._creator_thread:
             raise RuntimeError("WRONG_THREAD")
 
+    def _reply_notice(self, text):
+        self._require_creator_thread()
+        view, token, generation = self._active_view, self._active_token, self._generation
+        serial = self._reply_serial
+        if not isinstance(view, ConversationWindow) or not self._root_alive:
+            return
+        def eligible():
+            self._require_creator_thread()
+            # Closing permits only the fixed draining/HOLD notice. Do not use
+            # _current here, whose deliberate close gate prevents new work.
+            current = (self._active_view is view and self._active_token is token
+                       and self._generation == generation and self._root_alive)
+            return current and self._reply_serial == serial
+        try:
+            if self._reply_closing:
+                view.show_reply_retirement_status(text, eligible)
+            else:
+                view.show_reply_status(text, eligible)
+        except Exception:
+            self._reply_owner.poison()
+
+    def _reply_cancel(self):
+        self._require_creator_thread()
+        self._reply_serial += 1  # also revokes a result already consumed by poll
+        self._reply_owner.cancel(self._reply_ticket)
+
+    def _reply_schedule_fault(self):
+        self._require_creator_thread()
+        self._reply_serial += 1
+        self._reply_owner.poison()
+        self._reply_notice(REPLY_HOLD)
+
+    def _reply_pure_current(self, binding, serial, *, allow_poison=False):
+        self._require_creator_thread()
+        now = self._conversation_now()
+        return (self._reply_binding is binding and self._reply_context is binding.context
+                and self._reply_serial == serial == binding.serial and not self._reply_closing
+                and (allow_poison or not self._reply_owner.poisoned) and not self._closed
+                and self._root_alive and self._active_view is binding.view
+                and self._active_token is binding.token
+                and self._generation == binding.generation
+                and self._conversation.snapshot is binding.snapshot
+                and not binding.snapshot.closed
+                and binding.context.root_identity is self._conversation_root
+                and binding.context.view_identity is binding.token
+                and binding.context.generation == binding.generation
+                and binding.context.session_identity is binding.snapshot.session_identity
+                and binding.context.epoch == binding.snapshot.epoch
+                and now < binding.deadline)
+
+    def _reply_eligible(self, binding, serial, *, allow_poison=False):
+        self._require_creator_thread()
+        # _current calls Tk and may dispatch nested callbacks. Check all pure
+        # identities AGAIN after it returns, immediately before literal display.
+        return (self._reply_pure_current(binding, serial, allow_poison=allow_poison)
+                and self._current(binding.view, binding.token, binding.generation)
+                and self._reply_pure_current(binding, serial, allow_poison=allow_poison))
+
+    def _conversation_reply(self, view, token, generation):
+        self._require_creator_thread()
+        if (self._reply_busy or self._busy or self._reply_closing
+                or self._reply_owner.has_worker or self._reply_owner.poisoned):
+            return
+        self._reply_busy = True
+        try:
+            snapshot = self._conversation.snapshot
+            admission_serial = self._reply_serial
+            if (not self._current(view, token, generation)
+                    or self._reply_serial != admission_serial
+                    or self._reply_navigation is not None
+                    or self._conversation.snapshot is not snapshot):
+                return
+            candidate = view.entry.get()
+            if (not self._current(view, token, generation)
+                    or self._reply_serial != admission_serial
+                    or self._reply_navigation is not None
+                    or self._conversation.snapshot is not snapshot):
+                return
+            context = ReplyContext(self._conversation_root, token, generation,
+                                   snapshot.session_identity, snapshot.epoch)
+            if not self._reply_owner.bind_context(context):
+                return
+            self._reply_context = context
+            self._reply_serial += 1
+            serial = self._reply_serial
+            now = self._conversation_now()
+            binding = _ReplyBinding(view, token, generation, context, snapshot,
+                                    now + DEADLINE_MS, serial)
+            self._reply_binding = binding
+            if not self._reply_eligible(binding, serial):
+                return
+            # Publish the lifetime anchor BEFORE Thread.start, including its
+            # raise-after-effect path. The worker captures none of this graph.
+            self._reply_graph = (self.root, self, self.workspace, view)
+            _REPLY_LIFETIMES[id(self)] = self
+            self._reply_ticket = self._reply_owner.start(
+                candidate, context=context, now_ms=now, human_requested=True)
+            if not self._reply_eligible(binding, serial):
+                self._reply_cancel()
+            else:
+                view.show_reply_status(REPLY_WAITING,
+                    lambda: self._reply_eligible(binding, serial))
+            if self._reply_owner.has_worker and not self._reply_owner.poisoned:
+                if not self.workspace.start_reply_poll(self._reply_poll, self._reply_schedule_fault):
+                    self._reply_schedule_fault()
+        except ReplyRefused:
+            self._reply_notice(ERROR_TEXT)
+        except Exception:
+            self._reply_schedule_fault()
+        finally:
+            self._reply_busy = False
+            self._reply_flush_invalidation()
+            if not self._reply_owner.has_worker:
+                self._reply_finish_deferred()
+            self._reply_release_anchor()
+
+    def _conversation_cancel_reply(self, view, token, generation):
+        self._require_creator_thread()
+        if (not self._closed and self._root_alive and self._active_view is view
+                and self._active_token is token and self._generation == generation):
+            self._reply_cancel()
+            if self._reply_busy:
+                self._reply_queue_invalidation(view, token, generation)
+                return  # revoke the outer publication; never recurse into Tcl
+            previous_busy = self._busy
+            self._busy = self._reply_busy = True
+            try:
+                if not view.invalidate_reply_preview():
+                    raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED")
+                self._reply_notice(REPLY_DRAINING if self._reply_owner.has_worker else REPLY_CANCELLED)
+            except Exception:
+                self._reply_owner.poison()
+                raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED") from None
+            finally:
+                self._busy = previous_busy
+                self._reply_busy = False
+                self._reply_flush_invalidation()
+                self._reply_finish_deferred()
+                self._reply_release_anchor()
+
+    def _reply_queue_invalidation(self, view, token, generation, review=None):
+        self._require_creator_thread()
+        pending = self._reply_invalidation
+        if (review is None and pending is not None and pending[0] is view
+                and pending[1] is token and pending[2] == generation):
+            review = pending[5]
+        self._reply_invalidation = (view, token, generation, self._reply_serial,
+                                    view._reply_invalidation_version, review)
+
+    def _reply_flush_invalidation(self):
+        self._require_creator_thread()
+        if self._reply_busy:
+            return
+        pending, self._reply_invalidation = self._reply_invalidation, None
+        if pending is None:
+            return
+        view, token, generation, serial, version, review = pending
+        # Pure identity checks: a stale callback never clears a successor.
+        if (self._closed or not self._root_alive or self._active_view is not view
+                or self._active_token is not token or self._generation != generation
+                or self._reply_serial != serial):
+            return
+        previous_busy = self._busy
+        self._busy = self._reply_busy = True
+        cleared = False
+        try:
+            # An enclosing Reset/Cancel may already have cleared this preview.
+            if (view._reply_invalidation_version == version
+                    and not view.invalidate_reply_preview()):
+                raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED")
+            cleared = True
+            if review is not None:
+                self._cleanup_reset(view, token, generation, review)
+                self._reset_status(view, token, generation,
+                    "Reset interrupted. Select Review again and confirm.")
+        except Exception:
+            self._reply_owner.poison()
+            raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED") from None
+        finally:
+            self._busy = previous_busy
+            self._reply_busy = False
+            # Nested revocations of the same clear are satisfied by its result.
+            if cleared:
+                self._reply_flush_invalidation()
+            else:
+                # A failed clear/hide is HOLD, never an automatic retry loop.
+                nested = self._reply_invalidation
+                if (nested is not None and nested[0] is view
+                        and nested[1] is token and nested[2] == generation):
+                    self._reply_invalidation = None
+
+    def _before_conversation_destroy(self, view, token, generation):
+        self._require_creator_thread()
+        if (self._active_view is not view or self._active_token is not token
+                or self._generation != generation):
+            return True
+        previous = self._reply_busy
+        worker_free = not self._reply_owner.has_worker
+        self._reply_cancel()
+        if self._reply_owner.has_worker:
+            self._reply_notice(REPLY_DRAINING)
+            return False
+        # Serialize the last native-disposal seam against reentrant admission.
+        previous_save = self._reply_destroy_save
+        # The sealed completion cancel seam permits one nested offline Save,
+        # but never reply admission or Save inside an earlier publication.
+        self._reply_destroy_save = (
+            (view, token, generation, self._conversation, self._conversation_view,
+             self._conversation_root)
+            if (not previous and worker_free and self._active_view is view
+                and self._active_token is token and self._generation == generation)
+            else None)
+        self._reply_busy = True
+        try:
+            self._completion.cancel()
+        finally:
+            self._reply_destroy_save = previous_save
+            self._reply_busy = previous
+            if not previous:
+                self._reply_flush_invalidation()
+        return True
+
+    def _reply_release_anchor(self):
+        self._require_creator_thread()
+        if not self._reply_owner.has_worker and not self._reply_busy:
+            self._reply_graph = None
+            _REPLY_LIFETIMES.pop(id(self), None)
+            if (self._reply_binding is not None
+                    and self._reply_binding.snapshot is not self._conversation.snapshot):
+                # Reset/close discard owner-retained history. A cancelled
+                # in-flight snapshot is needed only until physical retirement.
+                self._reply_binding = self._reply_context = None
+
+    def _reply_poll(self):
+        self._require_creator_thread()
+        if self._reply_busy:
+            self._reply_schedule_fault()
+            return False
+        self._reply_busy = True
+        binding, serial = self._reply_binding, self._reply_serial
+        try:
+            result = self._reply_owner.poll(self._reply_ticket,
+                context=self._reply_context, now_ms=self._conversation_now())
+            # poll consumes the owner ticket and joins BEFORE any UI seam.
+            if not self._reply_owner.has_worker:
+                self._reply_ticket = None
+                failed = result is None
+                if binding is not None and self._reply_eligible(binding, serial, allow_poison=failed):
+                    binding.view.show_reply_status(ERROR_TEXT if result is None else result.text,
+                        lambda: self._reply_eligible(binding, serial, allow_poison=failed))
+                elif binding is self._reply_binding:
+                    self._reply_notice(REPLY_CANCELLED)
+            elif (self._reply_owner.state is ReplyState.DRAINING
+                  and binding is not None and serial == binding.serial):
+                self._reply_cancel()
+                self._reply_notice(REPLY_DRAINING)
+        except Exception:
+            self._reply_schedule_fault()
+        finally:
+            self._reply_busy = False
+            self._reply_flush_invalidation()
+        if not self._reply_owner.has_worker:
+            self._reply_finish_deferred()
+            self._reply_release_anchor()
+            return False
+        return not self._reply_owner.poisoned
+
+    def retry_reply_retirement(self):
+        self._require_creator_thread()
+        # Explicit nonblocking ingress; never guesses handles or starts a timer.
+        if self._reply_busy:
+            return False
+        self._reply_busy = True
+        try:
+            self._reply_cancel()
+            self.workspace.stop_reply_poll()
+            retired = self._reply_owner.retire(now_ms=self._conversation_now())
+        finally:
+            self._reply_busy = False
+            self._reply_flush_invalidation()
+        if retired:
+            self._reply_ticket = None
+            self._reply_finish_deferred()
+            self._reply_release_anchor()
+        else:
+            self._reply_notice(REPLY_HOLD)
+        return retired
+
+    def _reply_finish_deferred(self):
+        self._require_creator_thread()
+        if self._reply_owner.has_worker:
+            return
+        if self._reply_closing:
+            if self._closed:
+                # An externally destroyed root has no remaining Tcl ingress.
+                self._reply_owner.destroy()
+                self._reply_views.clear()
+            else:
+                self.close()
+            return
+        intent, self._reply_navigation = self._reply_navigation, None
+        if intent is not None:
+            view, token, generation, page = intent
+            if (self._active_view is view and self._active_token is token
+                    and self._generation == generation and not self._closed):
+                self._show(page)
+
     def _revoke_conversation_view(self, *, clear_ui=True) -> None:
         self._require_creator_thread()
         if clear_ui:
@@ -192,6 +533,11 @@ class OfflineWorkspaceApplication:
         # Destroy handlers perform only Python-side revocation, never Tk calls.
         if (self._active_view is view and self._active_token is token
                 and self._generation == generation):
+            self._reply_cancel()
+            if self._reply_owner.has_worker:
+                self._reply_owner.poison()
+                self.workspace.reply_poll_destroyed()
+            self._reply_navigation = None
             self._completion.pane_destroyed()
             self._revoke_conversation_view(clear_ui=False)
             self._active_view = self._active_token = None
@@ -202,6 +548,11 @@ class OfflineWorkspaceApplication:
     def _root_destroyed(self, event) -> None:
         self._require_creator_thread()
         if event.widget is self.root:
+            self._reply_serial += 1
+            self._reply_closing = True
+            self._reply_navigation = None
+            self._reply_owner.request_close()
+            self.workspace.reply_poll_destroyed(root=True)
             self._completion.destroyed()
             self._conversation.close(self._conversation_root)
             self._conversation_view = None
@@ -214,8 +565,19 @@ class OfflineWorkspaceApplication:
 
     def close(self) -> None:
         self._require_creator_thread()
-        if self._closed:
+        if self._closed and not self._reply_owner.has_worker:
             return
+        # Block admission and revoke delivery BEFORE any UI/Tcl seam.
+        self._reply_closing = True
+        self._reply_navigation = None
+        self._reply_serial += 1
+        self._reply_owner.request_close()
+        self._reply_notice(REPLY_DRAINING if self._reply_owner.has_worker else REPLY_CANCELLED)
+        self._completion.cancel()
+        if self._reply_owner.has_worker or self._reply_busy:
+            return  # preserve graph and native view until actual join/retirement
+        self.workspace.stop_reply_poll()
+        self._reply_owner.destroy()
         was_alive = self._root_exists()
         self._completion.cancel()
         self._completion.destroyed()
@@ -237,6 +599,8 @@ class OfflineWorkspaceApplication:
                     self.root.destroy()
                 except tk.TclError:
                     pass
+        self._reply_views.clear()
+        self._reply_release_anchor()
 
     def show_conversation(self) -> None:
         self._require_creator_thread()
@@ -252,7 +616,26 @@ class OfflineWorkspaceApplication:
 
     def _show(self, page: _Page) -> None:
         self._require_creator_thread()
+        origin_view, origin_token, origin_generation = (
+            self._active_view, self._active_token, self._generation)
+        if self._reply_closing or self._closed or not self._root_alive:
+            return
+        if self._reply_owner.has_worker or self._reply_busy:
+            self._reply_navigation = (origin_view, origin_token, origin_generation, page)
+            self._reply_cancel()
+            self._reply_notice(REPLY_DRAINING)
+            return
         if not self._root_exists():
+            return
+        # A reentrant liveness query must not apply A's navigation to B.
+        if (self._active_view is not origin_view or self._active_token is not origin_token
+                or self._generation != origin_generation):
+            return
+        if self._reply_owner.has_worker or self._reply_busy:
+            self._reply_navigation = (self._active_view, self._active_token,
+                                      self._generation, page)
+            self._reply_cancel()
+            self._reply_notice(REPLY_DRAINING)
             return
         if self._busy:
             self._interrupt_operation()
@@ -272,9 +655,10 @@ class OfflineWorkspaceApplication:
                     on_send=lambda: self._conversation_send(view, token, generation),
                     on_cancel_simulation=lambda: self._conversation_cancel_simulation(
                         view, token, generation),
-                    on_before_destroy=lambda: self._completion.cancel()
-                        if (self._active_view is view and self._active_token is token
-                            and self._generation == generation) else None,
+                    on_reply=lambda: self._conversation_reply(view, token, generation),
+                    on_cancel_reply=lambda: self._conversation_cancel_reply(view, token, generation),
+                    on_before_destroy=lambda: self._before_conversation_destroy(
+                        view, token, generation),
                     on_reset=lambda operation: self._conversation_review(
                         view, token, generation, operation),
                     is_current=lambda: self._current(view, token, generation),
@@ -294,6 +678,7 @@ class OfflineWorkspaceApplication:
                     on_destroy=lambda: self._view_destroyed(view, token, generation))
             else:
                 raise ValueError("Unsupported offline page")
+            self._reply_views.append(view)
             self._active_view, self._active_token = view, token
             if page is _Page.CONVERSATION:
                 self._conversation_view = self._conversation.activate_view(
@@ -342,6 +727,29 @@ class OfflineWorkspaceApplication:
 
     def _conversation_send(self, view, token, generation) -> None:
         self._require_creator_thread()
+        destroy_save = self._reply_destroy_save
+        safe_destroy_save = (
+            self._reply_busy and destroy_save is not None
+            and destroy_save[0] is view and destroy_save[1] is token
+            and destroy_save[2] == generation
+            and destroy_save[3] is self._conversation
+            and destroy_save[4] is self._conversation_view
+            and destroy_save[5] is self._conversation_root
+            and self._conversation_view is not None
+            and self._active_view is view and self._active_token is token
+            and self._generation == generation and not self._closed
+            and self._root_alive and not self._reply_closing
+            and not self._reply_owner.has_worker)
+        if self._reply_busy and not safe_destroy_save:
+            # A publication may have passed its final eligibility check. Never
+            # commit a successor or recurse into Tcl before that effect unwinds.
+            if (not self._closed and self._root_alive and self._active_view is view
+                    and self._active_token is token and self._generation == generation):
+                self._reply_cancel()
+                self._reply_queue_invalidation(view, token, generation)
+            return
+        if safe_destroy_save:
+            self._reply_destroy_save = None  # one use, only in this cancel seam
         if not self._current(view, token, generation):
             return
         if self._busy:
@@ -350,6 +758,9 @@ class OfflineWorkspaceApplication:
         authority = self._conversation_view
         if authority is None:
             return
+        conversation, root = self._conversation, self._conversation_root
+        before = conversation.snapshot
+        reply_owner = self._reply_owner
         self._busy = True
         ticket = None
         completion_attempted = False
@@ -359,14 +770,43 @@ class OfflineWorkspaceApplication:
             candidate = view.entry.get()
             if not current():
                 return
-            ticket = self._conversation.issue_submission(
-                self._conversation_root, authority, candidate)
+            ticket = conversation.issue_submission(root, authority, candidate)
             if not current():
                 return
-            self._conversation.claim_submission(self._conversation_root, authority, ticket)
-            result = self._conversation.commit_submission(
-                self._conversation_root, authority, ticket)
+            conversation.claim_submission(root, authority, ticket)
+            self._reply_cancel()
+            serial = self._reply_serial
+            # A valid claimed Save must clear/hide A BEFORE committing B. A
+            # double fault leaves A authoritative and poisons reply admission.
+            # Invalid input never reaches this invalidation boundary.
+            self._reply_queue_invalidation(view, token, generation)
+            if safe_destroy_save:
+                # _busy now independently blocks nested reply admission. Let
+                # the normal invalidator own _reply_busy during its Tk effect.
+                self._reply_busy = False
+            try:
+                self._reply_flush_invalidation()
+            finally:
+                if safe_destroy_save:
+                    self._reply_busy = True
+            # current() itself can reenter Tk. Recheck exact pure identities
+            # after it returns, with no further UI seam before owner commit.
+            if (not current() or self._conversation is not conversation
+                    or self._conversation_root is not root
+                    or self._reply_owner is not reply_owner
+                    or self._conversation_view is not authority
+                    or self._active_view is not view or self._active_token is not token
+                    or self._generation != generation or self._closed
+                    or not self._root_alive or self._reply_closing
+                    or conversation.snapshot is not before
+                    or self._reply_serial != serial
+                    or self._reply_navigation is not None):
+                return
+            result = conversation.commit_submission(root, authority, ticket)
+            if self._reply_binding is not None:
+                self._reply_notice(REPLY_DRAINING if self._reply_owner.has_worker else REPLY_CANCELLED)
             self._completion.cancel()
+            self._reply_release_anchor()
             # Only an accepted commit invalidates the pending review. Rejected
             # text/capacity leaves transcript and review untouched.
             if not current():
@@ -416,7 +856,7 @@ class OfflineWorkspaceApplication:
                     "Display unavailable. No AI request or action was performed. Reopen Conversation.")
         finally:
             if ticket is not None:
-                self._conversation.revoke_submission(self._conversation_root, ticket)
+                conversation.revoke_submission(root, ticket)
             self._busy = False
 
     def _conversation_cancel_simulation(self, view, token, generation) -> None:
@@ -492,16 +932,45 @@ class OfflineWorkspaceApplication:
             return
         if view._reset_review is not review:
             return
+        if self._reply_busy:
+            # Never spend a confirmation inside an unfinished publication (or
+            # another Reset). Revoke now, clear after it unwinds, and require
+            # a fresh human review rather than replaying this confirmation.
+            self._reply_cancel()
+            self._conversation.dismiss_reset_review(self._conversation_root, review)
+            self._reply_queue_invalidation(view, token, generation, review)
+            return
         if self._busy:
             self._interrupt_operation()
             return
         self._busy = True
+        previous_reply_busy = self._reply_busy
+        self._reply_busy = True
         try:
             if confirm:
+                before = self._conversation.snapshot
+                self._reply_cancel()
+                serial = self._reply_serial
+                # Clear/hide the old preview BEFORE the authoritative commit.
+                # A status notice alone is best effort and cannot establish this.
+                try:
+                    if not view.invalidate_reply_preview():
+                        raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED")
+                except Exception:
+                    self._reply_owner.poison()
+                    raise RuntimeError("REPLY_PREVIEW_INVALIDATION_FAILED") from None
+                now = self._conversation_now()
+                if (not current() or self._conversation_view is not authority
+                        or self._conversation.snapshot is not before
+                        or self._reply_serial != serial):
+                    return
                 snapshot = self._conversation.confirm_reset(
                     self._conversation_root, authority, review, review.operation,
-                    now_ms=self._conversation_now())
+                    now_ms=now)
+                if self._reply_binding is not None:
+                    self._reply_notice(REPLY_DRAINING if self._reply_owner.has_worker else REPLY_CANCELLED)
                 self._completion.cancel()
+                self._reply_release_anchor()
                 cleaned = self._cleanup_reset(view, token, generation, review)
                 if current() and cleaned:
                     view.render(snapshot)
@@ -521,6 +990,11 @@ class OfflineWorkspaceApplication:
                     "Display unavailable. Reopen Conversation to inspect session history.")
         finally:
             self._busy = False
+            self._reply_busy = previous_reply_busy
+            if not self._reply_busy:
+                self._reply_flush_invalidation()
+                self._reply_finish_deferred()
+                self._reply_release_anchor()
 
     def _load_settings(self, view, token, generation) -> None:
         self._require_creator_thread()
@@ -687,7 +1161,7 @@ class OfflineWorkspaceApplication:
 
 
 def main() -> None:
-    """Explicit launch only: one root, one event loop, no background work."""
+    """Explicit launch; main-loop owner retains Tk through physical retirement."""
     root = tk.Tk()
     application = None
     try:
@@ -695,7 +1169,18 @@ def main() -> None:
         root.mainloop()
     finally:
         if application is not None:
-            application.close()
+            # No Tk callback sleeps or blocking worker join. Each explicit
+            # creator-thread probe is bounded and nonblocking. If retirement
+            # stays uncertain, this process remains in shutdown HOLD with a
+            # strong root/application anchor; it never claims clean shutdown.
+            try:
+                application.close()
+            finally:
+                while application._reply_owner.has_worker:
+                    application.retry_reply_retirement()
+                    if application._reply_owner.has_worker:
+                        time.sleep(0.05)
+                application.close()
         else:
             try:
                 root.destroy()

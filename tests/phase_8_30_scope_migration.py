@@ -311,6 +311,17 @@ def approved_830_scope(actual: set[str]) -> set[str]:
         if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.33 production projection")
         projected = projected - {"nayeon/desktop_alpha/offline_completion_admission.py"}
+    reply_paths = {
+        "nayeon/desktop_alpha/reply_contracts.py",
+        "nayeon/desktop_alpha/reply_owner.py",
+        "nayeon/desktop_alpha/reply_worker.py",
+    }
+    if actual & reply_paths:
+        from tests.phase_8_34_scope_migration import assert_834_integrity
+        state = assert_834_integrity()
+        if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.34 production projection")
+        projected = projected - reply_paths
     return projected
 
 
@@ -326,6 +337,17 @@ def approved_830_files(actual: set[str]) -> set[str]:
         if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.33 production projection")
         projected = projected - {"nayeon/desktop_alpha/offline_completion_admission.py"}
+    reply_paths = {
+        "nayeon/desktop_alpha/reply_contracts.py",
+        "nayeon/desktop_alpha/reply_owner.py",
+        "nayeon/desktop_alpha/reply_worker.py",
+    }
+    if actual & reply_paths:
+        from tests.phase_8_34_scope_migration import assert_834_integrity
+        state = assert_834_integrity()
+        if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.34 production projection")
+        projected = projected - reply_paths
     return projected
 
 

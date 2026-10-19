@@ -21,7 +21,7 @@ _historical_approved_source = scope._approved_source
 
 def _current_approved_source(relative):
     if (scope.ROOT / "tests/phase_8_32_scope_migration.py").is_file():
-        from tests.phase_8_32_scope_migration import current_source_oid
+        from tests.phase_8_34_scope_migration import current_source_oid
         return current_source_oid(relative)
     return _historical_approved_source(relative)
 

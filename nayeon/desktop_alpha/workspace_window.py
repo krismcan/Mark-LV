@@ -9,11 +9,26 @@ from tkinter import ttk
 from nayeon.desktop_alpha.conversation_session import (
     EntrySource, ResetOperation, SessionRefused, validate_offline_text,
 )
+from nayeon.desktop_alpha.reply_contracts import ERROR_TEXT, SIMULATED_TEXT
+
+
+REPLY_WAITING = "SIMULATED REPLY / NO AI REQUEST: Local preview running."
+REPLY_DRAINING = "SIMULATED REPLY / NO AI REQUEST: Display cancelled; worker draining."
+REPLY_CANCELLED = "SIMULATED REPLY / NO AI REQUEST: Display cancelled. No action occurred."
+REPLY_HOLD = "SIMULATED REPLY / NO AI REQUEST: Retirement required. Use Retry Close / Retire."
+REPLY_MESSAGES = frozenset((ERROR_TEXT, SIMULATED_TEXT, REPLY_WAITING,
+                            REPLY_DRAINING, REPLY_CANCELLED, REPLY_HOLD))
 
 
 class WorkspaceWindow(ttk.Frame):
-    def __init__(self, root, *, on_conversation, on_settings, on_connection):
+    def __init__(self, root, *, on_conversation, on_settings, on_connection,
+                 on_reply_retire=None):
         self._creator_thread = threading.get_ident()
+        self._reply_root = root
+        self._reply_poll_token = self._reply_poll_handle = None
+        self._reply_poll_busy = self._reply_poll_poisoned = False
+        self._reply_poll_registering = False
+        self._reply_poll_callback = self._reply_poll_fault = None
         super().__init__(root, padding=24, style="Offline.TFrame")
         style = ttk.Style(root)
         style.configure("Offline.TFrame", background="#f3f6fb")
@@ -50,6 +65,102 @@ class WorkspaceWindow(ttk.Frame):
             self.navigation_buttons.append(button)
         self.content = ttk.Frame(self, style="Offline.TFrame")
         self.content.pack(fill="both", expand=True)
+        if on_reply_retire is not None:
+            self.reply_retire_button = ttk.Button(
+                self, text="Retry Close / Retire", command=lambda: self._dispatch(on_reply_retire))
+            self.reply_retire_button.pack(anchor="w", pady=(8, 0))
+
+    def start_reply_poll(self, callback, on_fault) -> bool:
+        self._require_creator_thread()
+        # Trusted root-owned 50ms pump. Unknown registration is never retried.
+        if (self._reply_poll_poisoned or self._reply_poll_busy
+                or self._reply_poll_token is not None):
+            return False
+        self._reply_poll_callback, self._reply_poll_fault = callback, on_fault
+        self._reply_poll_token = object()
+        return self._register_reply_poll(self._reply_poll_token)
+
+    def _reply_poll_failed(self):
+        self._require_creator_thread()
+        # Revoke BEFORE invoking any callback; retain poison even without handle.
+        self._reply_poll_token = None
+        self._reply_poll_poisoned = True
+        fault = self._reply_poll_fault
+        if fault is not None:
+            fault()
+
+    def _register_reply_poll(self, token):
+        self._require_creator_thread()
+        self._reply_poll_busy = self._reply_poll_registering = True
+        try:
+            handle = self._reply_root.after(50, self._run_reply_poll, token)
+            # A nested close/destroy/dispatch can revoke registration in flight.
+            # Keep the one returned exact handle for explicit retirement only.
+            self._reply_poll_handle = handle
+            if self._reply_poll_token is not token or self._reply_poll_poisoned:
+                self._reply_poll_failed()
+                return False
+            return True
+        except Exception:
+            self._reply_poll_failed()
+            return False
+        finally:
+            self._reply_poll_busy = self._reply_poll_registering = False
+
+    def _run_reply_poll(self, token):
+        self._require_creator_thread()
+        if token is not self._reply_poll_token:
+            return
+        if self._reply_poll_busy:
+            self._reply_poll_failed()
+            return
+        # The exact pending callback is now executing, not cancellable.
+        self._reply_poll_handle = None
+        self._reply_poll_busy = True
+        try:
+            again = self._reply_poll_callback()
+        except Exception:
+            self._reply_poll_failed()
+            return
+        finally:
+            self._reply_poll_busy = False
+        if self._reply_poll_token is not token or self._reply_poll_poisoned:
+            return
+        if again:
+            self._register_reply_poll(token)
+        else:
+            self._reply_poll_token = None
+
+    def stop_reply_poll(self) -> bool:
+        self._require_creator_thread()
+        self._reply_poll_token = None  # revoke before the Tcl cancellation seam
+        if self._reply_poll_busy:
+            if self._reply_poll_registering:
+                self._reply_poll_failed()
+                return False
+            # A dispatched poll has no pending handle. Revoke its continuation.
+            return not self._reply_poll_poisoned
+        handle, self._reply_poll_handle = self._reply_poll_handle, None
+        if handle is None:
+            return not self._reply_poll_poisoned
+        self._reply_poll_busy = True
+        try:
+            self._reply_root.after_cancel(handle)
+            return True
+        except Exception:
+            self._reply_poll_failed()
+            return False
+        finally:
+            self._reply_poll_busy = False
+
+    def reply_poll_destroyed(self, *, root=False):
+        self._require_creator_thread()
+        # Destroy event path: Python only, even for a foreign native destroy.
+        if self._reply_poll_token is not None or self._reply_poll_busy:
+            self._reply_poll_poisoned = True
+        self._reply_poll_token = None
+        if root:
+            self._reply_poll_handle = None
 
     def _require_creator_thread(self) -> None:
         if threading.get_ident() != self._creator_thread:
@@ -133,7 +244,8 @@ class WorkspacePane(ttk.Frame):
 class ConversationWindow(WorkspacePane):
     def __init__(self, parent, *, on_send, on_reset, is_current,
                  on_destroy, assistant_name: str, user_name: str,
-                 on_cancel_simulation=None, on_before_destroy=None):
+                 on_cancel_simulation=None, on_before_destroy=None,
+                 on_reply=None, on_cancel_reply=None):
         super().__init__(parent, name="conversation_view", on_destroy=on_destroy)
         # Explicit owner-thread destroy may retire a known timer BEFORE Tk
         # deletes its registered Tcl callback command. Destroy event bindings
@@ -143,6 +255,8 @@ class ConversationWindow(WorkspacePane):
         self._is_current = is_current
         self._assistant_name, self._user_name = assistant_name, user_name
         self._sending = False
+        self._reply_invalidating = self._reply_hidden = False
+        self._reply_invalidation_version = 0
         self._reset_review = None
         self._reset_confirm = self._reset_dismiss = None
         ttk.Label(self, text="Conversation", style="Heading.Offline.TLabel").pack(anchor="w")
@@ -178,6 +292,17 @@ class ConversationWindow(WorkspacePane):
         self.status = ttk.Label(self, wraplength=680, style="Muted.Offline.TLabel",
                                 text="Offline session only. No AI request or action was performed.")
         self.status.pack(anchor="w", pady=6)
+        self.reply_status = ttk.Label(self, text="SIMULATED REPLY / NO AI REQUEST",
+                                      wraplength=680, style="Badge.Offline.TLabel")
+        self.reply_status.pack(anchor="w", pady=6)
+        if on_reply is not None:
+            self.reply_button = ttk.Button(self, text="Simulate reply (no AI)",
+                command=lambda: self._dispatch(on_reply))
+            self.reply_button.pack(anchor="w")
+        if on_cancel_reply is not None:
+            self.cancel_reply_button = ttk.Button(self, text="Cancel reply preview",
+                command=lambda: self._dispatch(on_cancel_reply))
+            self.cancel_reply_button.pack(anchor="w")
         if on_cancel_simulation is not None:
             self.cancel_simulation_button = ttk.Button(
                 self, text="Cancel local simulation",
@@ -234,6 +359,44 @@ class ConversationWindow(WorkspacePane):
         # completion authority AFTER that seam, immediately before the widget.
         if self._is_current() and eligible():
             self.status.configure(text=text)
+
+    def invalidate_reply_preview(self):
+        self._require_creator_thread()
+        if self._reply_invalidating:
+            return False
+        self._reply_invalidating = True
+        try:
+            try:
+                self.reply_status.configure(text="")
+            except Exception:
+                # Independent, bounded fallback. Once attempted, this pane can
+                # never publish another preview or remap this label.
+                self._reply_hidden = True
+                self.reply_status.pack_forget()
+            self._reply_invalidation_version += 1
+            return True
+        finally:
+            self._reply_invalidating = False
+
+    def show_reply_status(self, text, eligible):
+        self._require_creator_thread()
+        if type(text) is not str or text not in REPLY_MESSAGES:
+            raise ValueError("REPLY_DISPLAY")
+        # Literal fixed text only; never the transcript or offline status.
+        if (self._is_current() and eligible()
+                and not self._reply_invalidating and not self._reply_hidden):
+            self.reply_status.configure(text=text)
+
+    def show_reply_retirement_status(self, text, eligible):
+        self._require_creator_thread()
+        if type(text) is not str or text not in (REPLY_DRAINING, REPLY_HOLD, REPLY_CANCELLED):
+            raise ValueError("REPLY_DISPLAY")
+        # Closing has already revoked the ordinary view gate. Only a fixed
+        # retirement notice can use the application's exact Python identity
+        # probe; no reply or transcript is allowed through this ingress.
+        if (self._alive and eligible()
+                and not self._reply_invalidating and not self._reply_hidden):
+            self.reply_status.configure(text=text)
 
     def render(self, snapshot):
         self._require_creator_thread()
@@ -297,9 +460,11 @@ class ConversationWindow(WorkspacePane):
 
     def destroy(self) -> None:
         self._require_creator_thread()
-        before, self._on_before_destroy = self._on_before_destroy, None
+        before = self._on_before_destroy
         if self._alive and before is not None:
-            before()
+            if before() is False:
+                return
+        self._on_before_destroy = None
         self._reset_review = None
         self._reset_confirm = self._reset_dismiss = None
         super().destroy()
