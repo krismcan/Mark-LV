@@ -261,6 +261,11 @@ class OfflineWorkspaceApplication:
         if (self._reply_busy or self._busy or self._reply_closing
                 or self._reply_owner.has_worker or self._reply_owner.poisoned):
             return
+        # REENTRANT Tk admission: revoke an outstanding offline review
+        # BEFORE reply admission can create a physical worker. This is
+        # creator-thread / owner-only and defers Tcl if review is publishing.
+        if isinstance(view, ConversationWindow):
+            view._cancel_request_review()
         self._reply_busy = True
         try:
             snapshot = self._conversation.snapshot

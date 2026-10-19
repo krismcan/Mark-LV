@@ -373,17 +373,30 @@ class ConversationWindow(WorkspacePane):
             return False
         self._request_busy = True
         self._request_pending_clear = False
+        failed = False
         try:
             if self._alive:
-                self.request_confirm_button.configure(state="disabled")
-                self.request_disclosure.configure(text="")
-                self.request_status.configure(text="No AI request or action was performed.")
-        except (tk.TclError, RuntimeError):
-            self._request_pending_clear = True
-            return False
+                # Clear the old success receipt FIRST. A later button or
+                # disclosure fault cannot leave stale success visible.
+                # Each surface has independent best-effort hidden fallback.
+                for widget, options in (
+                    (self.request_status,
+                     {"text": "No AI request or action was performed."}),
+                    (self.request_confirm_button, {"state": "disabled"}),
+                    (self.request_disclosure, {"text": ""})):
+                    try:
+                        widget.configure(**options)
+                    except (tk.TclError, RuntimeError):
+                        failed = True
+                        try:
+                            widget.pack_forget()
+                        except (tk.TclError, RuntimeError):
+                            pass
         finally:
             self._request_busy = False
-        return True
+        if failed:
+            self._request_pending_clear = True
+        return not failed and not self._request_pending_clear
 
     def _begin_request_review(self):
         self._require_creator_thread()

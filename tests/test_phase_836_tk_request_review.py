@@ -129,6 +129,53 @@ class Phase836NativeReviewTests(unittest.TestCase):
         self.assertEqual(fired,[True])
         self.assertIsNone(self.view._request_ticket)
 
+    def test_reply_worker_admission_during_last_instate_revokes(self):
+        original = ttk.Button.instate
+        fired = []
+        def injected(button, statespec, callback=None):
+            if button is self.view.request_confirm_button and not fired:
+                fired.append(True)
+                self.view.reply_button.invoke()
+            return original(button, statespec, callback)
+        with mock.patch.object(ttk.Button, "instate", new=injected):
+            self.assertFalse(self.view._begin_request_review())
+        self.assertEqual(fired, [True])
+        self.assertIsNone(self.view._request_ticket)
+        worker = self.app._reply_owner._thread
+        if worker is not None and worker.ident is not None:
+            worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertTrue(self.app.retry_reply_retirement())
+
+    def test_receipt_cleared_even_if_following_button_disable_fails(self):
+        self.arm()
+        original_label = ttk.Label.configure
+        original_button = ttk.Button.configure
+        injected_status = []
+        disable_calls = []
+        def status(widget, cnf=None, **kwargs):
+            result = original_label(widget, cnf, **kwargs)
+            if (widget is self.view.request_status
+                    and kwargs.get("text") == RECEIPT_TEXT
+                    and not injected_status):
+                injected_status.append(True)
+                self.view._cancel_request_review()
+            return result
+        def button(widget, cnf=None, **kwargs):
+            value = original_button(widget, cnf, **kwargs)
+            if (widget is self.view.request_confirm_button
+                    and kwargs.get("state") == "disabled"):
+                disable_calls.append(True)
+                if len(disable_calls) == 2:
+                    raise tk.TclError("after effect cleanup fault")
+            return value
+        with mock.patch.object(ttk.Label, "configure", new=status), \
+             mock.patch.object(ttk.Button, "configure", new=button):
+            self.assertFalse(self.view._confirm_request_review())
+        self.assertEqual(injected_status, [True])
+        self.assertGreaterEqual(len(disable_calls), 2)
+        self.assertNotEqual(self.view.request_status.cget("text"), RECEIPT_TEXT)
+
     def test_nested_reset_during_status_publication_wins(self):
         self.arm()
         original=ttk.Label.configure
