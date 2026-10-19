@@ -585,7 +585,8 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
         with snapshot("EXACT_CHILD"):
             self.assertEqual(scope._assert_832_historical(), "EXACT_CHILD")
         from tests import phase_8_34_scope_migration as successor
-        expected = successor.assert_834_integrity()
+        from tests import phase_8_36_scope_migration as latest
+        expected = latest.assert_836_integrity()
         self.assertIn(expected, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(scope.assert_832_integrity(), expected)
         reached = []

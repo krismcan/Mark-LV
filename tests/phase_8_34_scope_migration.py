@@ -391,3 +391,14 @@ def current_source_oid(path):
     if path not in prior.APPROVED_SOURCE_SHA256:
         raise AssertionError("Unlisted 8.30 source")
     return _blob_oid(_disk(path))
+
+
+# Frozen 8.34 implementation is not weakened. Synthetic 8.34 history tests
+# must select it explicitly; every ordinary current admission is routed to the
+# exact independent 8.36 successor, never a HEAD-dependent fallback.
+_assert_834_historical = assert_834_integrity
+
+
+def assert_834_integrity():
+    from tests.phase_8_36_scope_migration import assert_836_integrity
+    return assert_836_integrity()

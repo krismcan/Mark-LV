@@ -118,6 +118,10 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         guards.enter_context(mock.patch.object(prior, "_git", side_effect=git))
         guards.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
         guards.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
+        # Historical test fixture explicitly selects the preserved 8.34
+        # implementation. The unmocked public current path is 8.36-only.
+        guards.enter_context(mock.patch.object(
+            scope, "assert_834_integrity", scope._assert_834_historical))
         if state == "LEGACY":
             exists = Path.exists
             guards.enter_context(mock.patch.object(Path, "exists", lambda path:

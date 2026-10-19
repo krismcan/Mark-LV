@@ -786,3 +786,9 @@ M01-M06/SCOPE-01 verified closure and all later seal gates remain required.
 ## 18 October 2026 - Phase 8.34 accepted Save/preview hardening
 
 Two MEDIUM source findings: stale simulated A after accepted Save B and both preview-clearing effects failing after B was already committed. A first repair exposed one preserved 8.33 destroy-hook nested Save regression (236/237 native). Final scoped repair requires preview removal before B commits, with one-shot worker-free destroy-hook allowance. Native affected test rerun 241/241 PASS; independent bounded source rereview SOURCE_GO. No prior seal/test altered. Phase 8.34 remains PRESEAL HOLD pending full Windows regression, exact staged review/commit/tag/push and canonical Drive/dashboard verification. These are pre-release findings, not shipped defects; live providers remain prohibited.
+
+### Phase 8.36 current failure ledger — candidate only, 19 Oct 2026
+- Original affected test run at A/B prior to successor migration: 242 tests / one failure `Unauthorized untracked 8.34 path`; this was correct fail-closed behavior, not a release success. Historical proof must remain exercised through the new exact C guard.
+- Independent Increment B review findings: reentrant live reply-worker admission did not revoke offline review; stale success text could survive a cleanup widget exception; worker-admission canary did not require a truly started worker. Three causal fixes and fault tests completed on independently reviewed branch `606f3ce1`. No real provider/network calls.
+- Scope authority: exactly eight NEW + eleven MODIFIED named files, preserving protected seal and all prior source/label/index/alias attack tests. No wildcard, force push, label/secret exemptions, or skipped Windows regressions.
+- Current run is an isolated **unsealed** candidate, not a production release. Preserve historical failure cases; require independent review and full release evidence.

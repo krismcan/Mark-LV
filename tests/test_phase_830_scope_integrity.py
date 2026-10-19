@@ -375,3 +375,13 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class Phase836ExplicitLegacyProjectionTest(unittest.TestCase):
+    def test_new_offline_owner_is_projected_only_after_live_successor(self):
+        from tests import phase_8_36_scope_migration as current
+        path = "nayeon/desktop_alpha/offline_request_review.py"
+        self.assertEqual(current.assert_836_integrity(), "COMPLETE_UNSTAGED")
+        self.assertEqual(scope.approved_830_scope({path}), set())
+        self.assertEqual(scope.approved_830_files({path}), set())
+        self.assertEqual(scope.approved_830_scope({path, path + ".bak"}),
+                         {path + ".bak"})
