@@ -8,7 +8,7 @@ Independent Codex reviewed commit c2381b7eb63d6ac9aabb51103fdb3c9939b07779 and g
 
 ## Corrected admission sequence
 
-The current review owner remains **UNARMED**, with the Confirm button disabled, throughout rendering, enabling, and all subsequent Tk queries.
+The current review owner remains **UNARMED** throughout rendering, enabling, and every Tk observation. The Confirm widget starts **disabled during disclosure rendering**, is then **enabled at step 2**, and must be observed enabled at the final state query; nested callbacks during these operations revoke the proposal.
 
 1. Render and verify the full literal no-send disclosure.
 2. Enable Confirm; if a nested callback occurs or the command raises, revoke.
