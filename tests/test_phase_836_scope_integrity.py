@@ -61,6 +61,14 @@ class Phase836IntegrityTests(unittest.TestCase):
                 scope.assert_836_integrity()
 
     def test_untracked_extra_ignored_is_refused(self):
+        # The same attack must fail in all three exact authenticated Git
+        # topologies, at the correct stage-specific integrity boundary.
+        state=scope.assert_836_integrity()
+        refusal={
+            "COMPLETE_UNSTAGED": "Missing or extra untracked",
+            "EXACT_STAGED": "Partial 8.36 stage refused",
+            "EXACT_CHILD": "Unapproved 8.36 committed/index snapshot",
+        }[state]
         actual=scope._others
         def injected(*args):
             value=actual(*args)
@@ -68,7 +76,7 @@ class Phase836IntegrityTests(unittest.TestCase):
                 return value | {"nayeon/desktop_alpha/offline_request_review.py.bak"}
             return value
         with mock.patch.object(scope,"_others",side_effect=injected):
-            with self.assertRaisesRegex(AssertionError,"Missing or extra untracked"):
+            with self.assertRaisesRegex(AssertionError,refusal):
                 scope.assert_836_integrity()
 
     def test_ignored_bytecode_must_never_authorize_importable_code(self):
