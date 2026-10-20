@@ -357,6 +357,7 @@ class ConversationWindow(WorkspacePane):
         return time.monotonic_ns() // 1_000_000
 
     def _request_pure_current(self, context, serial, state):
+        self._require_creator_thread()
         # No Tcl calls: this predicate can run AFTER final widget observation.
         return (self._alive and self._request_context is context
                 and self._request_serial == serial
@@ -432,6 +433,7 @@ class ConversationWindow(WorkspacePane):
                 self._cancel_request_review()
 
     def _publish_request_review(self, context, prompt, snapshot, serial, preview):
+        self._require_creator_thread()
         display = "PROPOSED PROMPT (NOT SENT): " + preview.prompt + "\n" + DISCLOSURE
         self.request_disclosure.configure(text=display)
         if not self._request_pure_current(context, serial, ReviewState.PREVIEW):

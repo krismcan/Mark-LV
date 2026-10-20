@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import tkinter as tk
 from tkinter import ttk
 import unittest
@@ -234,6 +235,37 @@ class Phase836NativeReviewTests(unittest.TestCase):
         self.assertEqual(calls, [True])
         self.assertEqual(len(self.app._conversation.snapshot.entries), 2)
         self.assertFalse(self.view._sending)
+        self.assertIsNone(self.view._request_ticket)
+
+    def test_new_owned_review_methods_refuse_foreign_thread_before_any_effect(self):
+        # Native Tk and owner state belong exclusively to the creator thread.
+        # The three new 8.36 surfaces must refuse even when otherwise idle.
+        outcomes = []
+        methods = (
+            (self.app._request_review_snapshot,
+             (self.view, self.app._active_token, self.app._generation)),
+            (self.view._request_pure_current,
+             (None, 0, ReviewState.IDLE)),
+            (self.view._publish_request_review,
+             (None, "unsent", None, 0, None)),
+        )
+        before = self.app._conversation.snapshot
+        def foreign():
+            for call, args in methods:
+                try:
+                    call(*args)
+                except RuntimeError as error:
+                    outcomes.append(type(error))
+                except BaseException as error:
+                    outcomes.append(("UNEXPECTED", type(error)))
+                else:
+                    outcomes.append("UNSAFE_ACCEPT")
+        worker = threading.Thread(target=foreign, daemon=True)
+        worker.start()
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(outcomes, [RuntimeError] * 3)
+        self.assertIs(self.app._conversation.snapshot, before)
         self.assertIsNone(self.view._request_ticket)
 
     def test_save_offline_revokes_review(self):

@@ -43,16 +43,16 @@ MODIFIED = frozenset({
 ENVELOPE = ADDED | MODIFIED
 SELF = "tests/phase_8_36_scope_migration.py"
 CANDIDATE_SHA256 = {
-    ".codex/CURRENT_STATE.md": "161437c48c9f9c21d7f540791f9b963692623d424ff8aeff06933472af6426bf",
+    ".codex/CURRENT_STATE.md": "c00d2da136a7af4b53dba944ae7ffb887f8c8c0d33a5c4f5836c50ce2ba5cf65",
     "docs/phase_8_36_offline_request_review_review.md": "95e506a11337731e5654e448f15c5ccf9c9dab912706a3811a2dab70cd440381",
     "docs/phase_8_36_offline_request_review_rfc.md": "bc1a589152646126be3ccc94fc0245f90ba5de8fc20fb40dc269cec74b3c62ce",
-    "docs/pre_829_shutdown_ownership_failure_ledger.md": "deec2c18965afcc9eb40cadfd63caf88daac2fba692959fcd648e741dc29fefb",
-    "nayeon/desktop_alpha/application.py": "aadbd471f58d9d1e212e0d67b7e788e63a9f0eaf8d257c041733c910a229387b",
+    "docs/pre_829_shutdown_ownership_failure_ledger.md": "c0672d163d2618b78096c9895e19d2ce3990d45ff2c4084249d5d4d6ab259752",
+    "nayeon/desktop_alpha/application.py": "59c66a2ac3439d2c3d799142bb608221e11d12eb65159c31502bf2d09a1c99f0",
     "nayeon/desktop_alpha/offline_request_review.py": "5b4fb379d9f907cd14cd2711e651d58445834c01c4ddf067376176ae5fb98884",
-    "nayeon/desktop_alpha/workspace_window.py": "400d1dd3df829d9354d02dbf8de47f5373ea4cc7e26c0303cf380ac58d757fb5",
+    "nayeon/desktop_alpha/workspace_window.py": "675ad4d338b6a5e7532c85e847e9ee2afaccde4039889cdf70dc6d10081b3a2c",
     "tests/phase_8_30_scope_migration.py": "7aaa31f0c32825fa2ee6cc463c66b6a9a00165bdbb5b1509bf3dae598af2ed48",
     "tests/phase_8_34_scope_migration.py": "59442121254b42949640161fb7dbd47e90f3e77e6045f258a1da130b640c8d43",
-    "tests/phase_8_36_scope_migration.py": "c9b0c2977d3896036a5a6cf75a92280ee040ef97748ea8e0273d4556591922e3",
+    "tests/phase_8_36_scope_migration.py": "ff81b570bc8a586c1085128128059c60b07885c1ebabe8ea3fb6c954fc2bfb01",
     "tests/test_phase_830_scope_integrity.py": "837004a1a769299d9d3bd2cf685e5592e4fb330bab4e949de0619a9bdc82c20c",
     "tests/test_phase_831_scope_integrity.py": "f0f09bf7ab27390f2eff0f94f2e07e54eef9ee1ac6341678526f92ddcaf53da9",
     "tests/test_phase_832_scope_integrity.py": "861a1a19dce7e38a38c1c8a02deb4d971e813df4dfbfdd8150e8aa0f3e694e70",
@@ -61,7 +61,7 @@ CANDIDATE_SHA256 = {
     "tests/test_phase_836_application_review.py": "f2d71381b3f02f455148c38ce03bf8aa56d8b727391b57af8c26e8ec69f28e4c",
     "tests/test_phase_836_offline_request_review.py": "fe94785b754bcbffa26f66d5201ed9b97154d9b2bf8425634ac842c1ec0367da",
     "tests/test_phase_836_scope_integrity.py": "220cba032f0ab448a1235c1be6c58161b438d3a74e981b4c4a5ae6b33b83224f",
-    "tests/test_phase_836_tk_request_review.py": "e2e415e8a8eb9caac7c1bdd9b16f0bac5fc275ab69141a9362d263a147f12b64",
+    "tests/test_phase_836_tk_request_review.py": "eb252e3de5717d414dbd495380385dae00f2ad7094cc14ebfef8b4b9b2ed9a2d",
 }
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 SELF_PIN = re.compile(rb'("tests/phase_8_36_scope_migration.py": ")[0-9a-f]{64}(",)')

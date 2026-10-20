@@ -703,8 +703,8 @@ class OfflineWorkspaceApplication:
                 self.workspace.set_busy(False)
 
     def _request_review_snapshot(self, view, token, generation):
-        """No I/O; only current immutable session data when the worker is idle."""
         self._require_creator_thread()
+        # No I/O; only current immutable session data when the worker is idle.
         if (self._busy or self._reply_busy or self._reply_closing
                 or self._reply_owner.has_worker or self._reply_ticket is not None
                 or not self._current(view, token, generation)
