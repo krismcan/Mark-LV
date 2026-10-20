@@ -380,7 +380,10 @@ class Phase836ExplicitLegacyProjectionTest(unittest.TestCase):
     def test_new_offline_owner_is_projected_only_after_live_successor(self):
         from tests import phase_8_36_scope_migration as current
         path = "nayeon/desktop_alpha/offline_request_review.py"
-        self.assertEqual(current.assert_836_integrity(), "COMPLETE_UNSTAGED")
+        # The live successor may be unstaged, exactly staged or exactly sealed.
+        # Exact admission validates every file and parent in each topology.
+        self.assertIn(current.assert_836_integrity(),
+                      {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(scope.approved_830_scope({path}), set())
         self.assertEqual(scope.approved_830_files({path}), set())
         self.assertEqual(scope.approved_830_scope({path, path + ".bak"}),

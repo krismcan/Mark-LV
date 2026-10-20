@@ -33,8 +33,16 @@ class Phase836IntegrityTests(unittest.TestCase):
             self.assertEqual(len(value), 64, name)
             self.assertNotEqual(value, "0" * 64, name)
 
-    def test_local_unstaged_candidate_requires_exact_original_scope(self):
-        self.assertEqual(scope.assert_836_integrity(), "COMPLETE_UNSTAGED")
+    def test_live_candidate_requires_exact_current_topology(self):
+        # No state is waived: admission proves the complete unstaged, staged
+        # or one-child topology against exact current Git and 19 source pins.
+        current = scope.assert_836_integrity()
+        self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        head = scope._git("rev-parse", "HEAD").decode("ascii").strip()
+        if current == "EXACT_CHILD":
+            self.assertNotEqual(head, scope.PROTECTED)
+        else:
+            self.assertEqual(head, scope.PROTECTED)
 
     def test_historical_tag_cannot_be_replaced(self):
         actual=scope._git

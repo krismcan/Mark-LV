@@ -43,24 +43,24 @@ MODIFIED = frozenset({
 ENVELOPE = ADDED | MODIFIED
 SELF = "tests/phase_8_36_scope_migration.py"
 CANDIDATE_SHA256 = {
-    ".codex/CURRENT_STATE.md": "c00d2da136a7af4b53dba944ae7ffb887f8c8c0d33a5c4f5836c50ce2ba5cf65",
+    ".codex/CURRENT_STATE.md": "4e587a52082129f642eb500d6198a15e210bb5a2f804d28c934af14cda8871b5",
     "docs/phase_8_36_offline_request_review_review.md": "95e506a11337731e5654e448f15c5ccf9c9dab912706a3811a2dab70cd440381",
     "docs/phase_8_36_offline_request_review_rfc.md": "bc1a589152646126be3ccc94fc0245f90ba5de8fc20fb40dc269cec74b3c62ce",
-    "docs/pre_829_shutdown_ownership_failure_ledger.md": "c0672d163d2618b78096c9895e19d2ce3990d45ff2c4084249d5d4d6ab259752",
+    "docs/pre_829_shutdown_ownership_failure_ledger.md": "56cb107d533deab58990ff341dce739c748238b926f776dd107fef2d42e4aaeb",
     "nayeon/desktop_alpha/application.py": "59c66a2ac3439d2c3d799142bb608221e11d12eb65159c31502bf2d09a1c99f0",
     "nayeon/desktop_alpha/offline_request_review.py": "5b4fb379d9f907cd14cd2711e651d58445834c01c4ddf067376176ae5fb98884",
     "nayeon/desktop_alpha/workspace_window.py": "675ad4d338b6a5e7532c85e847e9ee2afaccde4039889cdf70dc6d10081b3a2c",
     "tests/phase_8_30_scope_migration.py": "7aaa31f0c32825fa2ee6cc463c66b6a9a00165bdbb5b1509bf3dae598af2ed48",
     "tests/phase_8_34_scope_migration.py": "59442121254b42949640161fb7dbd47e90f3e77e6045f258a1da130b640c8d43",
-    "tests/phase_8_36_scope_migration.py": "ff81b570bc8a586c1085128128059c60b07885c1ebabe8ea3fb6c954fc2bfb01",
-    "tests/test_phase_830_scope_integrity.py": "837004a1a769299d9d3bd2cf685e5592e4fb330bab4e949de0619a9bdc82c20c",
+    "tests/phase_8_36_scope_migration.py": "8794fe66f4d14af17a3150bff2c07b73dd48840f0ca288d6b1b472e316d6a049",
+    "tests/test_phase_830_scope_integrity.py": "fa67d035f9a938a7cdf85208f76a86e3e4a4f13ebef4b909de72d2ac8e8ae506",
     "tests/test_phase_831_scope_integrity.py": "f0f09bf7ab27390f2eff0f94f2e07e54eef9ee1ac6341678526f92ddcaf53da9",
     "tests/test_phase_832_scope_integrity.py": "861a1a19dce7e38a38c1c8a02deb4d971e813df4dfbfdd8150e8aa0f3e694e70",
     "tests/test_phase_833_scope_integrity.py": "9b22ed97005807933e36e8fa69e7d1f66c45013888e0f37a5dcb8c034ad70264",
     "tests/test_phase_834_scope_integrity.py": "ad9c55f8839357cb2bb2e610ac819b282ba75368257302429f88ad0cd9cde4b5",
     "tests/test_phase_836_application_review.py": "f2d71381b3f02f455148c38ce03bf8aa56d8b727391b57af8c26e8ec69f28e4c",
     "tests/test_phase_836_offline_request_review.py": "fe94785b754bcbffa26f66d5201ed9b97154d9b2bf8425634ac842c1ec0367da",
-    "tests/test_phase_836_scope_integrity.py": "220cba032f0ab448a1235c1be6c58161b438d3a74e981b4c4a5ae6b33b83224f",
+    "tests/test_phase_836_scope_integrity.py": "841aa40f4811681095238c5e288a138d217943761054f7a5f25ea6045b85f3a5",
     "tests/test_phase_836_tk_request_review.py": "eb252e3de5717d414dbd495380385dae00f2ad7094cc14ebfef8b4b9b2ed9a2d",
 }
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
