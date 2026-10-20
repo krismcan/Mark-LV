@@ -52,7 +52,7 @@ CANDIDATE_SHA256 = {
     "nayeon/desktop_alpha/workspace_window.py": "675ad4d338b6a5e7532c85e847e9ee2afaccde4039889cdf70dc6d10081b3a2c",
     "tests/phase_8_30_scope_migration.py": "7aaa31f0c32825fa2ee6cc463c66b6a9a00165bdbb5b1509bf3dae598af2ed48",
     "tests/phase_8_34_scope_migration.py": "59442121254b42949640161fb7dbd47e90f3e77e6045f258a1da130b640c8d43",
-    "tests/phase_8_36_scope_migration.py": "8794fe66f4d14af17a3150bff2c07b73dd48840f0ca288d6b1b472e316d6a049",
+    "tests/phase_8_36_scope_migration.py": "dc75566dcf6b3df509568f35c14c69b3674cefc285b53daa7e748eecec9a82b9",
     "tests/test_phase_830_scope_integrity.py": "fa67d035f9a938a7cdf85208f76a86e3e4a4f13ebef4b909de72d2ac8e8ae506",
     "tests/test_phase_831_scope_integrity.py": "f0f09bf7ab27390f2eff0f94f2e07e54eef9ee1ac6341678526f92ddcaf53da9",
     "tests/test_phase_832_scope_integrity.py": "861a1a19dce7e38a38c1c8a02deb4d971e813df4dfbfdd8150e8aa0f3e694e70",
@@ -60,7 +60,7 @@ CANDIDATE_SHA256 = {
     "tests/test_phase_834_scope_integrity.py": "ad9c55f8839357cb2bb2e610ac819b282ba75368257302429f88ad0cd9cde4b5",
     "tests/test_phase_836_application_review.py": "f2d71381b3f02f455148c38ce03bf8aa56d8b727391b57af8c26e8ec69f28e4c",
     "tests/test_phase_836_offline_request_review.py": "fe94785b754bcbffa26f66d5201ed9b97154d9b2bf8425634ac842c1ec0367da",
-    "tests/test_phase_836_scope_integrity.py": "841aa40f4811681095238c5e288a138d217943761054f7a5f25ea6045b85f3a5",
+    "tests/test_phase_836_scope_integrity.py": "bb2875f277dcebed810a6a48780820b12ef5827ec5e91e89e161a364e28a5acf",
     "tests/test_phase_836_tk_request_review.py": "eb252e3de5717d414dbd495380385dae00f2ad7094cc14ebfef8b4b9b2ed9a2d",
 }
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
