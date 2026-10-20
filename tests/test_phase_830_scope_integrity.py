@@ -194,7 +194,7 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
             return result
         expected = ("Unapproved entrypoint source change"
                     if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
-                    else "Postcommit entrypoint rollback refused")
+                    else "Frozen 8.36 historical file modified")
         with mock.patch.object(scope, "_git", side_effect=supplied):
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
@@ -369,7 +369,7 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 return b"wrong-branch\n"
             return actual(*args)
         with mock.patch.object(scope, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, "Wrong production branch"):
+            with self.assertRaisesRegex(AssertionError, "Wrong 8.36 product branch"):
                 scope.assert_830_integrity()
 
 

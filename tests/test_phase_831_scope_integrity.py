@@ -168,7 +168,7 @@ class Phase831ScopeTests(unittest.TestCase):
                 return b"other-branch\n"
             return real(*args)
         with mock.patch.object(previous, "_git", side_effect=wrong_branch):
-            with self.assertRaisesRegex(AssertionError, "Wrong production branch"):
+            with self.assertRaisesRegex(AssertionError, "Wrong 8.36 product branch"):
                 scope.assert_831_integrity()
         def wrong_parent(*args):
             if args[:2] == ("merge-base","--is-ancestor"):
