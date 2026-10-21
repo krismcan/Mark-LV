@@ -133,7 +133,8 @@ class Phase833CandidateTests(unittest.TestCase):
 
     def test_real_candidate_exact_bytes_and_live_predecessor_route(self):
         from tests import phase_8_34_scope_migration as successor
-        state = successor.assert_834_integrity()
+        from tests import phase_8_36_scope_migration as latest
+        state = latest.assert_836_integrity()
         self.assertIn(state, STATES)
         self.assertEqual(scope.assert_833_integrity(), state)
         self.assertEqual(set(scope.CANDIDATE_SHA256), ADDED | MODIFIED)

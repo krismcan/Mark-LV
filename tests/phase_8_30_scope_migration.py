@@ -322,6 +322,15 @@ def approved_830_scope(actual: set[str]) -> set[str]:
         if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.34 production projection")
         projected = projected - reply_paths
+    review_path = "nayeon/desktop_alpha/offline_request_review.py"
+    if review_path in actual:
+        # Fail closed: earlier projection may not silently drop the new source.
+        from tests.phase_8_36_scope_migration import assert_836_integrity
+        review_state = assert_836_integrity()
+        if type(review_state) is not str or review_state not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.36 production projection")
+        projected = projected - {review_path}
     return projected
 
 
@@ -348,6 +357,15 @@ def approved_830_files(actual: set[str]) -> set[str]:
         if type(state) is not str or state not in {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.34 production projection")
         projected = projected - reply_paths
+    review_path = "nayeon/desktop_alpha/offline_request_review.py"
+    if review_path in actual:
+        # Fail closed: earlier projection may not silently drop the new source.
+        from tests.phase_8_36_scope_migration import assert_836_integrity
+        review_state = assert_836_integrity()
+        if type(review_state) is not str or review_state not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.36 production projection")
+        projected = projected - {review_path}
     return projected
 
 

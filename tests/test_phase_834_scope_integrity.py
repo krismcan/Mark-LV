@@ -118,6 +118,10 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         guards.enter_context(mock.patch.object(prior, "_git", side_effect=git))
         guards.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
         guards.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
+        # Historical test fixture explicitly selects the preserved 8.34
+        # implementation. The unmocked public current path is 8.36-only.
+        guards.enter_context(mock.patch.object(
+            scope, "assert_834_integrity", scope._assert_834_historical))
         if state == "LEGACY":
             exists = Path.exists
             guards.enter_context(mock.patch.object(Path, "exists", lambda path:
@@ -259,8 +263,14 @@ class Phase834CandidateTests(unittest.TestCase):
         state = scope.assert_834_integrity()
         self.assertIn(state, STATES)
         self.assertEqual(set(scope.CANDIDATE_SHA256), ADDED | MODIFIED)
+        # Phase 8.34 pins are immutable historical evidence, not the mutable
+        # 8.36 successor worktree. Verify every original byte from the exact
+        # sealed 8.34 Git commit, preserving the original self-pin semantics.
+        from tests import phase_8_36_scope_migration as current
+        self.assertEqual(current.assert_836_integrity(), state)
+        self.assertEqual(current.PROTECTED, "b0490cd9e72104a74a32dc5315cbc55bc4034676")
         for path in sorted(ADDED | MODIFIED):
-            data = (scope.ROOT / path).read_bytes()
+            data = scope._git("show", current.PROTECTED + ":" + path)
             if path == scope.SELF:
                 data, count = SELF_PATTERN.subn(lambda m: m[1] + b"0" * 64 + m[2], data)
                 self.assertEqual(count, 1)
