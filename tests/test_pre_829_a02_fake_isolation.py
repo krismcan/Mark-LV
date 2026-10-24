@@ -325,7 +325,7 @@ class FakeOnlyCompositionTests(unittest.TestCase):
         """)
         self.assertIn("A02_IMPORT_GUARDED_OK", script)
         result = subprocess.run(
-            [sys.executable, "-I", "-c", script],
+            [sys.executable, "-I", "-B", "-c", script],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True, text=True, timeout=18,
         )

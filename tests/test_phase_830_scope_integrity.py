@@ -180,24 +180,29 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                         scope.assert_830_integrity()
 
     def test_staged_modified_entrypoint_bad_blob_refused(self):
-        actual = scope._git
+        from tests import phase_8_37_scope_migration as successor
+        self.assertIn(successor.assert_837_integrity(),
+                      {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        actual = successor._git
         file_name = b"nayeon/desktop_alpha/window.py"
+        reached = []
         def supplied(*args):
             result = actual(*args)
             if args[:3] == ("ls-files", "--stage", "-z"):
                 entries = result.split(b"\0")
                 for i, item in enumerate(entries):
                     if item.endswith(b"\t" + file_name):
+                        self.assertNotEqual(item.split(b" ")[1], OID)
                         entries[i] = b"100644 " + OID + b" 0\t" + file_name
+                        reached.append(args)
                         return b"\0".join(entries)
                 raise AssertionError("Original entrypoint missing")
             return result
-        expected = ("Unapproved entrypoint source change"
-                    if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
-                    else "Frozen 8.36 historical file modified")
-        with mock.patch.object(scope, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, expected):
+        with mock.patch.object(successor, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "^Frozen 8.37 historical file modified$"):
                 scope.assert_830_integrity()
+        self.assertEqual(reached, [("ls-files", "--stage", "-z")],
+                         "Forged frozen entrypoint index blob was not consumed")
 
     def test_staged_unapproved_new_ui_blob_refused(self, _historical=False):
         from tests.test_phase_832_scope_integrity import snapshot
@@ -363,14 +368,20 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 os.rmdir(junction)
 
     def test_frozen_production_rejected_on_wrong_branch(self):
-        actual = scope._git
+        from tests import phase_8_37_scope_migration as successor
+        self.assertIn(successor.assert_837_integrity(),
+                      {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        actual = successor._git
+        reached = []
         def supplied(*args):
-            if args[:2] == ("branch", "--show-current"):
+            if args == ("branch", "--show-current"):
+                reached.append(args)
                 return b"wrong-branch\n"
             return actual(*args)
-        with mock.patch.object(scope, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, "Wrong 8.36 product branch"):
+        with mock.patch.object(successor, "_git", side_effect=supplied):
+            with self.assertRaisesRegex(AssertionError, "^Wrong 8.37 product branch$"):
                 scope.assert_830_integrity()
+        self.assertEqual(reached, [("branch", "--show-current")])
 
 
 if __name__ == "__main__":

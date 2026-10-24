@@ -117,6 +117,19 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
     with ExitStack() as guards:
         guards.enter_context(mock.patch.object(prior, "_git", side_effect=git))
         guards.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
+        # This synthetic 8.34 checkpoint deliberately replays historical bytes.
+        # A-02 was changed later in 8.37 solely to prevent isolated-child pyc
+        # creation; a real 8.33 fixture must use the genuine immutable blob.
+        # All other frozen files still use the real guarded disk reader.
+        a02 = "tests/test_pre_829_a02_fake_isolation.py"
+        historical_a02 = actual_git("show", scope.PROTECTED + ":" + a02)
+        real_frozen_reader = scope._raw_frozen_disk
+        def frozen_reader(path):
+            if path == a02:
+                return historical_a02
+            return real_frozen_reader(path)
+        guards.enter_context(mock.patch.object(
+            scope, "_raw_frozen_disk", side_effect=frozen_reader))
         guards.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
         # Historical test fixture explicitly selects the preserved 8.34
         # implementation. The unmocked public current path is 8.36-only.
@@ -311,6 +324,26 @@ class Phase834CandidateTests(unittest.TestCase):
             for adapter in (prior.approved_830_scope, prior.approved_830_files):
                 with self.assertRaisesRegex(AssertionError, "^Unadmitted 8.34 production projection$"):
                     adapter({P})
+
+    def test_historical_a02_fixture_rejects_tampered_frozen_blob(self):
+        # The historical replay must still read and reject altered evidence,
+        # not silently waive the genuine Phase 8.33 A-02 file.
+        target = "tests/test_pre_829_a02_fake_isolation.py"
+        with candidate("EXACT_STAGED"):
+            self.assertEqual(scope.assert_834_integrity(), "EXACT_STAGED")
+            real_reader = scope._raw_frozen_disk
+            reached = []
+            def corrupt(path):
+                data = real_reader(path)
+                if path == target:
+                    reached.append(path)
+                    return data + b"\n# tampered historical A-02\n"
+                return data
+            with mock.patch.object(scope, "_raw_frozen_disk", side_effect=corrupt):
+                with self.assertRaisesRegex(
+                        AssertionError, "^Frozen tracked worktree bytes modified$"):
+                    scope.assert_834_integrity()
+            self.assertEqual(reached, [target])
 
     def test_every_partial_index_and_nearly_complete_index_refused(self):
         for path in ADDED | MODIFIED:

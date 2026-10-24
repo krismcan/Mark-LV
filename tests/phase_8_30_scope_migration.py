@@ -297,6 +297,22 @@ def assert_830_integrity() -> None:
         raise AssertionError("Unexpected untracked production source")
 
 
+def _project_837_draft_sources(actual: set[str]) -> set[str]:
+    """Project only the two exact draft additions after fresh full admission."""
+    draft_paths = {
+        "nayeon/desktop_alpha/offline_request_draft.py",
+        "nayeon/desktop_alpha/offline_draft_consent.py",
+    }
+    if actual & draft_paths:
+        from tests.phase_8_37_scope_migration import assert_837_integrity
+        state = assert_837_integrity()
+        if type(state) is not str or state not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted 8.37 production projection")
+        return actual - draft_paths
+    return actual
+
+
 def approved_830_scope(actual: set[str]) -> set[str]:
     if type(actual) is not set or any(type(x) is not str for x in actual):
         raise AssertionError("Untrusted production delta")
@@ -331,7 +347,7 @@ def approved_830_scope(actual: set[str]) -> set[str]:
                 "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.36 production projection")
         projected = projected - {review_path}
-    return projected
+    return _project_837_draft_sources(projected)
 
 
 def approved_830_files(actual: set[str]) -> set[str]:
@@ -366,7 +382,7 @@ def approved_830_files(actual: set[str]) -> set[str]:
                 "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.36 production projection")
         projected = projected - {review_path}
-    return projected
+    return _project_837_draft_sources(projected)
 
 
 def _assert_exact_config_imports(relative: str) -> None:

@@ -7,6 +7,10 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from nayeon.desktop_alpha.offline_draft_consent import OfflineDraftConsentOwner
+from nayeon.desktop_alpha.offline_request_draft import (
+    DISCLOSURE as DRAFT_DISCLOSURE, MAX_MODEL_CHARACTERS, MODEL_CHARACTERS,
+)
 from nayeon.desktop_alpha.offline_request_review import (
     DISCLOSURE, ReviewContext, ReviewRefused, ReviewState,
     OfflineRequestReviewOwner,
@@ -261,6 +265,14 @@ class ConversationWindow(WorkspacePane):
         self._request_context = self._request_prompt = self._request_ticket = None
         self._request_serial = 0
         self._request_busy = self._request_pending_clear = False
+        self._draft_root, self._draft_pane = object(), object()
+        self._draft_owner = OfflineDraftConsentOwner(self._draft_root)
+        self._draft_context = self._draft_data = self._draft_ticket = None
+        self._draft_receipt = self._draft_snapshot = None
+        self._draft_command_id = None
+        self._draft_serial = self._draft_deadline = 0
+        self._draft_busy = self._draft_pending_clear = self._draft_faulted = False
+        self._draft_controls_ready = False
         # Explicit owner-thread destroy may retire a known timer BEFORE Tk
         # deletes its registered Tcl callback command. Destroy event bindings
         # remain Python-only, including unexpected native destruction.
@@ -327,6 +339,7 @@ class ConversationWindow(WorkspacePane):
         self.request_status = ttk.Label(self, text="No AI request or action was performed.",
             wraplength=680, style="Badge.Offline.TLabel")
         self.request_status.pack(anchor="w", pady=(0, 5))
+        self._build_draft_controls(request_ready)
         if on_reply is not None:
             self.reply_button = ttk.Button(self, text="Simulate reply (no AI)",
                 command=lambda: self._dispatch(on_reply))
@@ -356,6 +369,275 @@ class ConversationWindow(WorkspacePane):
         self._require_creator_thread()
         return time.monotonic_ns() // 1_000_000
 
+    def _build_draft_controls(self, ready):
+        self._require_creator_thread()
+        row = ttk.Frame(self, style="Offline.TFrame")
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Provider (openai only)").pack(side="left")
+        self.draft_provider = ttk.Entry(row, width=9, validate="all",
+            validatecommand=(self.register(self._draft_provider_proposed), "%P"))
+        self.draft_provider.pack(side="left", padx=6)
+        ttk.Label(row, text="Model (availability unchecked)").pack(side="left")
+        self.draft_model = ttk.Entry(row, width=25, validate="all",
+            validatecommand=(self.register(self._draft_model_proposed), "%P"))
+        self.draft_model.pack(side="left", padx=6)
+        buttons = ttk.Frame(self, style="Offline.TFrame")
+        buttons.pack(fill="x")
+        self.draft_prepare_button = ttk.Button(buttons, text="Prepare offline draft",
+            state=ready, command=self._begin_draft)
+        self.draft_confirm_button = ttk.Button(buttons, text="Confirm offline draft",
+            state="disabled")
+        self.draft_cancel_button = ttk.Button(buttons, text="Cancel draft",
+            state=ready, command=self._cancel_draft)
+        for button in (self.draft_prepare_button, self.draft_confirm_button,
+                       self.draft_cancel_button):
+            button.pack(side="left", padx=(0, 7))
+        self.draft_disclosure = ttk.Label(self, text=DRAFT_DISCLOSURE, wraplength=680,
+            style="Muted.Offline.TLabel")
+        self.draft_disclosure.pack(anchor="w", pady=3)
+        json_row = ttk.Frame(self)
+        json_row.pack(fill="x")
+        self.draft_json = tk.Text(json_row, height=3, wrap="word", state="disabled",
+                                 takefocus=True)
+        json_scroll = ttk.Scrollbar(json_row, command=self.draft_json.yview)
+        self.draft_json.configure(yscrollcommand=json_scroll.set)
+        json_scroll.pack(side="right", fill="y")
+        self.draft_json.pack(side="left", fill="x", expand=True)
+        for event in ("<KeyPress>", "<<Paste>>", "<<Cut>>", "<<Clear>>"):
+            self.draft_json.bind(event, self._block_edit)
+        self.draft_status = ttk.Label(self, text="", wraplength=680,
+            style="Badge.Offline.TLabel")
+        self.draft_status.pack(anchor="w", pady=3)
+        for widget in (self.entry, self.draft_provider, self.draft_model,
+                       self.draft_prepare_button, self.draft_confirm_button,
+                       self.draft_cancel_button, self.draft_disclosure, self.draft_status,
+                       self.draft_json, json_scroll):
+            widget.bind("<Destroy>", self._draft_widget_destroyed, add="+")
+        self._draft_controls_ready = True
+
+    def _drop_draft(self):
+        self._require_creator_thread()
+        # Python-only revocation, safe inside any nested Tcl effect or teardown.
+        self._draft_serial += 1
+        self._draft_context = self._draft_data = self._draft_ticket = None
+        self._draft_receipt = self._draft_snapshot = None
+        self._draft_deadline = 0
+        self._draft_pending_clear = True
+        self._draft_owner.abort()
+
+    def _draft_widget_destroyed(self, event):
+        self._require_creator_thread()
+        self._drop_draft()
+        self._draft_faulted = True
+
+    def _draft_provider_proposed(self, candidate):
+        self._require_creator_thread()
+        self._cancel_draft()
+        return type(candidate) is str and len(candidate) <= 6
+
+    def _draft_model_proposed(self, candidate):
+        self._require_creator_thread()
+        self._cancel_draft()
+        return (type(candidate) is str and len(candidate) <= MAX_MODEL_CHARACTERS
+                and all(c in MODEL_CHARACTERS for c in candidate))
+
+    def _cancel_draft(self):
+        self._require_creator_thread()
+        self._drop_draft()  # Revoke BEFORE even attempting widget cleanup.
+        if self._draft_busy:
+            return False
+        if not self._draft_controls_ready:
+            return True
+        self._draft_busy = True
+        self._draft_pending_clear = False
+        failed = False
+        try:
+            if self._alive:
+                # Clear success first; independently hide each failed surface.
+                for widget, options in (
+                        (self.draft_status, {"text": ""}),
+                        (self.draft_confirm_button, {"state": "disabled"})):
+                    try:
+                        widget.configure(**options)
+                    except Exception:
+                        failed = True
+                        try:
+                            widget.pack_forget()
+                        except Exception:
+                            pass  # Permanent fault latch still denies reuse.
+                try:
+                    self._write_draft_json("")
+                except Exception:
+                    failed = True
+                    try:
+                        self.draft_json.pack_forget()
+                    except Exception:
+                        pass
+                command, self._draft_command_id = self._draft_command_id, None
+                if command is not None:
+                    try:
+                        self.deletecommand(command)
+                    except Exception:
+                        failed = True
+        finally:
+            self._draft_busy = False
+        self._draft_faulted |= failed
+        return not failed and not self._draft_pending_clear
+
+    def _write_draft_json(self, text):
+        self._require_creator_thread()
+        self.draft_json.configure(state="normal")
+        self.draft_json.delete("1.0", "end")
+        self.draft_json.insert("1.0", text)
+        self.draft_json.configure(state="disabled")
+
+    def _draft_pure_current(self, context, serial, state):
+        self._require_creator_thread()
+        return (self._alive and not self._draft_faulted
+                and not self._draft_pending_clear
+                and self._draft_context is context and self._draft_serial == serial
+                and self._draft_owner.state is state
+                and self._request_now() < self._draft_deadline)
+
+    def _draft_live(self, context, draft, snapshot, serial, state, display):
+        self._require_creator_thread()
+        # Each query can dispatch. Check pure revocation again after ALL Tcl.
+        if (not self._draft_pure_current(context, serial, state)
+                or not self._is_current()
+                or self.entry.get() != draft.prompt
+                or self.draft_provider.get() != draft.provider
+                or self.draft_model.get() != draft.model
+                or self.draft_disclosure.cget("text") != DRAFT_DISCLOSURE
+                or self.draft_json.get("1.0", "end-1c") != display
+                or str(self.draft_json.cget("state")) != "disabled"
+                or self._request_snapshot() is not snapshot
+                or not self.draft_confirm_button.winfo_exists()):
+            return False
+        return self._draft_pure_current(context, serial, state)
+
+    def _begin_draft(self):
+        self._require_creator_thread()
+        if self._draft_busy:
+            self._drop_draft()
+            return False
+        if (self._request_snapshot is None or not self._alive
+                or self._draft_faulted):
+            self._drop_draft()
+            return False
+        if not self._cancel_draft():
+            return False
+        self._draft_busy = True
+        serial = self._draft_serial
+        complete = False
+        try:
+            snapshot = self._request_snapshot()
+            if (type(snapshot) is not SessionSnapshot or snapshot.closed
+                    or not self._alive or self._draft_serial != serial):
+                return False
+            provider, model, prompt = (
+                self.draft_provider.get(), self.draft_model.get(), self.entry.get())
+            context = ReviewContext(self._draft_root, self._draft_pane,
+                snapshot.session_identity, serial, snapshot.epoch, snapshot.revision)
+            now = self._request_now()
+            self._draft_owner.reset()
+            draft = self._draft_owner.offer(context, provider, model, prompt, now)
+            self._draft_context, self._draft_data = context, draft
+            self._draft_snapshot, self._draft_deadline = snapshot, now + 30_000
+            display = draft.to_json()
+            self._write_draft_json(display)
+            if not self._draft_pure_current(context, serial, ReviewState.PREVIEW):
+                return False
+            self.draft_status.configure(text="Review this local JSON. Nothing will be sent.")
+            if not self._draft_live(context, draft, snapshot, serial,
+                                    ReviewState.PREVIEW, display):
+                return False
+            self._draft_owner.begin_enable(context, draft, self._request_now())
+            # At most one registered draft callback. A captured old callback
+            # carries its original generation and can never confirm a successor.
+            self._draft_command_id = self.register(
+                lambda generation=serial: self._confirm_draft(generation))
+            self.draft_confirm_button.configure(
+                state="normal", command=self._draft_command_id)
+            if not self._draft_live(context, draft, snapshot, serial,
+                                    ReviewState.ENABLING, display):
+                return False
+            # LAST TCL SEAM: before/after pure checks, then exact owner arming.
+            enabled = self.draft_confirm_button.instate(("!disabled",))
+            if not enabled or not self._draft_pure_current(
+                    context, serial, ReviewState.ENABLING):
+                return False
+            self._draft_ticket = self._draft_owner.arm_after_last_tk(
+                context, draft, self._request_now())
+            complete = True
+            return True
+        except ReviewRefused:
+            return False
+        except Exception:
+            self._draft_faulted = True
+            return False
+        finally:
+            self._draft_busy = False
+            if not complete or self._draft_pending_clear:
+                self._cancel_draft()
+
+    def _confirm_draft(self, expected_serial=None):
+        self._require_creator_thread()
+        if expected_serial is not None and (type(expected_serial) is not int
+                                            or expected_serial != self._draft_serial):
+            self._cancel_draft()
+            return False
+        if self._draft_busy:
+            self._drop_draft()
+            return False
+        context, draft, ticket, snapshot = (
+            self._draft_context, self._draft_data, self._draft_ticket,
+            self._draft_snapshot)
+        if context is None or ticket is None or not self._alive:
+            return False
+        self._draft_busy = True
+        serial = self._draft_serial
+        complete = False
+        try:
+            display = draft.to_json()
+            if not self._draft_live(context, draft, snapshot, serial,
+                                    ReviewState.ARMED, display):
+                return False
+            enabled = self.draft_confirm_button.instate(("!disabled",))
+            if not enabled or not self._draft_pure_current(
+                    context, serial, ReviewState.ARMED):
+                return False
+            receipt = self._draft_owner.confirm(ticket, context, draft.provider,
+                draft.model, draft.prompt, self._request_now())
+            self._draft_ticket = None
+            self.draft_confirm_button.configure(state="disabled")
+            self._write_draft_json("")
+            if not self._draft_live(context, draft, snapshot, serial,
+                                    ReviewState.IDLE, ""):
+                return False
+            self.draft_status.configure(text=receipt.status)
+            if (not self._draft_live(context, draft, snapshot, serial,
+                                     ReviewState.IDLE, "")
+                    or self.draft_status.cget("text") != receipt.status
+                    or not self._draft_pure_current(context, serial, ReviewState.IDLE)):
+                return False
+            # A final status read/cleanup may itself dispatch or fail.
+            disabled = self.draft_confirm_button.instate(("disabled",))
+            if not disabled or not self._draft_pure_current(
+                    context, serial, ReviewState.IDLE):
+                return False
+            self._draft_receipt = receipt
+            complete = True
+            return True
+        except ReviewRefused:
+            return False
+        except Exception:
+            self._draft_faulted = True
+            return False
+        finally:
+            self._draft_busy = False
+            if not complete or self._draft_pending_clear:
+                self._cancel_draft()
+
     def _request_pure_current(self, context, serial, state):
         self._require_creator_thread()
         # No Tcl calls: this predicate can run AFTER final widget observation.
@@ -366,6 +648,9 @@ class ConversationWindow(WorkspacePane):
 
     def _cancel_request_review(self):
         self._require_creator_thread()
+        # The sealed app uses this revocation seam before worker admission,
+        # Save, reset and render. The two review owners/tickets stay separate.
+        self._cancel_draft()
         self._request_serial += 1
         self._request_context = self._request_prompt = self._request_ticket = None
         self._request_owner.abort()
@@ -524,6 +809,7 @@ class ConversationWindow(WorkspacePane):
 
     def _proposed(self, candidate):
         self._require_creator_thread()
+        self._cancel_draft()
         if candidate == "":
             return True
         try:
@@ -650,6 +936,7 @@ class ConversationWindow(WorkspacePane):
 
     def destroy(self) -> None:
         self._require_creator_thread()
+        self._drop_draft()
         before = self._on_before_destroy
         if self._alive and before is not None:
             if before() is False:
@@ -662,6 +949,9 @@ class ConversationWindow(WorkspacePane):
     def _destroyed(self, event):
         self._require_creator_thread()
         if event.widget is self:
+            self._drop_draft()
+            self._draft_owner.close()
+            self._draft_command_id = None
             self._request_serial += 1
             self._request_context = self._request_prompt = self._request_ticket = None
             self._request_owner.close()

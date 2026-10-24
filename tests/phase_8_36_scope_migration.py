@@ -268,3 +268,13 @@ def assert_836_integrity():
     _raw_delta(_git("diff", "--no-renames", "--raw", "--no-abbrev", "-z",
                     PROTECTED, head), baseline=baseline, new=expected)
     return "EXACT_CHILD"
+
+
+# Original 8.36 implementation above is retained for historical adversaries.
+# Public admission always proves the exact successor; no fallback or waiver.
+_assert_836_historical = assert_836_integrity
+
+
+def assert_836_integrity():
+    from tests.phase_8_37_scope_migration import assert_837_integrity
+    return assert_837_integrity()

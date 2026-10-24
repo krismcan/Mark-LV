@@ -49,6 +49,12 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
     """
     actual_git = prior._git
     baseline = scope._tree(scope.PROTECTED)
+    # Replay exactly the frozen 8.32 A-02 Git blob in synthetic 8.33 tests.
+    # The live 8.37 guard continues to read the actual current disk.
+    a02 = "tests/test_pre_829_a02_fake_isolation.py"
+    historical_a02 = actual_git("show", scope.PROTECTED + ":" + a02)
+    if baseline[a02] != ("100644", raw_blob_oid(historical_a02)):
+        raise AssertionError("Immutable 8.32 A-02 fixture blob changed")
     data = {p: ("# 833 synthetic candidate " + p + "\n").encode() for p in ADDED | MODIFIED}
     data[scope.SELF] = b'{"tests/phase_8_33_scope_migration.py": "' + b"0" * 64 + b'",}\n'
     if state == "LEGACY":
@@ -113,6 +119,11 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
                             side_effect=scope._assert_833_historical))
         guards.enter_context(mock.patch.object(prior, "_git", side_effect=git))
         guards.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
+        original_frozen_reader = scope._raw_frozen_disk
+        def frozen_reader(path):
+            return historical_a02 if path == a02 else original_frozen_reader(path)
+        guards.enter_context(mock.patch.object(
+            scope, "_raw_frozen_disk", side_effect=frozen_reader))
         guards.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
         if state == "LEGACY":
             exists = Path.exists
@@ -162,6 +173,24 @@ class Phase833CandidateTests(unittest.TestCase):
                 self.assertEqual(set(reads), ADDED | MODIFIED)
                 self.assertEqual(len(reads), 16)
                 self.assertIn(("ls-files", "--stage", "-z"), calls)
+
+    def test_historical_a02_fixture_rejects_corrupt_frozen_blob(self):
+        target = "tests/test_pre_829_a02_fake_isolation.py"
+        with candidate("EXACT_STAGED"):
+            self.assertEqual(scope.assert_833_integrity(), "EXACT_STAGED")
+            original = scope._raw_frozen_disk
+            reached = []
+            def corrupt(path):
+                data = original(path)
+                if path == target:
+                    reached.append(path)
+                    return data + b"\n# corrupt historical A-02\n"
+                return data
+            with mock.patch.object(scope, "_raw_frozen_disk", side_effect=corrupt):
+                with self.assertRaisesRegex(AssertionError,
+                                            "^Frozen tracked worktree bytes modified$"):
+                    scope.assert_833_integrity()
+            self.assertEqual(reached, [target])
 
     def test_successor_proof_never_enters_predecessor_admission_or_projection(self):
         with candidate("EXACT_CHILD"), ExitStack() as guards:

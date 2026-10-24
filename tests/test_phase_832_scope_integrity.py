@@ -560,14 +560,24 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
     # every other non-8.32 frozen file still uses the real raw disk checker.
     adapter = "tests/phase_8_30_scope_migration.py"
     frozen_adapter = actual("show", sealed + ":" + adapter)
-    if (sealed_tree[adapter] != base[adapter]
-            or sealed_tree[adapter] != ("100644", raw_blob_oid(frozen_adapter))):
-        raise AssertionError("Immutable historical projection adapter changed")
+    # A-02 changed in 8.37, so the synthetic 8.32 checkpoint must replay
+    # its genuine immutable 8.32 blob. Never substitute it in live admission.
+    a02 = "tests/test_pre_829_a02_fake_isolation.py"
+    frozen_a02 = actual("show", sealed + ":" + a02)
+    for path, raw in ((adapter, frozen_adapter), (a02, frozen_a02)):
+        if (sealed_tree[path] != base[path]
+                or sealed_tree[path] != ("100644", raw_blob_oid(raw))):
+            raise AssertionError("Immutable historical frozen blob changed")
+    def frozen_reader(path):
+        if path == adapter:
+            return frozen_adapter
+        if path == a02:
+            return frozen_a02
+        return real_raw(path)
     with (mock.patch.object(prior, "_git", side_effect=git),
           mock.patch.object(scope, "_disk", side_effect=lambda p: historical[p]
                             if p in historical else real_disk(p)),
-          mock.patch.object(scope, "_raw_frozen_disk", side_effect=lambda p:
-                            frozen_adapter if p == adapter else real_raw(p))):
+          mock.patch.object(scope, "_raw_frozen_disk", side_effect=frozen_reader)):
         yield
 
 
@@ -599,6 +609,24 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
         self.assertIn("nayeon/desktop_alpha/conversation_session.py", reached)
         self.assertEqual(len(scope.ENVELOPE), 14)
         self.assertEqual(len(successor.ENVELOPE), 20)
+
+    def test_historical_a02_fixture_rejects_corrupt_frozen_blob(self):
+        target = "tests/test_pre_829_a02_fake_isolation.py"
+        with snapshot("EXACT_STAGED"):
+            self.assertEqual(scope._assert_832_historical(), "EXACT_STAGED")
+            original = scope._raw_frozen_disk
+            reached = []
+            def corrupt(path):
+                data = original(path)
+                if path == target:
+                    reached.append(path)
+                    return data + b"\n# corrupt historical A-02\n"
+                return data
+            with mock.patch.object(scope, "_raw_frozen_disk", side_effect=corrupt):
+                with self.assertRaisesRegex(AssertionError,
+                                            "^Frozen tracked worktree bytes modified$"):
+                    scope._assert_832_historical()
+            self.assertEqual(reached, [target])
 
     def test_complete_unstaged_staged_and_one_exact_child_positive_controls(self):
         for state in ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"):

@@ -5,6 +5,8 @@ Live positive checks use the dedicated private candidate checkout.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager, ExitStack
+from functools import lru_cache
 from pathlib import Path
 import hashlib
 import unittest
@@ -13,7 +15,60 @@ from unittest import mock
 from tests import phase_8_36_scope_migration as scope
 
 
+@lru_cache(maxsize=None)
+def sealed_836_bytes(path):
+    # Immutable fixture data only; admission and all negative injections rerun.
+    return scope._git("show", "a12565b9be070684e1d7d801ded4833d13121f94:" + path)
+
+
+@contextmanager
+def historical_candidate():
+    """Authentic sealed 8.36 bytes/index, independent of the 8.37 checkout.
+
+    Only current read seams are redirected. Historical seal verification and
+    every original adversarial injection/body remain active, with no pin edits.
+    """
+    actual = scope._git
+    sealed = "a12565b9be070684e1d7d801ded4833d13121f94"
+    tree = scope._tree(sealed)
+    data = {p: sealed_836_bytes(p) for p in scope.ENVELOPE}
+
+    def git(*args):
+        if args == ("rev-parse", "HEAD"):
+            return (sealed + "\n").encode()
+        if args == ("ls-files", "--stage", "-z"):
+            return b"".join(f"{mode} {oid} 0\t{p}".encode() + b"\0"
+                            for p, (mode, oid) in sorted(tree.items()))
+        if args == ("diff", "--no-renames", "--raw", "--no-abbrev", "-z"):
+            return b""
+        if args[:2] == ("ls-files", "--others"):
+            return b""
+        return actual(*args)
+
+    def flags(*args):
+        if args == ("ls-files", "-v", "--sparse", "-z"):
+            return b"".join(b"H " + p.encode() + b"\0" for p in sorted(tree))
+        return actual_flags_git(*args)
+
+    actual_flags_git = scope.prior._git
+    with ExitStack() as stack:
+        stack.enter_context(mock.patch.object(scope, "_git", side_effect=git))
+        stack.enter_context(mock.patch.object(scope.prior, "_git", side_effect=flags))
+        stack.enter_context(mock.patch.object(scope, "_disk", side_effect=data.__getitem__))
+        stack.enter_context(mock.patch.object(scope, "_frozen", side_effect=sealed_836_bytes))
+        stack.enter_context(mock.patch.object(scope, "assert_836_integrity",
+                                             scope._assert_836_historical))
+        yield
+
+
 class Phase836IntegrityTests(unittest.TestCase):
+
+    def setUp(self):
+        # These two tests deliberately exercise the public CURRENT successor.
+        if self._testMethodName not in {
+                "test_live_candidate_requires_exact_current_topology",
+                "test_old_834_guard_is_preserved_private_and_public_routes_forward"}:
+            self.enterContext(historical_candidate())
 
     def test_allowlist_is_exact_no_unknown_or_unspecified_hash(self):
         self.assertEqual(len(scope.ADDED), 8)
@@ -35,14 +90,15 @@ class Phase836IntegrityTests(unittest.TestCase):
 
     def test_live_candidate_requires_exact_current_topology(self):
         # No state is waived: admission proves the complete unstaged, staged
-        # or one-child topology against exact current Git and 19 source pins.
+        # or one-child topology against exact current Git and successor pins.
+        from tests import phase_8_37_scope_migration as successor
         current = scope.assert_836_integrity()
         self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         head = scope._git("rev-parse", "HEAD").decode("ascii").strip()
         if current == "EXACT_CHILD":
-            self.assertNotEqual(head, scope.PROTECTED)
+            self.assertNotEqual(head, successor.PROTECTED)
         else:
-            self.assertEqual(head, scope.PROTECTED)
+            self.assertEqual(head, successor.PROTECTED)
 
     def test_historical_tag_cannot_be_replaced(self):
         actual=scope._git

@@ -162,21 +162,32 @@ class Phase831ScopeTests(unittest.TestCase):
                 scope.assert_831_integrity()
 
     def test_wrong_branch_and_wrong_parent_refused(self):
-        real = previous._git
+        from tests import phase_8_37_scope_migration as successor
+        self.assertIn(successor.assert_837_integrity(),
+                      {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        real = successor._git
+        reached = []
         def wrong_branch(*args):
-            if args[:2] == ("branch", "--show-current"):
+            if args == ("branch", "--show-current"):
+                reached.append(args)
                 return b"other-branch\n"
             return real(*args)
-        with mock.patch.object(previous, "_git", side_effect=wrong_branch):
-            with self.assertRaisesRegex(AssertionError, "Wrong 8.36 product branch"):
+        with mock.patch.object(successor, "_git", side_effect=wrong_branch):
+            with self.assertRaisesRegex(AssertionError, "^Wrong 8.37 product branch$"):
                 scope.assert_831_integrity()
+        self.assertEqual(reached, [("branch", "--show-current")])
+        reached.clear()
+        parent_query = ("merge-base", "--is-ancestor", successor.PROTECTED,
+                        real("rev-parse", "HEAD").decode().strip())
         def wrong_parent(*args):
-            if args[:2] == ("merge-base","--is-ancestor"):
+            if args == parent_query:
+                reached.append(args)
                 raise AssertionError("Wrong protected parent")
             return real(*args)
-        with mock.patch.object(previous, "_git", side_effect=wrong_parent):
-            with self.assertRaisesRegex(AssertionError, "Wrong protected parent"):
+        with mock.patch.object(successor, "_git", side_effect=wrong_parent):
+            with self.assertRaisesRegex(AssertionError, "^Wrong protected parent$"):
                 scope.assert_831_integrity()
+        self.assertEqual(reached, [parent_query])
 
     def test_pure_owner_rejects_unsafe_import_or_tests_module(self):
         path = next(iter(scope.NEW))

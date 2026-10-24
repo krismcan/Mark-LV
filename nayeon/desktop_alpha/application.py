@@ -705,12 +705,27 @@ class OfflineWorkspaceApplication:
     def _request_review_snapshot(self, view, token, generation):
         self._require_creator_thread()
         # No I/O; only current immutable session data when the worker is idle.
-        if (self._busy or self._reply_busy or self._reply_closing
-                or self._reply_owner.has_worker or self._reply_ticket is not None
-                or not self._current(view, token, generation)
-                or self._conversation_view is None):
+        conversation = self._conversation
+        snapshot = conversation.snapshot
+        conversation_view, conversation_root = self._conversation_view, self._conversation_root
+        tk_root = self.root
+
+        def eligible():
+            # Python only: repeat AFTER _current's potentially reentrant Tcl.
+            return (not self._busy and not self._reply_busy and not self._reply_closing
+                    and not self._reply_owner.has_worker and self._reply_ticket is None
+                    and not self._closed and self._root_alive
+                    and self._active_view is view and self._active_token is token
+                    and self._generation == generation
+                    and conversation_view is not None
+                    and self._conversation_view is conversation_view
+                    and self._conversation_root is conversation_root and self.root is tk_root
+                    and self._conversation is conversation
+                    and conversation.snapshot is snapshot and not snapshot.closed)
+        if (not eligible() or not self._current(view, token, generation)
+                or not eligible()):
             return None
-        return self._conversation.snapshot
+        return snapshot
 
     def _conversation_current(self, view, token, generation, authority) -> bool:
         self._require_creator_thread()
@@ -965,6 +980,11 @@ class OfflineWorkspaceApplication:
         self._reply_busy = True
         try:
             if confirm:
+                # Revoke and clear any newer local draft before reset can
+                # commit. Reset-control cleanup can fail and skip render().
+                # A retained NO_SEND receipt must never outlive its session.
+                if not view._cancel_draft():
+                    return
                 before = self._conversation.snapshot
                 self._reply_cancel()
                 serial = self._reply_serial
