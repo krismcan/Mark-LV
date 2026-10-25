@@ -131,6 +131,10 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         stack.enter_context(mock.patch.object(scope, "_disk", side_effect=disk))
         stack.enter_context(mock.patch.object(scope, "_frozen", side_effect=sealed_836_bytes))
         stack.enter_context(mock.patch.object(scope, "CANDIDATE_SHA256", pins))
+        # This exact synthetic 8.37 fixture proves the original historical
+        # body, not the live current BYOK descendant. No production fallback.
+        stack.enter_context(mock.patch.object(
+            scope, "assert_837_integrity", scope._assert_837_historical))
         yield calls, reads
 
 
@@ -149,13 +153,13 @@ class Phase837IntegrityTests(unittest.TestCase):
         for pin in scope.CANDIDATE_SHA256.values():
             self.assertRegex(pin, r"^[0-9a-f]{64}$")
             self.assertNotEqual(pin, "0" * 64)
-        current = scope.assert_837_integrity()
+        # The live current acceptance is the NEW exact BYOK successor;
+        # all historical synthetic negative fixtures use the frozen body.
+        from tests.phase8_byok_scope_migration import assert_byok_integrity, PARENT
+        current = assert_byok_integrity()
         self.assertIn(current, STATES)
         head = scope._git("rev-parse", "HEAD").decode().strip()
-        if current == "EXACT_CHILD":
-            self.assertNotEqual(head, scope.PROTECTED)
-        else:
-            self.assertEqual(head, scope.PROTECTED)
+        self.assertEqual(head, PARENT if current != "EXACT_CHILD" else head)
 
     def test_a02_isolated_child_uses_minus_b_and_leaves_no_ignored_cache(self):
         # Exercise the original A-02 test's REAL subprocess and bind its flags.
@@ -409,8 +413,12 @@ class Phase837IntegrityTests(unittest.TestCase):
         for malformed in (old, own + own):
             with self.assertRaisesRegex(AssertionError, "Malformed 8.37 self pin"):
                 scope._digest(scope.SELF, malformed)
-        live = (scope.ROOT / scope.SELF).read_bytes()
+        # Historical raw self-pin is bound to the immutable 8.37 commit,
+        # not to the separate appended BYOK public successor adapter.
+        live = scope._git("show",
+            "87208af710bac90c440f2e0851854318b22e9b88:" + scope.SELF)
         self.assertEqual(scope._digest(scope.SELF, live), scope.CANDIDATE_SHA256[scope.SELF])
+        self.assertTrue((scope.ROOT / scope.SELF).read_bytes().startswith(live))
 
 
 class Phase837LegacyProjectionTests(unittest.TestCase):

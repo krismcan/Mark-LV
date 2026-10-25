@@ -309,8 +309,20 @@ def _project_837_draft_sources(actual: set[str]) -> set[str]:
         if type(state) is not str or state not in {
                 "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted 8.37 production projection")
-        return actual - draft_paths
-    return actual
+        projected = actual - draft_paths
+    else:
+        projected = actual
+    # The existing Phase 8 BYOK addition is separately admitted against a
+    # complete exact descendant; no wildcard projection, no cached GO.
+    owner_path = "nayeon/desktop_alpha/first_run_connection_owner.py"
+    if owner_path in projected:
+        from tests.phase8_byok_scope_migration import assert_byok_integrity
+        owner_state = assert_byok_integrity()
+        if type(owner_state) is not str or owner_state not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted BYOK owner projection")
+        projected = projected - {owner_path}
+    return projected
 
 
 def approved_830_scope(actual: set[str]) -> set[str]:

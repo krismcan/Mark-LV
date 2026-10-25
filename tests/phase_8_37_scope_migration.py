@@ -332,3 +332,13 @@ def assert_837_integrity():
     _raw_delta(_git("diff", "--no-renames", "--raw", "--no-abbrev", "-z",
                     PROTECTED, head), baseline=baseline, new=expected)
     return "EXACT_CHILD"
+
+
+# Preserve the exact immutable historical 8.37 implementation above for
+# pinned synthetic fixtures. LIVE admissions require full BYOK successor.
+_assert_837_historical = assert_837_integrity
+
+
+def assert_837_integrity():
+    from tests.phase8_byok_scope_migration import assert_byok_integrity
+    return assert_byok_integrity()
