@@ -1,23 +1,19 @@
-# OM v2.1 — Repository adoption and executable canary boundary
+# OM v2.1 — Tracked procedures, review disposition, and next enforcement boundary
 
-Status: **IMPLEMENTATION CANDIDATE — NOT A VERIFIED RELEASE** (26 October 2026). This document is part of an isolated checkout based on sealed BYOK Increment A commit 4110fa69849f8127a325f9a9001284cd1bd3a59c. The original branch, protected release tags and product sources are not changed.
+Status: **DRAFT GOVERNANCE INTEGRATION, NOT RELEASED** (26 October 2026). Isolated descendant of BYOK Increment A SHA `4110fa69849f8127a325f9a9001284cd1bd3a59c`; original product branch, historical tags and operating model v2 are protected.
 
-## Authority and precedence
-Source policy: D:\\Nayeon\\Governance\\NAYEON_OPERATING_MODEL_V2_1_20261025.md, independent static governance verdict OPERATING_MODEL_V2_1_SECURITY_GO. That policy supplements historical v2 and all older STOP/security decisions. It does not itself reduce full test suites or grant native credential/provider/OS execution. No actual independent review or GitHub publication of THIS repository implementation is claimed here.
+## Adopted procedural guidance
+- `AGENTS.md` and `docs/engineering_failure_review_gate.md` now reference the independently reviewed host OM v2.1 while preserving all prior v2 policy, STOP precedence, exact provenance and three mandatory native Windows full-suite gates.
+- Require an independently challenged impact-and-topology census before expensive testing; run real COMPLETE_UNSTAGED, EXACT_STAGED and EXACT_CHILD historical guards, manifest checks, source bytes and negative cases before each respective full suite; investigate targeted failures before repeats.
+- Permit only one writer, exact logs and native exit codes. GitHub commit/annotated tag verification must precede original same-ID 16-tab macro-enabled Google Drive workbook readback, then independently served public dashboard verification. Release evidence must distinguish fake-only engineering from genuine consumer BYOK acceptance.
 
-## Adopted in this candidate
-- AGENTS.md: state-aware impact matrix, fail-closed actual negative canaries, native evidence, one writer, sensible long-test monitoring, remote Git + same-ID 16-sheet XLSM + served Pages closure.
-- docs/engineering_failure_review_gate.md: phase preflight and state transition rules, no replacement of old security findings or manual approvals.
-- scripts/om_v21_state_canary.py: auxiliary native-test runner which checks actual annotated baseline tag, predecessor/child identity, current Git status, exact changed-path set, disk SHA256 pins, untracked/ignored Python, and executes entire explicitly named test modules with process exit status and separate hashed logs. Denies mismatch before launching tests.
-- tests/test_om_v21_state_canary.py: isolated disposable Git repository adversarial tests for all three topologies, wrong state, edited bytes, unsigned/lightweight tag, unknown/ignored path, invalid manifest/module.
+## Independent adversarial review result
+Initial independent review of proposed `scripts/om_v21_state_canary.py` and its 13 Windows-green tests returned HOLD with four MEDIUM findings: (1) tracked `assume-unchanged` source outside manifest could change invisibly, (2) child test stdout could forge `Ran...OK` and exit 0, (3) arbitrary interpreter/environment/import origin was unpinned, and (4) source, Git refs and evidence were not reverified after tests. The helper and test module are REMOVED from the proposed merge diff, rather than weakened, waived or promoted. Historical draft commit retaining the rejected code is an unmerged PR record, NOT an approved release artifact.
 
-## Explicit limitations and STOP boundaries
-- A user-authored JSON manifest is NOT a cryptographically signed reviewer or durable PRC witness. A malicious release owner could alter that manifest; do not use this helper alone as release authority.
-- The new auxiliary gate does NOT automatically intercept direct Python full-suite invocations. Production runner admission, independent durable witness, reviewer attestations, machine-enforced source/census verification and PRC remain PENDING. Review first; no claim of OM v2.1 fully enforced until bypass paths are addressed.
-- Required full source-affected/historical module census and actual state-specific security probes (including prior BYOK refusal test) must be designed per scope, performed for each Git transition, and independently challenged. The helper's generic module runner is a supplement and by itself cannot prove the census exhaustive or that negative tests were run.
-- No reduction from established three authoritative pre-stage/staged/postcommit suites. No real-key/provider/WinCred usage without separate consent. No implicit approval on model output, no Windows security-control alteration.
-- This governance-only implementation does not change consumer release scores (architecture 5/19; consumer gates 0/12) and does not close overall Phase 8.
-- Do not move a historical product tag, rewrite parent history or overwrite the original master XLSM as evidence of unsealed work.
+## Explicit remaining work
+OM v2.1 is in use as a reviewed planning/preflight policy and proposed tracked procedure. There is **NO machine-enforced independent preflight admission**, authenticated external reviewer/witness, production PRC, authorised regression reduction, or newly approved provider/credential capability. The existing exact phase integrity tests and three authoritative complete Windows regressions still govern all releases. Any future executable enforcement must separately resolve the four MEDIUM findings and demonstrate real-state adversarial coverage before reintroduction.
 
-## Next evidence required for promotion
-Independent read-only source/security review on exact changed paths; resolve any HIGH/MEDIUM; focused tests, all relevant historical regression guards, stage/child real canaries with exact SHA; controlled three-suite release contract as applicable; verified GitHub and original same-ID workbook/dashboard. A draft branch is not product release.
+## BYOK continuing scope
+Within EXISTING Phase 8 only, the next planned user-observable task is explicitly user-triggered Connection-pane to same-root Tk Toplevel child, with fake-only injected coordinator and conservative states initially. This plan does not authorise native secret storage, real provider requests or acceptance of gates 3/4. See `docs/phase8_byok_connection_ui_increment_b_plan.md`.
+
+Do not claim policy adoption or BYOK consumer acceptance fully shipped while this draft is unmerged/unreleased; formal architecture remains 5/19, acceptance 0/12.
