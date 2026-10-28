@@ -9,7 +9,49 @@ from tests import phase8_byok_scope_migration as gate
 from tests import phase_8_37_scope_migration as old
 
 
+
+# Authentic immutable A snapshot: no replacement pins or dynamic digests.
+# Only named LIVE tests below exercise B; every old adversary still tests A.
+from contextlib import contextmanager, ExitStack
+
+
+@contextmanager
+def historical_a_candidate():
+    sealed = "4110fa69849f8127a325f9a9001284cd1bd3a59c"
+    actual = old._git
+    tree = old._tree(sealed)
+    data = {p: actual("show", sealed + ":" + p) for p in gate.ENVELOPE}
+
+    def git(*args):
+        if args == ("rev-parse", "HEAD"):
+            return (sealed + "\n").encode()
+        if args == ("ls-files", "--stage", "-z"):
+            return b"".join(f"{m} {o} 0\t{p}".encode() + b"\0"
+                            for p, (m, o) in sorted(tree.items()))
+        if args == ("ls-files", "-v", "--sparse", "-z"):
+            return b"".join(b"H " + p.encode() + b"\0" for p in sorted(tree))
+        if args == ("diff", "--no-renames", "--raw", "--no-abbrev", "-z"):
+            return b""
+        if args[:2] == ("ls-files", "--others"):
+            return b""
+        return actual(*args)
+
+    with ExitStack() as stack:
+        stack.enter_context(mock.patch.object(old, "_git", side_effect=git))
+        stack.enter_context(mock.patch.object(gate, "_disk", side_effect=data.__getitem__))
+        stack.enter_context(mock.patch.object(old, "_frozen",
+            side_effect=lambda p: actual("show", sealed + ":" + p)))
+        stack.enter_context(mock.patch.object(gate, "assert_byok_integrity",
+                                             gate._assert_byok_historical))
+        yield
+
 class ExactBYOKScopeTests(unittest.TestCase):
+    def setUp(self):
+        if self._testMethodName not in {
+                "test_exact_current_unstaged_source_scope",
+                "test_original_836_live_method_only_update_and_admission_canaries"}:
+            self.enterContext(historical_a_candidate())
+
     def test_nine_paths_and_immutable_parent_identity(self):
         self.assertEqual(len(gate.ADDED), 6)
         self.assertEqual(len(gate.MODIFIED), 5)
@@ -43,6 +85,7 @@ class ExactBYOKScopeTests(unittest.TestCase):
         # Keep every historic synthetic refusal identical to sealed 8.37;
         # this exact live method alone binds the newer sealed BYOK parent.
         from tests.test_phase_836_scope_integrity import Phase836IntegrityTests
+        from tests import phase8_byok_b_scope_migration as live
         old_source = gate._git("show", gate.PARENT + ":tests/test_phase_836_scope_integrity.py")
         new_source = (gate.ROOT/"tests/test_phase_836_scope_integrity.py").read_bytes()
         start=b"    def test_live_candidate_requires_exact_current_topology(self):"
@@ -60,8 +103,8 @@ class ExactBYOKScopeTests(unittest.TestCase):
             raw=old._git
             for wanted,replacement,message in (
                 (("branch","--show-current"),b"untrusted-branch\n","Wrong 8.37 product branch"),
-                (("show-ref","--verify","--hash","--","refs/tags/"+gate.PARENT_TAG),
-                 b"0"*40+b"\n","BYOK protected annotated tag mismatch"),
+                (("show-ref","--verify","--hash","--","refs/tags/"+live.PARENT_TAG),
+                 b"0"*40+b"\n","BYOK B protected annotated tag mismatch"),
             ):
                 def tampered(*a,w=wanted,b=replacement):
                     return b if a==w else raw(*a)

@@ -66,6 +66,30 @@ class EffectIsolationTests(unittest.TestCase):
         ]
         for path in paths:
             self.assertNotIn("first_run_connection_owner", path.read_text("utf-8"))
+        # B permits the exact lazy window bridge, with no default coordinator
+        # or test harness. Keep A's no-implicit-owner-import check above.
+        source = (ROOT / "nayeon/desktop_alpha/application.py").read_text("utf-8")
+        tree = ast.parse(source)
+        app = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+                   and n.name == "OfflineWorkspaceApplication")
+        constructor = next(n for n in app.body if isinstance(n, ast.FunctionDef)
+                           and n.name == "__init__")
+        defaults = dict(zip((a.arg for a in constructor.args.kwonlyargs),
+                            constructor.args.kw_defaults))
+        for name in ("connection_coordinator", "connection_test_harness"):
+            self.assertIsInstance(defaults[name], ast.Constant)
+            self.assertIsNone(defaults[name].value)
+        # No production composition/native secret imports in either UI module.
+        for name in ("application.py", "first_run_connection_window.py"):
+            module = ast.parse((ROOT / "nayeon/desktop_alpha" / name).read_text("utf-8"))
+            imports = [n.module for n in ast.walk(module)
+                       if isinstance(n, ast.ImportFrom) and n.module]
+            imports += [a.name for n in ast.walk(module)
+                        if isinstance(n, ast.Import) for a in n.names]
+            self.assertFalse(any(i.startswith((
+                "nayeon.secrets", "nayeon.brain.credential_onboarding_composition",
+                "nayeon.brain.providers", "openai", "httpx", "requests"))
+                for i in imports))
 
     def test_wrong_coordinator_constructor_refuses_without_calling_attacker(self):
         class Attacker:

@@ -65,8 +65,16 @@ class _ReplyBinding:
 
 
 class OfflineWorkspaceApplication:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, *, connection_coordinator=None,
+                 connection_test_harness=None):
         self._creator_thread = threading.get_ident()
+        # Trusted test composition only; no default credential factory/import.
+        self._connection_coordinator = connection_coordinator
+        self._connection_test_harness = connection_test_harness
+        self._connection_application = object()
+        self._connection = None
+        self._connection_opening = False
+        self._connection_blocked = False
         self.root = root
         self.controller = PreviewOnlyController()
         self._conversation_root = object()
@@ -524,6 +532,7 @@ class OfflineWorkspaceApplication:
 
     def _retire_view(self) -> None:
         self._require_creator_thread()
+        self._retire_connection()
         self._revoke_conversation_view()
         view = self._active_view
         self._active_view = self._active_token = None
@@ -538,6 +547,7 @@ class OfflineWorkspaceApplication:
         # Destroy handlers perform only Python-side revocation, never Tk calls.
         if (self._active_view is view and self._active_token is token
                 and self._generation == generation):
+            self._retire_connection()
             self._reply_cancel()
             if self._reply_owner.has_worker:
                 self._reply_owner.poison()
@@ -553,6 +563,7 @@ class OfflineWorkspaceApplication:
     def _root_destroyed(self, event) -> None:
         self._require_creator_thread()
         if event.widget is self.root:
+            self._retire_connection(destroy=False)
             self._reply_serial += 1
             self._reply_closing = True
             self._reply_navigation = None
@@ -570,6 +581,7 @@ class OfflineWorkspaceApplication:
 
     def close(self) -> None:
         self._require_creator_thread()
+        self._retire_connection()
         if self._closed and not self._reply_owner.has_worker:
             return
         # Block admission and revoke delivery BEFORE any UI/Tcl seam.
@@ -619,8 +631,49 @@ class OfflineWorkspaceApplication:
         self._require_creator_thread()
         self._show(_Page.CONNECTION)
 
+    def _retire_connection(self, *, destroy=True):
+        self._require_creator_thread()
+        child = self._connection
+        if child is not None:
+            if child.retire(destroy=destroy) is True:
+                if self._connection is child:
+                    self._connection = None
+            else:
+                self._connection_blocked = True
+
+    def _open_connection(self, view, token, generation):
+        # Explicit offline preview entry; injected harness is trusted test code.
+        # Neither an exact coordinator type nor model output proves fake safety.
+        # No production credential composition is provided by this slice.
+        self._require_creator_thread()
+        if (self._busy or self._reply_closing or self._closed or not self._root_alive
+                or self._active_view is not view or self._active_token is not token
+                or self._generation != generation or not view._alive):
+            return
+        if self._connection_blocked:
+            try:
+                view.status_label.configure(text=(
+                    "RECOVERY_REQUIRED / INDETERMINATE: offline preview is blocked "
+                    "because prior journey retirement was not verified."))
+            except tk.TclError:
+                pass
+            return
+        if self._connection_opening or self._connection is not None:
+            return
+        self._connection_opening = True  # BEFORE any Tcl constructor/callback
+        try:
+            from nayeon.desktop_alpha.first_run_connection_window import FirstRunConnectionWindow
+            child = FirstRunConnectionWindow(self, view, token, generation)
+            self._connection = child  # partial construction remains reachable
+            child.open()
+        except Exception:
+            self._retire_connection()
+        finally:
+            self._connection_opening = False
+
     def _show(self, page: _Page) -> None:
         self._require_creator_thread()
+        self._retire_connection()
         origin_view, origin_token, origin_generation = (
             self._active_view, self._active_token, self._generation)
         if self._reply_closing or self._closed or not self._root_alive:
@@ -673,6 +726,7 @@ class OfflineWorkspaceApplication:
             elif page is _Page.CONNECTION:
                 view = ConnectionWindow(
                     self.workspace.content,
+                    on_manage=lambda: self._open_connection(view, token, generation),
                     on_destroy=lambda: self._view_destroyed(view, token, generation),
                     on_conversation=lambda: self._cancel(view, token, generation))
             elif page is _Page.SETTINGS:

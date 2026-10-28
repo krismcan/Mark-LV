@@ -322,6 +322,14 @@ def _project_837_draft_sources(actual: set[str]) -> set[str]:
                 "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
             raise AssertionError("Unadmitted BYOK owner projection")
         projected = projected - {owner_path}
+    window_path = "nayeon/desktop_alpha/first_run_connection_window.py"
+    if window_path in projected:
+        from tests.phase8_byok_b_scope_migration import assert_byok_b_integrity
+        window_state = assert_byok_b_integrity()
+        if type(window_state) is not str or window_state not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted BYOK B window projection")
+        projected = projected - {window_path}
     return projected
 
 

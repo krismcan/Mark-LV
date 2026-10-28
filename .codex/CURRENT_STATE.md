@@ -1,3 +1,36 @@
+# 26 October 2026 - BYOK B exact20 integrity candidate (UNSEALED)
+
+Latest completed product increment: Phase 8 BYOK A fake-only first-run owner.
+Milestone: nayeon-v1-phase8-byok-first-run-owner-fake-only-01; HEAD
+4110fa69849f8127a325f9a9001284cd1bd3a59c; tree
+747f172144794d687251545ca923d5ebb5b1551b; annotated tag object
+7496961c83de9607402dcdabff25917674d6688a. Git supersedes stale entries below.
+
+Regression baseline: user-supplied B UI affected Windows 138/138 PASS and
+independent source GO apply to the preserved nine UI candidate paths only.
+Historical 8.37 full baseline: 2,954/2,954; no current B full-suite PASS claimed.
+All THREE authoritative full Windows runs (pre-stage, exactly staged, exact
+child) remain REQUIRED and OPEN, together with independent integrity source
+review. Authoritative host Python is unavailable in this Codex sandbox;
+DesktopCommander host orchestration must perform syntax/compileall, focused,
+affected/cross-phase and complete native verification. No native test result
+is inferred from static checks.
+
+Next restart point: review the eleven integrity/documentation changes and
+literal exact20 pins; validate all historical adversaries plus B's three
+read-only synthetic topologies, then the real complete-unstaged candidate.
+No staging, seal, tag, push, credentials, provider call or WinCred authorized
+in this implementation task. Gate 3/4 NOT VERIFIED; 5/19 architecture, 0/12
+release gates. See docs/phase8_first_run_connection_ui_design.md for failures,
+scope and validation obligations.
+
+Invariant: public live admission requires exact B parent/tag/tree/index/disk
+proof; A's eleven historical pins and private guard remain immutable witnesses.
+Model output grants no authority; preserve Permission -> Policy -> Confirmation
+-> Execution -> Verification. Date: 2026-10-26.
+
+Historical checkpoint content follows unchanged.
+
 # 25 October 2026: bounded Phase 8.36 live-test checkpoint reconciliation\nIndependent 11_FILE_SCOPE_GO after full pre-stage RED test. Only test_live_candidate_requires_exact_current_topology in 8.36 historical test was corrected: actual live guarded parent is completed 8.37 HEAD 87208af..., not its predecessor a12565. All older synthetic and tamper tests remain byte-for-byte unchanged. Exact BYOK successor scope now 6 added + 5 modified; old full run INTERRUPTED with 1893 PASS/1 FAIL; current post-fix regression, stage, seal, GitHub and same-ID workbook/dashboard are NOT VERIFIED. No provider/real key.\n\n# 25 October 2026 - BYOK opaque candidate security boundary repair
 
 Independent BYOK_OPAQUE_CANDIDATE_DESIGN_GO, no HIGH/MEDIUM. The initial pre-stage full Windows regression reached 1283 passes and exposed 1 historical import-consumer failure (test_openai_provider_secure_secret). It was intentionally STOPPED; not a full-suite PASS. Source defect: new UI connection owner imported SecretValue despite protected secret-contract exact-consumer boundary. Repair removes this owner import and delegates exact credential type validation to the existing trusted CredentialOperationHost. Added two hostile wrong-type fake CONNECT/REPLACE owner-to-real-host tests. Targeted RED-to-GREEN check with original consumer guard PASS 3/3 native exit0. Earlier affected 120/120 native PASS preceded this correction, so its result does not qualify as the post-repair affected pass. The full suite, staged source review, staged and postcommit regressions, GitHub branch/tag, same-ID Drive XLSM and dashboard BYOK evidence update are OPEN. Current exact scope ten paths (6 ADD, 4 MODIFY). Historical 8.37 sealed and unchanged. No real credentials/provider calls or UI launcher.

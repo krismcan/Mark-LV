@@ -394,7 +394,8 @@ class TrustedOnboardingRecoveryController:
         except Exception:
             return False
 
-    def finish_operation(self, permit: RecoveryPermit, *, verified: bool) -> bool:
+    def finish_operation(self, permit: RecoveryPermit, *, verified: bool,
+                         approval_live: object | None = None) -> bool:
         self._ownership()
         if self._active is None or permit is not self._active:
             raise RecoveryAdmissionError("No matching in-flight operation")
@@ -405,6 +406,12 @@ class TrustedOnboardingRecoveryController:
             return False
         try:
             new_baseline = self._observe()
+            # Observation may reenter UI teardown. Revoked approval must leave
+            # the durable IN_FLIGHT evidence intact, before generation/READY.
+            if approval_live is not None and approval_live() is not True:
+                self._ready = False
+                self._faulted = True
+                return False
             self._generation += 1
             self._persist(RecoveryState.READY, evidence_hash=self._last.evidence_hash)
             self._baseline = new_baseline

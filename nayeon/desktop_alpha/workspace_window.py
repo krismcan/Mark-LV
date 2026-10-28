@@ -995,15 +995,21 @@ class ConversationWindow(WorkspacePane):
 
 
 class ConnectionWindow(WorkspacePane):
-    def __init__(self, parent, *, on_destroy, on_conversation):
+    def __init__(self, parent, *, on_destroy, on_conversation, on_manage=None):
         super().__init__(parent, name="connection_view", on_destroy=on_destroy)
         ttk.Label(self, text="Connection", style="Heading.Offline.TLabel").pack(anchor="w")
-        ttk.Label(self, text="Not observed; connection operations unavailable in this prototype",
-                  wraplength=580, style="Offline.TLabel").pack(anchor="w", pady=(18, 24))
+        self.status_label = ttk.Label(self, text="Not observed; connection operations unavailable in this prototype",
+                                      wraplength=580, style="Offline.TLabel")
+        self.status_label.pack(anchor="w", pady=(18, 24))
         self.back_button = ttk.Button(self, name="back", text="Back to Conversation",
                                       command=lambda: self._dispatch(on_conversation))
         self.back_button.pack(anchor="w")
         self.back_button.bind("<Return>", lambda event: self._return(on_conversation))
+        self.manage_button = ttk.Button(
+            self, text="Manage provider (offline preview)",
+            state="normal" if on_manage is not None else "disabled",
+            command=lambda: self._dispatch(on_manage) if on_manage is not None else None)
+        self.manage_button.pack(anchor="w", pady=(12, 0))
 
     def focus_initial(self) -> None:
         self._require_creator_thread()

@@ -58,6 +58,13 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
     """
     actual_git = prior._git
     baseline = scope._tree(scope.PROTECTED)
+    # Explicit historical-only preimages for B-modified brain sources.
+    byok_historical = {}
+    for path, oid in (('nayeon/brain/onboarding_coordination.py', '189332fb17e81e0968ead9d992f6a34cacbdb416'), ('nayeon/brain/onboarding_recovery.py', '1045b642db51b5c244aae7f7861190709e96416f')):
+        raw = actual_git("show", scope.PROTECTED + ":" + path)
+        if baseline.get(path) != ("100644", oid) or raw_blob_oid(raw) != oid:
+            raise AssertionError("Immutable BYOK B historical preimage changed")
+        byok_historical[path] = raw
     data = {p: ("# 834 synthetic candidate " + p + "\n").encode() for p in ADDED | MODIFIED}
     data[scope.SELF] = b'{"tests/phase_8_34_scope_migration.py": "' + b"0" * 64 + b'",}\n'
     if state == "LEGACY":
@@ -125,6 +132,8 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         historical_a02 = actual_git("show", scope.PROTECTED + ":" + a02)
         real_frozen_reader = scope._raw_frozen_disk
         def frozen_reader(path):
+            if path in byok_historical:
+                return byok_historical[path]
             if path == a02:
                 return historical_a02
             return real_frozen_reader(path)
@@ -226,18 +235,19 @@ class Phase834CandidateTests(unittest.TestCase):
                        "docs/phase_8_33_offline_delayed_completion_review.md"):
             with candidate("EXACT_STAGED"):
                 self.assertEqual(scope.assert_834_integrity(), "EXACT_STAGED")
-            actual = scope._raw_frozen_disk
             reached = []
-            def corrupt(path):
-                data = actual(path)
-                if path == target:
-                    reached.append(path)
-                    return data + b"\ncorrupt"
-                return data
-            with self.subTest(target=target), candidate("EXACT_STAGED"), mock.patch.object(
-                    scope, "_raw_frozen_disk", side_effect=corrupt):
-                with self.assertRaisesRegex(AssertionError, "^Frozen tracked worktree bytes modified$"):
-                    scope.assert_834_integrity()
+            with self.subTest(target=target), candidate("EXACT_STAGED"):
+                # Inject corruption after the synthetic frozen-blob projection.
+                actual = scope._raw_frozen_disk
+                def corrupt(path):
+                    data = actual(path)
+                    if path == target:
+                        reached.append(path)
+                        return data + b"\ncorrupt"
+                    return data
+                with mock.patch.object(scope, "_raw_frozen_disk", side_effect=corrupt):
+                    with self.assertRaisesRegex(AssertionError, "^Frozen tracked worktree bytes modified$"):
+                        scope.assert_834_integrity()
             self.assertEqual(reached, [target])
 
     def test_malformed_incomplete_and_duplicate_full_deltas_refuse_after_positive(self):
@@ -402,15 +412,17 @@ class Phase834CandidateTests(unittest.TestCase):
         with candidate():
             self.assertEqual(scope.assert_834_integrity(), "COMPLETE_UNSTAGED")
         reached = []
-        actual = scope._raw_frozen_disk
-        def missing(path):
-            if path == target:
-                reached.append(path)
-                raise AssertionError("Missing 8.34 frozen file")
-            return actual(path)
-        with candidate(), mock.patch.object(scope, "_raw_frozen_disk", side_effect=missing):
-            with self.assertRaisesRegex(AssertionError, "^Missing 8.34 frozen file$"):
-                prior.assert_830_integrity()
+        with candidate():
+            # Preserve the 8.34 historical projection for all other sources.
+            actual = scope._raw_frozen_disk
+            def missing(path):
+                if path == target:
+                    reached.append(path)
+                    raise AssertionError("Missing 8.34 frozen file")
+                return actual(path)
+            with mock.patch.object(scope, "_raw_frozen_disk", side_effect=missing):
+                with self.assertRaisesRegex(AssertionError, "^Missing 8.34 frozen file$"):
+                    prior.assert_830_integrity()
         self.assertEqual(reached, [target])
 
     def test_index_source_disagreement_causal_after_complete_positive(self):

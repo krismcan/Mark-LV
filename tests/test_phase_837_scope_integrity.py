@@ -155,8 +155,8 @@ class Phase837IntegrityTests(unittest.TestCase):
             self.assertNotEqual(pin, "0" * 64)
         # The live current acceptance is the NEW exact BYOK successor;
         # all historical synthetic negative fixtures use the frozen body.
-        from tests.phase8_byok_scope_migration import assert_byok_integrity, PARENT
-        current = assert_byok_integrity()
+        from tests.phase8_byok_b_scope_migration import assert_byok_b_integrity, PARENT
+        current = assert_byok_b_integrity()
         self.assertIn(current, STATES)
         head = scope._git("rev-parse", "HEAD").decode().strip()
         self.assertEqual(head, PARENT if current != "EXACT_CHILD" else head)

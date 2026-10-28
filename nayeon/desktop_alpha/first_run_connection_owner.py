@@ -244,11 +244,47 @@ class TrustedFirstRunConnectionOwner:
         # Consume local review BEFORE external callback/reentrant effect.
         self._pending = None
         self._busy = True
+        coordinator = self._coordinator
+        ticket = review._ticket
+        root = ctx.root
+        creator = self._creator
+        checking_journey = False
+        journey_revoked = False
+
+        def journey_live() -> bool:
+            nonlocal checking_journey, journey_revoked
+
+            def exact_journey():
+                # No dependency/Tk call before creator-thread and identity checks.
+                return (threading.get_ident() == creator and
+                        self._creator == creator and self._pure_identity(ctx) and
+                        self._active and self._busy and
+                        self._coordinator is coordinator and
+                        self._owner_token is token and ctx.root is root and
+                        review._context is ctx and review._ticket is ticket and
+                        review.operation is operation)
+
+            if checking_journey or journey_revoked or not exact_journey():
+                journey_revoked = True
+                return False
+            checking_journey = True
+            try:
+                live = self._still_owner(ctx, token)
+                # Liveness and controller probes can reenter close/navigation.
+                if live is not True or journey_revoked or not exact_journey():
+                    journey_revoked = True
+                return not journey_revoked
+            except Exception:
+                journey_revoked = True
+                return False
+            finally:
+                checking_journey = False
+
         try:
-            result = self._coordinator.approve_ui(
+            result = coordinator.approve_ui(
                 ticket=review._ticket, owner_token=token, root=ctx.root,
                 operation=operation, candidate=candidate,
-                acknowledged=acknowledged_delete)
+                acknowledged=acknowledged_delete, journey_live=journey_live)
             if type(result) is not CoordinationReceipt:
                 self._uncertain = True
                 return CoordinationReceipt(CoordinatedOutcome.INDETERMINATE)

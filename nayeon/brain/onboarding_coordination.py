@@ -324,7 +324,8 @@ class CooperativeOnboardingCoordinator:
 
     def approve_ui(self, *, ticket: object, owner_token: str, root: object,
                    operation: OnboardingOperation, candidate: object = None,
-                   acknowledged: bool = False) -> CoordinationReceipt:
+                   acknowledged: bool = False,
+                   journey_live: object | None = None) -> CoordinationReceipt:
         """Consume only this UI review before entering original host path."""
         if (not _trusted_ui_root_live(root) or
                 not self.is_current_ui_ticket(
@@ -339,13 +340,45 @@ class CooperativeOnboardingCoordinator:
             # root never carries consent into a new credential effect.
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         if (type(acknowledged) is not bool or
-                (operation is OnboardingOperation.REMOVE and not acknowledged)):
+                (operation is OnboardingOperation.REMOVE and not acknowledged) or
+                (journey_live is not None and not callable(journey_live))):
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         exact_pending = self._pending
+        checking_journey = False
+        journey_revoked = False
+
+        def live_exact_journey() -> bool:
+            # Bound to THIS approval, including after pending consumption.
+            # A callback cannot revive failed consent or lend it to B.
+            nonlocal checking_journey, journey_revoked
+            def exact_binding():
+                return (type(ticket) is _UiApprovalTicket and
+                        self._ui_ticket is ticket and ticket.root is root and
+                        ticket.owner_token == owner_token and
+                        ticket.operation is operation and
+                        ticket.pending is exact_pending)
+
+            if checking_journey or journey_revoked or not exact_binding():
+                journey_revoked = True
+                return False
+            checking_journey = True
+            try:
+                live = journey_live()
+                if live is not True or journey_revoked or not exact_binding():
+                    journey_revoked = True
+                return not journey_revoked
+            except Exception:
+                journey_revoked = True
+                return False
+            finally:
+                checking_journey = False
+
         try:
             # Keep the UI ticket installed while processing, so reentrant
             # raw approve()/reject() cannot bypass consent binding.
-            return self._approve_pending(candidate=candidate)
+            if journey_live is None:
+                return self._approve_pending(candidate=candidate)
+            return self._approve_pending(candidate=candidate, journey_live=live_exact_journey)
         finally:
             # A delegated approval may throw or return before consuming A.
             # Clear/reject only A; reentrant B may have identical evidence.
@@ -429,7 +462,8 @@ class CooperativeOnboardingCoordinator:
             return CoordinationReceipt(CoordinatedOutcome.REFUSED)
         return self._approve_pending(candidate=candidate)
 
-    def _approve_pending(self, *, candidate: object = None) -> CoordinationReceipt:
+    def _approve_pending(self, *, candidate: object = None,
+                         journey_live: object | None = None) -> CoordinationReceipt:
         """Shared consumption body; approval entrypoint enforces UI provenance."""
         pending = self._pending
         operation = self._operation
@@ -451,28 +485,47 @@ class CooperativeOnboardingCoordinator:
             self._host.reject_if_current(host_review)
             return CoordinationReceipt(CoordinatedOutcome.RECOVERY_REQUIRED)
         return self._approve_recovered(pending, operation, candidate, epoch, generation,
-                                       host_review)
+                                       host_review, journey_live=journey_live)
 
     def _approve_recovered(self, pending: _FreshStamp, operation: OnboardingOperation,
                            candidate: object, epoch: str | None,
                            generation: int | None,
-                           host_review: object) -> CoordinationReceipt:
+                           host_review: object,
+                           journey_live: object | None = None) -> CoordinationReceipt:
         """Trusted active-tenure path, bound to A's exact host review."""
         ctrl = self._recovery
         ui_ticket = self._ui_ticket
+        ui_revoked = False
 
         def live_original_ui() -> bool:
+            nonlocal ui_revoked
             # A's Tk root may be destroyed by any reentrant trusted
             # dependency before IN_FLIGHT admission or before fake effects.
             # Legacy trusted non-UI calls have no UI ticket.
             if ui_ticket is None:
                 return True
-            return (type(ui_ticket) is _UiApprovalTicket and
-                    self._ui_ticket is ui_ticket and
-                    ctrl.is_ui_window_owner(ui_ticket.owner_token) and
-                    _trusted_ui_root_live(ui_ticket.root) and
-                    self._ui_ticket is ui_ticket and
-                    ctrl.is_ui_window_owner(ui_ticket.owner_token))
+            if ui_revoked:
+                return False
+            try:
+                live = (type(ui_ticket) is _UiApprovalTicket and
+                        self._ui_ticket is ui_ticket and
+                        ctrl.is_ui_window_owner(ui_ticket.owner_token) and
+                        _trusted_ui_root_live(ui_ticket.root) and
+                        self._ui_ticket is ui_ticket and
+                        ctrl.is_ui_window_owner(ui_ticket.owner_token) and
+                        (journey_live is None or journey_live() is True) and
+                        _trusted_ui_root_live(ui_ticket.root) and
+                        ctrl.is_ui_window_owner(ui_ticket.owner_token) and
+                        self._ui_ticket is ui_ticket and
+                        # No reentrant dependency follows this final owner-side
+                        # identity/liveness proof. The prior root/controller
+                        # probes may have closed the UI while returning true.
+                        (journey_live is None or journey_live() is True))
+                if live is not True:
+                    ui_revoked = True
+            except Exception:
+                ui_revoked = True
+            return not ui_revoked
 
         if (not ctrl.ready or epoch != ctrl.epoch or generation != ctrl.generation or
                 self._recovering()):
@@ -548,9 +601,15 @@ class CooperativeOnboardingCoordinator:
                  ctrl.verify_credential_absent() or
                  operation not in (OnboardingOperation.CONNECT,
                                    OnboardingOperation.REPLACE, OnboardingOperation.REMOVE))
+            # Revocation after an effect began cannot prove clean completion.
+            and (journey_live is None or live_original_ui())
         )
         try:
-            confirmed = ctrl.finish_operation(permit, verified=verified)
+            if ui_ticket is None:
+                confirmed = ctrl.finish_operation(permit, verified=verified)
+            else:
+                confirmed = ctrl.finish_operation(
+                    permit, verified=verified, approval_live=live_original_ui)
         except RecoveryAdmissionError:
             confirmed = False
         if not confirmed:

@@ -342,3 +342,18 @@ _assert_837_historical = assert_837_integrity
 def assert_837_integrity():
     from tests.phase8_byok_scope_migration import assert_byok_integrity
     return assert_byok_integrity()
+
+
+# Increment B public LIVE route; all historical 8.37/A bodies stay above.
+def assert_837_integrity():
+    from tests.phase8_byok_b_scope_migration import assert_byok_b_integrity
+    try:
+        return assert_byok_b_integrity()
+    except AssertionError as error:
+        # Keep the frozen public 8.37 refusal contract; never admit on error.
+        if type(error) is AssertionError:
+            if error.args == ("Wrong BYOK B product branch",):
+                raise AssertionError("Wrong 8.37 product branch") from None
+            if error.args == ("Frozen BYOK A historical file modified",):
+                raise AssertionError("Frozen 8.37 historical file modified") from None
+        raise

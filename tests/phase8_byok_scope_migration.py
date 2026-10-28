@@ -224,3 +224,16 @@ def assert_byok_integrity():
     _raw_delta(_git("diff", "--no-renames", "--raw", "--no-abbrev", "-z",
                 PARENT, head), baseline=baseline, new=expected)
     return "EXACT_CHILD"
+
+
+# Historical A body/pins above are immutable witnesses, never a LIVE fallback.
+_assert_byok_historical = assert_byok_integrity
+
+
+def assert_byok_integrity():
+    """Public LIVE admission requires the exact twenty-path B successor."""
+    from tests.phase8_byok_b_scope_migration import (
+        assert_byok_a_current_source, assert_byok_b_integrity,
+    )
+    assert_byok_a_current_source()
+    return assert_byok_b_integrity()

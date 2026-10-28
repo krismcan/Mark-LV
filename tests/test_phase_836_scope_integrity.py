@@ -92,12 +92,12 @@ class Phase836IntegrityTests(unittest.TestCase):
         # No state is waived: admission proves the complete unstaged, staged
         # or one-child topology against exact current Git and successor pins.
         from tests import phase_8_37_scope_migration as successor
-        from tests import phase8_byok_scope_migration as admitted
+        from tests import phase8_byok_b_scope_migration as admitted
         # Bind both the historical predecessor and the latest sealed parent.
         # Admission still validates the complete Git/disk/index/tag topology.
-        self.assertEqual(successor.PROTECTED, admitted.PARENT_PARENT)
+        self.assertEqual(successor.PROTECTED, admitted.historical.PARENT_PARENT)
         self.assertEqual(admitted.PARENT,
-            "87208af710bac90c440f2e0851854318b22e9b88")
+            "4110fa69849f8127a325f9a9001284cd1bd3a59c")
         current = scope.assert_836_integrity()
         self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         head = scope._git("rev-parse", "HEAD").decode("ascii").strip()

@@ -568,7 +568,33 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
         if (sealed_tree[path] != base[path]
                 or sealed_tree[path] != ("100644", raw_blob_oid(raw))):
             raise AssertionError("Immutable historical frozen blob changed")
+    # Explicit historical-only preimages for B-modified brain sources.
+    byok_historical = {}
+    for path, oid in (('nayeon/brain/onboarding_coordination.py', '189332fb17e81e0968ead9d992f6a34cacbdb416'), ('nayeon/brain/onboarding_recovery.py', '1045b642db51b5c244aae7f7861190709e96416f')):
+        raw = actual("show", sealed + ":" + path)
+        if base.get(path) != ("100644", oid) or raw_blob_oid(raw) != oid or sealed_tree.get(path) != base.get(path):
+            raise AssertionError("Immutable BYOK B historical preimage changed")
+        byok_historical[path] = raw
+    # A historical fixture may be called by an earlier test which captured
+    # the original raw disk reader before entering snapshot(). Reconstruct
+    # only the later B-modified sealed preimages for that reader too, while
+    # binding each byte string to the authentic 8.32 immutable tree.
+    from tests import phase8_byok_b_scope_migration as byok_b
+    later_modified = {}
+    for path in (byok_b.MODIFIED & set(base)) - scope.ENVELOPE:
+        raw = actual("show", sealed + ":" + path)
+        ref = ("100644", raw_blob_oid(raw))
+        if sealed_tree.get(path) != ref or base[path] != ref:
+            raise AssertionError("Immutable B historical preimage changed")
+        later_modified[scope.ROOT / path] = raw
+    original_read_bytes = Path.read_bytes
+    def sealed_snapshot_read_bytes(path):
+        if path in later_modified:
+            return later_modified[path]
+        return original_read_bytes(path)
     def frozen_reader(path):
+        if path in byok_historical:
+            return byok_historical[path]
         if path == adapter:
             return frozen_adapter
         if path == a02:
@@ -577,7 +603,8 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
     with (mock.patch.object(prior, "_git", side_effect=git),
           mock.patch.object(scope, "_disk", side_effect=lambda p: historical[p]
                             if p in historical else real_disk(p)),
-          mock.patch.object(scope, "_raw_frozen_disk", side_effect=frozen_reader)):
+          mock.patch.object(scope, "_raw_frozen_disk", side_effect=frozen_reader),
+          mock.patch.object(Path, "read_bytes", sealed_snapshot_read_bytes)):
         yield
 
 
