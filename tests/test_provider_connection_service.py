@@ -276,7 +276,8 @@ class ProviderConnectionServiceTests(unittest.TestCase):
 
 class Phase85ScopeGuards(unittest.TestCase):
     def test_checkpoint_three_new_modules_and_all_95_existing_production_files_frozen(self):
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # The protected Phase 8.5 start must remain in HEAD ancestry across maintenance commits.
         self.assertEqual(git("merge-base", START, "HEAD").decode().strip(), START)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")

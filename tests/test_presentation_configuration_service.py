@@ -350,7 +350,8 @@ class PresentationServiceBoundaryTests(unittest.TestCase):
                     self.assertNotIn(node.value, targets, str(path))
 
     def test_exact_starting_checkpoint_sealed_baseline_and_production_scope(self):
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # The protected starting checkpoint remains an ancestor across seals.
         self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)

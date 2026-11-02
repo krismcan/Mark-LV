@@ -492,3 +492,27 @@ def owner_may_reference(path: str, targets: set[str]) -> bool:
         return False
     _assert_exact_config_imports(path)
     return True
+
+# Phase 10.1 exact two-module projection. This is appended after the sealed
+# historical adapter; its entire original body above remains unchanged.
+# A source pathname is never independently sufficient to authorize projection.
+_phase10_prior_production_projection = _project_837_draft_sources
+_PHASE10_PERCEPTION_SOURCES = frozenset({
+    "nayeon/perception/__init__.py",
+    "nayeon/perception/contracts.py",
+})
+
+
+def _project_837_draft_sources(actual: set[str]) -> set[str]:
+    """Project only the complete explicitly admitted Phase 10 source pair."""
+    projected = _phase10_prior_production_projection(actual)
+    if actual & _PHASE10_PERCEPTION_SOURCES:
+        if not _PHASE10_PERCEPTION_SOURCES <= actual:
+            raise AssertionError("Partial Phase 10 perception source inventory")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        verified = assert_phase10_integrity()
+        if type(verified) is not str or verified not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted Phase 10 perception source projection")
+        projected -= _PHASE10_PERCEPTION_SOURCES
+    return projected

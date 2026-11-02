@@ -153,13 +153,22 @@ class Phase837IntegrityTests(unittest.TestCase):
         for pin in scope.CANDIDATE_SHA256.values():
             self.assertRegex(pin, r"^[0-9a-f]{64}$")
             self.assertNotEqual(pin, "0" * 64)
-        # The live current acceptance is the NEW exact BYOK successor;
+        # The live current acceptance is the complete exact Phase10 successor;
         # all historical synthetic negative fixtures use the frozen body.
-        from tests.phase8_byok_b_scope_migration import assert_byok_b_integrity, PARENT
-        current = assert_byok_b_integrity()
+        from tests import phase10_perception_scope_migration as admitted
+        self.assertEqual(admitted.PARENT, "e3612279cb972e68e2487702183d5bf5b8f6c4a1")
+        with mock.patch.object(admitted, "assert_phase10_integrity",
+                               wraps=admitted.assert_phase10_integrity) as fresh:
+            current = scope.assert_837_integrity()
+        fresh.assert_called_once_with()
         self.assertIn(current, STATES)
         head = scope._git("rev-parse", "HEAD").decode().strip()
-        self.assertEqual(head, PARENT if current != "EXACT_CHILD" else head)
+        if current == "EXACT_CHILD":
+            self.assertNotEqual(head, admitted.PARENT)
+            self.assertEqual(scope._git("rev-list", "--parents", "-n", "1", head)
+                             .decode("ascii").split(), [head, admitted.PARENT])
+        else:
+            self.assertEqual(head, admitted.PARENT)
 
     def test_a02_isolated_child_uses_minus_b_and_leaves_no_ignored_cache(self):
         # Exercise the original A-02 test's REAL subprocess and bind its flags.

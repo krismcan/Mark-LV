@@ -349,7 +349,8 @@ def presentation_configuration_view(
                          git("show", baseline + ":" + path).replace(b"\r\n", b"\n"))
 
     def test_starting_checkpoint_sealed_contents_and_exact_production_scope(self):
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # The protected starting checkpoint remains an ancestor across seals.
         self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")

@@ -32,8 +32,13 @@ def historical_candidate():
     sealed = "a12565b9be070684e1d7d801ded4833d13121f94"
     tree = scope._tree(sealed)
     data = {p: sealed_836_bytes(p) for p in scope.ENVELOPE}
+    for path, raw in data.items():
+        if tree.get(path) != ("100644", scope._blob(raw)):
+            raise AssertionError("Unauthenticated historical 8.36 fixture: " + path)
 
     def git(*args):
+        if args == ("branch", "--show-current"):
+            return b"nayeon-v1\n"
         if args == ("rev-parse", "HEAD"):
             return (sealed + "\n").encode()
         if args == ("ls-files", "--stage", "-z"):
@@ -92,17 +97,24 @@ class Phase836IntegrityTests(unittest.TestCase):
         # No state is waived: admission proves the complete unstaged, staged
         # or one-child topology against exact current Git and successor pins.
         from tests import phase_8_37_scope_migration as successor
-        from tests import phase8_byok_b_scope_migration as admitted
+        from tests import phase8_byok_b_scope_migration as historical_b
+        from tests import phase10_perception_scope_migration as admitted
         # Bind both the historical predecessor and the latest sealed parent.
         # Admission still validates the complete Git/disk/index/tag topology.
-        self.assertEqual(successor.PROTECTED, admitted.historical.PARENT_PARENT)
+        self.assertEqual(successor.PROTECTED, historical_b.historical.PARENT_PARENT)
+        self.assertEqual(admitted.PARENT_PARENT, historical_b.PARENT)
         self.assertEqual(admitted.PARENT,
-            "4110fa69849f8127a325f9a9001284cd1bd3a59c")
-        current = scope.assert_836_integrity()
+            "e3612279cb972e68e2487702183d5bf5b8f6c4a1")
+        with mock.patch.object(admitted, "assert_phase10_integrity",
+                               wraps=admitted.assert_phase10_integrity) as fresh:
+            current = scope.assert_836_integrity()
+        fresh.assert_called_once_with()
         self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         head = scope._git("rev-parse", "HEAD").decode("ascii").strip()
         if current == "EXACT_CHILD":
             self.assertNotEqual(head, admitted.PARENT)
+            self.assertEqual(scope._git("rev-list", "--parents", "-n", "1", head)
+                             .decode("ascii").split(), [head, admitted.PARENT])
         else:
             self.assertEqual(head, admitted.PARENT)
 

@@ -377,7 +377,8 @@ class ScopeGuards(unittest.TestCase):
                          git("show", baseline + ":" + path).replace(b"\r\n", b"\n"), path)
 
     def test_exact_phase_8_3_delta_and_other_production_frozen(self):
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # The protected starting checkpoint remains an ancestor across seals.
         self.assertEqual(git("merge-base", START, "HEAD").decode().strip(), START)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")

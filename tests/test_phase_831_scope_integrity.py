@@ -162,8 +162,8 @@ class Phase831ScopeTests(unittest.TestCase):
                 scope.assert_831_integrity()
 
     def test_wrong_branch_and_wrong_parent_refused(self):
-        from tests import phase_8_37_scope_migration as successor
-        self.assertIn(successor.assert_837_integrity(),
+        from tests import phase10_perception_scope_migration as successor
+        self.assertIn(successor.assert_phase10_integrity(),
                       {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         real = successor._git
         reached = []
@@ -173,19 +173,20 @@ class Phase831ScopeTests(unittest.TestCase):
                 return b"other-branch\n"
             return real(*args)
         with mock.patch.object(successor, "_git", side_effect=wrong_branch):
-            with self.assertRaisesRegex(AssertionError, "^Wrong 8.37 product branch$"):
+            with self.assertRaisesRegex(AssertionError, "^Phase10 wrong exact branch$"):
                 scope.assert_831_integrity()
         self.assertEqual(reached, [("branch", "--show-current")])
         reached.clear()
-        parent_query = ("merge-base", "--is-ancestor", successor.PROTECTED,
-                        real("rev-parse", "HEAD").decode().strip())
+        # Authenticate the true sealed B commit, not an unused old merge-base
+        # query from the former 8.37 live route.
+        parent_query = ("cat-file", "commit", successor.PARENT)
         def wrong_parent(*args):
             if args == parent_query:
                 reached.append(args)
-                raise AssertionError("Wrong protected parent")
+                return b"forged parent commit\n"
             return real(*args)
         with mock.patch.object(successor, "_git", side_effect=wrong_parent):
-            with self.assertRaisesRegex(AssertionError, "^Wrong protected parent$"):
+            with self.assertRaisesRegex(AssertionError, "^Phase10 forged raw commit$"):
                 scope.assert_831_integrity()
         self.assertEqual(reached, [parent_query])
 

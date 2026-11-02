@@ -178,7 +178,8 @@ class Phase88FrozenProductionScope(unittest.TestCase):
         def git(*args):
             return subprocess.check_output(["git", *args], cwd=root).decode().strip()
 
-        self.assertEqual(git("branch", "--show-current"), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(git("cat-file", "-t", tag), "tag")
         self.assertEqual(git("rev-parse", tag + "^{commit}"), sealed)
         tracked = set(git("ls-tree", "-r", "--name-only", tag, "--", "nayeon").splitlines())

@@ -65,6 +65,30 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         if baseline.get(path) != ("100644", oid) or raw_blob_oid(raw) != oid:
             raise AssertionError("Immutable BYOK B historical preimage changed")
         byok_historical[path] = raw
+    # Literal Phase10-modified tests frozen in this synthetic checkpoint.
+    # Independently enumerated here: no successor manifest or current-disk
+    # bytes supply the historical authority. All other paths keep real reads.
+    phase10_historical = {}
+    for path, oid in (
+        ("tests/test_bound_credential_lifecycle.py", "dd99fc2a7812820e9e5bf23a79d3a697cdd05258"),
+        ("tests/test_computer_control_v1_freeze.py", "c94eb3e34fecddedec6530392f82b5c4521e35d2"),
+        ("tests/test_connection_reconciliation.py", "7db1700471f30f7450d9bcffba6888ae20055a53"),
+        ("tests/test_credential_onboarding_composition.py", "073a5f18d05c73153f29d9311e6c545739fc9e7c"),
+        ("tests/test_openai_canonical_client.py", "13bf41327068770b0483334aab28d060dd872deb"),
+        ("tests/test_presentation_configuration_bootstrap.py", "b8416a39b64aec76477db939dd0b12716599d3c7"),
+        ("tests/test_presentation_configuration_persistence.py", "7b2b575338ef5e29bf51934dea622bc78f8daa3b"),
+        ("tests/test_presentation_configuration_service.py", "71a518674092ad76df2f1d9b4f9d6094274491b4"),
+        ("tests/test_presentation_configuration_view.py", "eafdf777f20996cb6f2820c223b08d9008c78277"),
+        ("tests/test_presentation_identity_contracts.py", "84551f3c71176b8ae6da5a9fd8a514ae4e4b1788"),
+        ("tests/test_provider_connection_composition.py", "be9dea17b273ef2c66bc137c4c910e233ecbb61b"),
+        ("tests/test_provider_connection_service.py", "927c12f3be29a5a4b4bc4f5ac6002e1deef9ddd9"),
+        ("tests/test_provider_connection_startup.py", "e55093d3c7df974e809807a57aee18ff52f6b41e"),
+        ("tests/test_windows_credential_backend.py", "d73eb7285771cc39564c68d6bcad466588fa50eb"),
+    ):
+        raw = actual_git("show", scope.PROTECTED + ":" + path)
+        if baseline.get(path) != ("100644", oid) or raw_blob_oid(raw) != oid:
+            raise AssertionError("Immutable Phase10 historical test preimage changed")
+        phase10_historical[path] = raw
     data = {p: ("# 834 synthetic candidate " + p + "\n").encode() for p in ADDED | MODIFIED}
     data[scope.SELF] = b'{"tests/phase_8_34_scope_migration.py": "' + b"0" * 64 + b'",}\n'
     if state == "LEGACY":
@@ -127,11 +151,13 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         # This synthetic 8.34 checkpoint deliberately replays historical bytes.
         # A-02 was changed later in 8.37 solely to prevent isolated-child pyc
         # creation; a real 8.33 fixture must use the genuine immutable blob.
-        # All other frozen files still use the real guarded disk reader.
+        # All paths outside the explicit preimages keep the guarded reader.
         a02 = "tests/test_pre_829_a02_fake_isolation.py"
         historical_a02 = actual_git("show", scope.PROTECTED + ":" + a02)
         real_frozen_reader = scope._raw_frozen_disk
         def frozen_reader(path):
+            if path in phase10_historical:
+                return phase10_historical[path]
             if path in byok_historical:
                 return byok_historical[path]
             if path == a02:
@@ -298,13 +324,15 @@ class Phase834CandidateTests(unittest.TestCase):
                 data, count = SELF_PATTERN.subn(lambda m: m[1] + b"0" * 64 + m[2], data)
                 self.assertEqual(count, 1)
             self.assertEqual(hashlib.sha256(data).hexdigest(), scope.CANDIDATE_SHA256[path], path)
+        from tests import phase10_perception_scope_migration as current
+        # Live exact admission reads through the Phase10 source reader.
         reached = []
-        actual = scope._raw_frozen_disk
+        actual = current._disk
         target = "nayeon/desktop_alpha/conversation_session.py"
         def read(path):
             reached.append(path)
             return actual(path)
-        with mock.patch.object(scope, "_raw_frozen_disk", side_effect=read):
+        with mock.patch.object(current, "_disk", side_effect=read):
             old.assert_831_integrity()
         self.assertEqual(reached.count(target), 1)
 

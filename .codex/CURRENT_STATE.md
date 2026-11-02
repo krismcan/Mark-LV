@@ -1,3 +1,35 @@
+# 1 November 2026 — Phase 10.1 perception contracts candidate (UNRELEASED)
+
+Latest completed product increment: Phase 8 BYOK B fake-only connection UI.
+Sealed commit: e3612279cb972e68e2487702183d5bf5b8f6c4a1.
+Immutable annotated tag:
+nayeon-v1-phase8-byok-first-run-connection-ui-fake-only-01
+(tag object dab895740b3ab87aeb979a95f84151a9b2c7fe59).
+
+Regression baseline: original Phase 8.37 full 2,954/2,954; Phase 10.1
+native focused and adversarial 98/98 PASS on Kristian for the prior
+30-file candidate (exit 0; not proof of the expanded 32-file source).
+The original BYOK B guard remains byte-identical as a private historical
+witness; Phase 10 exact unstaged admission separately passed for the
+previously pinned 30-file worktree. All 3 mandatory full native Windows
+regressions (unstaged/staged/immediate child) remain OPEN. No release seal.
+
+Next restart point: following independent 30-file source review HOLD,
+the user approved two further historical test paths for an exact
+32-file Phase 10.1 successor integrity scope (6 added, 26 modified).
+Seven obsolete branch/parent/source-reader assertion incompatibilities
+were repaired. Re-pin all 32 finalized source bytes once; run causal
+negative and historical test preflights against real Windows admission;
+obtain fresh independent GO and complete all three full native Windows
+regressions. Phase 9 stays isolated/on HOLD; BYOK C1 and PRC on HOLD.
+No live capture, provider calls, credentials or new action authority.
+
+Invariant: observation metadata and a claimed redaction/digest are
+neither trusted capture provenance nor user consent, permission, task
+verification or execution authority. Date: 2026-11-01.
+
+Historical checkpoint content follows unchanged.
+
 # 26 October 2026 - BYOK B exact20 integrity candidate (UNSEALED)
 
 Latest completed product increment: Phase 8 BYOK A fake-only first-run owner.

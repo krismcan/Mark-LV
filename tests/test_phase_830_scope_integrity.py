@@ -180,9 +180,10 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                         scope.assert_830_integrity()
 
     def test_staged_modified_entrypoint_bad_blob_refused(self):
-        from tests import phase_8_37_scope_migration as successor
-        self.assertIn(successor.assert_837_integrity(),
-                      {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        # Current branch admission is owned by the fresh Phase 10 successor.
+        from tests import phase10_perception_scope_migration as successor
+        state = successor.assert_phase10_integrity()
+        self.assertIn(state, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         actual = successor._git
         file_name = b"nayeon/desktop_alpha/window.py"
         reached = []
@@ -199,7 +200,9 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 raise AssertionError("Original entrypoint missing")
             return result
         with mock.patch.object(successor, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, "^Frozen 8.37 historical file modified$"):
+            expected = ("^Phase10 unapproved child/index inventory$"
+                        if state == "EXACT_CHILD" else "^Phase10 partial stage$")
+            with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
         self.assertEqual(reached, [("ls-files", "--stage", "-z")],
                          "Forged frozen entrypoint index blob was not consumed")
@@ -368,8 +371,8 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 os.rmdir(junction)
 
     def test_frozen_production_rejected_on_wrong_branch(self):
-        from tests import phase_8_37_scope_migration as successor
-        self.assertIn(successor.assert_837_integrity(),
+        from tests import phase10_perception_scope_migration as successor
+        self.assertIn(successor.assert_phase10_integrity(),
                       {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         actual = successor._git
         reached = []
@@ -379,7 +382,7 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 return b"wrong-branch\n"
             return actual(*args)
         with mock.patch.object(successor, "_git", side_effect=supplied):
-            with self.assertRaisesRegex(AssertionError, "^Wrong 8.37 product branch$"):
+            with self.assertRaisesRegex(AssertionError, "^Phase10 wrong exact branch$"):
                 scope.assert_830_integrity()
         self.assertEqual(reached, [("branch", "--show-current")])
 

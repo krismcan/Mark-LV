@@ -261,3 +261,15 @@ def assert_byok_a_current_source():
     if _digest(path, _disk(path)) != CANDIDATE_SHA256[path]:
         raise AssertionError("BYOK B changed live A adapter bytes")
     return True
+
+
+# Preserve every sealed byte above as a private historical witness. Fixtures
+# must select this callable explicitly; public current admission never falls
+# back to it after a successor rejection.
+_assert_byok_b_historical = assert_byok_b_integrity
+
+
+def assert_byok_b_integrity():
+    """Unconditional fresh Phase 10 successor admission, no historical fallback."""
+    from tests.phase10_perception_scope_migration import assert_phase10_integrity
+    return assert_phase10_integrity()

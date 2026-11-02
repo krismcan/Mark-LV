@@ -1,8 +1,8 @@
 """B exact23 adversaries. Read-only Git/disk seams; no stage/commit/writes.
 
-Synthetic current Git records use the reviewed real source bytes and STATIC B
+Synthetic historical Git records replay authenticated sealed B blobs and STATIC B
 pins. No fixture recomputes/patches source digests or the approved envelope.
-The public live test must fail until all twenty-three approved paths are complete.
+Public live tests require the complete, finalized Phase 10 successor admission.
 """
 from contextlib import contextmanager, ExitStack
 from functools import lru_cache
@@ -15,10 +15,12 @@ from unittest import mock
 
 from tests import phase8_byok_b_scope_migration as gate
 from tests import phase8_byok_scope_migration as historical
+from tests import phase10_perception_scope_migration as successor
 
 STATES = ("COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD")
 RAW = ("diff", "--no-renames", "--raw", "--no-abbrev", "-z")
 CHILD = "e" * 40
+SEALED_B_HEAD = "e3612279cb972e68e2487702183d5bf5b8f6c4a1"
 
 
 @lru_cache(maxsize=None)
@@ -51,32 +53,19 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
     """Exercise real parsers, static source pins and seals with fake current Git."""
     actual = gate.prior._git
     baseline = gate.prior._tree(gate.PARENT)
-    data = {p: gate._disk(p) for p in gate.ENVELOPE}
-    # The host-protected CURRENT_STATE is the only intentionally unfinished
-    # candidate file. Synthesize ONLY its already SHA-pinned intended bytes,
-    # from the independently reviewed static design checkpoint, in memory.
-    # The live real-Git admission below never receives this substitution.
-    state_path = ".codex/CURRENT_STATE.md"
-    design = data["docs/phase8_first_run_connection_ui_design.md"]
-    fenced = re.search(rb"(?s)\x60\x60\x60text\r?\n(.*?)\r?\n\x60\x60\x60", design)
-    if fenced is None:
-        raise AssertionError("Missing reviewed checkpoint prefix")
-    prefix = fenced.group(1).replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-    raw_state = data[state_path]
-    current_hash = hashlib.sha256(raw_state).hexdigest()
-    # Before the separately approved host write, synthesize the single
-    # pinned final image from the exact sealed original preimage. Afterwards,
-    # use the actual final bytes unchanged. All other states fail closed.
-    original_preimage_pin = "9a81ed97ce49c524acd48bc5f3d3ad3fdf73e3b9493d227be61d26690817b8fa"
-    if current_hash == original_preimage_pin:
-        planned_state = prefix + b"\r\n\r\n" + raw_state
-    elif current_hash == gate.CANDIDATE_SHA256[state_path]:
-        planned_state = raw_state
-    else:
-        raise AssertionError("Unapproved CURRENT_STATE preimage in synthetic fixture")
-    if hashlib.sha256(planned_state).hexdigest() != gate.CANDIDATE_SHA256[state_path]:
-        raise AssertionError("Planned checkpoint not equal to literal B pin")
-    data[state_path] = planned_state
+    # Authenticate the immutable B tag, commit, complete tree and original pins
+    # before installing any synthetic Git/disk seam. Never learn trust from
+    # current Phase 10 bytes, including the newer CURRENT_STATE header.
+    if successor.PARENT != SEALED_B_HEAD:
+        raise AssertionError("Unexpected historical B snapshot")
+    sealed_tree = successor._baseline()
+    data = {}
+    for path in sorted(gate.ENVELOPE):
+        raw = actual("show", SEALED_B_HEAD + ":" + path)
+        if (sealed_tree.get(path) != ("100644", gate.prior._blob(raw))
+                or gate._digest(path, raw) != gate.CANDIDATE_SHA256[path]):
+            raise AssertionError("Immutable BYOK B fixture preimage changed: " + path)
+        data[path] = raw
     expected = dict(baseline)
     expected.update({p: ("100644", gate.prior._blob(b)) for p, b in data.items()})
     head = CHILD if state == "EXACT_CHILD" else gate.PARENT
@@ -136,6 +125,8 @@ def candidate(state="COMPLETE_UNSTAGED", *, transform=None, stage_paths=None,
         return disk_mutation(path, raw) if disk_mutation else raw
 
     with ExitStack() as stack:
+        stack.enter_context(mock.patch.object(gate, "assert_byok_b_integrity",
+                                             gate._assert_byok_b_historical))
         stack.enter_context(mock.patch.object(gate.prior, "_git", side_effect=git))
         stack.enter_context(mock.patch.object(gate, "_disk", side_effect=disk))
         stack.enter_context(mock.patch.object(gate.prior, "_frozen",
@@ -459,7 +450,7 @@ class BYOKBHistoricalFixtureProjectionTests(unittest.TestCase):
 
     def test_live_brain_reader_tamper_remains_rejected_after_historical_replay(self):
         self.assertIn(gate.assert_byok_b_integrity(), STATES)
-        original = gate._disk
+        original = successor._disk
         for target in self.TARGETS:
             reached = []
             def corrupt(path):
@@ -469,9 +460,9 @@ class BYOKBHistoricalFixtureProjectionTests(unittest.TestCase):
                     return value + b"untrusted"
                 return value
             with self.subTest(target=target), mock.patch.object(
-                    gate, "_disk", side_effect=corrupt):
+                    successor, "_disk", side_effect=corrupt):
                 with self.assertRaisesRegex(AssertionError,
-                        "^BYOK B candidate byte mismatch: " + re.escape(target) + "$"):
+                        "^Phase10 frozen B disk bytes modified: " + re.escape(target) + "$"):
                     gate.assert_byok_b_integrity()
             self.assertEqual(reached, [target])
         self.assertIn(gate.assert_byok_b_integrity(), STATES)

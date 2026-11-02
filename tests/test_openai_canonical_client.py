@@ -212,7 +212,8 @@ class Phase84ScopeGuards(unittest.TestCase):
         return subprocess.check_output(["git", *args], cwd=ROOT).decode("utf-8")
 
     def test_checkpoint_exact_scope_and_frozen_production(self):
-        self.assertEqual(self.git("branch", "--show-current").strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # Keep the protected start in ancestry after local milestone commits.
         self.assertEqual(self.git("merge-base", START, "HEAD").strip(), START)
         self.assertEqual(self.git("cat-file", "-t", TAG).strip(), "tag")

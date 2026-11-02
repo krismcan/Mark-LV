@@ -464,7 +464,8 @@ class PresentationPersistenceBoundaryTests(unittest.TestCase):
     def test_starting_checkpoint_and_exact_production_scope(self):
         # The protected starting checkpoint remains an ancestor across seals.
         self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), PRODUCT_COMMIT)
         changed = set(git("diff", "--name-only", STARTING_HEAD, "--", "nayeon").decode().splitlines())
         untracked = set(git("ls-files", "--others", "--exclude-standard", "--", "nayeon").decode().splitlines())

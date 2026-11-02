@@ -338,7 +338,8 @@ def bootstrap_presentation_configuration(path: Path) -> PresentationConfiguratio
         self.test_exact_import_function_and_call_source_boundary()
 
     def test_sealed_phase_8_1_contents_and_exact_phase_8_2_production_scope(self):
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         # The protected starting checkpoint remains an ancestor across seals.
         self.assertEqual(git("merge-base", STARTING_HEAD, "HEAD").decode().strip(), STARTING_HEAD)
         self.assertEqual(git("cat-file", "-t", TAG).decode().strip(), "tag")

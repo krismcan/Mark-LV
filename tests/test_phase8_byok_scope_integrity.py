@@ -21,8 +21,13 @@ def historical_a_candidate():
     actual = old._git
     tree = old._tree(sealed)
     data = {p: actual("show", sealed + ":" + p) for p in gate.ENVELOPE}
+    for path, raw in data.items():
+        if tree.get(path) != ("100644", old._blob(raw)):
+            raise AssertionError("Unauthenticated historical A fixture: " + path)
 
     def git(*args):
+        if args == ("branch", "--show-current"):
+            return b"nayeon-v1\n"
         if args == ("rev-parse", "HEAD"):
             return (sealed + "\n").encode()
         if args == ("ls-files", "--stage", "-z"):
@@ -82,12 +87,21 @@ class ExactBYOKScopeTests(unittest.TestCase):
                       {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
 
     def test_original_836_live_method_only_update_and_admission_canaries(self):
-        # Keep every historic synthetic refusal identical to sealed 8.37;
-        # this exact live method alone binds the newer sealed BYOK parent.
+        # Preserve the original A-to-B frozen-source claim against immutable
+        # B, before separately exercising the reviewed Phase10 migration.
         from tests.test_phase_836_scope_integrity import Phase836IntegrityTests
-        from tests import phase8_byok_b_scope_migration as live
+        from tests import phase8_byok_b_scope_migration as historical_b
+        from tests import phase10_perception_scope_migration as live
+        from tests.test_phase8_byok_b_scope_integrity import candidate as b_candidate
+        path = "tests/test_phase_836_scope_integrity.py"
         old_source = gate._git("show", gate.PARENT + ":tests/test_phase_836_scope_integrity.py")
-        new_source = (gate.ROOT/"tests/test_phase_836_scope_integrity.py").read_bytes()
+        sealed = "e3612279cb972e68e2487702183d5bf5b8f6c4a1"
+        self.assertEqual(live.PARENT, sealed)
+        tree = live._baseline()
+        new_source = gate._git("show", sealed + ":" + path)
+        self.assertEqual(tree[path],
+                         ("100644", "1e00e9befc55ed68637dbf5bf6b0ef3954a1831f"))
+        self.assertEqual(("100644", old._blob(new_source)), tree[path])
         start=b"    def test_live_candidate_requires_exact_current_topology(self):"
         end=b"    def test_historical_tag_cannot_be_replaced(self):"
         self.assertEqual(old_source.count(start), 1)
@@ -96,21 +110,86 @@ class ExactBYOKScopeTests(unittest.TestCase):
         new_head,new_body=new_source.split(start,1)
         self.assertEqual(old_head,new_head)
         self.assertEqual(old_body.split(end,1)[1],new_body.split(end,1)[1])
+
+        # Replay only authenticated original B source. Its original live
+        # positive and both branch/A-tag injections remain reachable under
+        # the sealed B fixture, never against newer disk bytes or new pins.
+        namespace = {"__name__": "tests._authenticated_b_836_replay"}
+        exec(compile(new_source, sealed + ":" + path, "exec"), namespace)
+        original = namespace["Phase836IntegrityTests"](
+            "test_live_candidate_requires_exact_current_topology")
+        # The sealed B fixture supplies a synthetic B-parent checkout to
+        # historical admission. The original 8.36 method also queries HEAD
+        # through its older direct Git reader; bind only that query to the
+        # authenticated B-parent identity during this historical replay.
+        # All other Git queries, private guards and injected refusals remain
+        # unchanged. The separate live Phase10 section below is unpatched.
+        from tests import phase_8_36_scope_migration as sealed_836
+        actual_836_git = sealed_836._git
+        def historical_b_head(*args):
+            if args == ("rev-parse", "HEAD"):
+                return (historical_b.PARENT + "\n").encode("ascii")
+            return actual_836_git(*args)
+        with b_candidate(), mock.patch.object(
+                sealed_836, "_git", side_effect=historical_b_head):
+            original.setUp()
+            try:
+                original.test_live_candidate_requires_exact_current_topology()
+                raw = old._git
+                for wanted, replacement, message in (
+                    (("branch", "--show-current"), b"untrusted-branch\n",
+                     "Wrong 8.37 product branch"),
+                    (("show-ref", "--verify", "--hash", "--",
+                      "refs/tags/" + historical_b.PARENT_TAG), b"0"*40+b"\n",
+                     "BYOK B protected annotated tag mismatch"),
+                ):
+                    hits = []
+                    def tampered(*a, w=wanted, b=replacement):
+                        if a == w:
+                            hits.append(a)
+                            return b
+                        return raw(*a)
+                    with self.subTest(historical=wanted), mock.patch.object(
+                            old, "_git", side_effect=tampered):
+                        with self.assertRaisesRegex(AssertionError, message):
+                            original.test_live_candidate_requires_exact_current_topology()
+                    self.assertEqual(hits, [wanted])
+            finally:
+                original.doCleanups()
+
         test=Phase836IntegrityTests("test_live_candidate_requires_exact_current_topology")
         test.setUp()
         try:
             test.test_live_candidate_requires_exact_current_topology()
-            raw=old._git
+            raw=live._git
             for wanted,replacement,message in (
-                (("branch","--show-current"),b"untrusted-branch\n","Wrong 8.37 product branch"),
+                (("branch","--show-current"),b"untrusted-branch\n","Phase10 wrong exact branch"),
                 (("show-ref","--verify","--hash","--","refs/tags/"+live.PARENT_TAG),
-                 b"0"*40+b"\n","BYOK B protected annotated tag mismatch"),
+                 b"0"*40+b"\n","Phase10 B annotated tag mismatch"),
             ):
+                hits = []
                 def tampered(*a,w=wanted,b=replacement):
-                    return b if a==w else raw(*a)
-                with self.subTest(injected=wanted),mock.patch.object(old,"_git",side_effect=tampered):
+                    if a == w:
+                        hits.append(a)
+                        return b
+                    return raw(*a)
+                with self.subTest(injected=wanted),mock.patch.object(live,"_git",side_effect=tampered):
                     with self.assertRaisesRegex(AssertionError,message):
                         test.test_live_candidate_requires_exact_current_topology()
+                self.assertEqual(hits, [wanted])
+            target = "tests/test_phase_836_scope_integrity.py"
+            disk = live._disk
+            hits = []
+            def poisoned(path):
+                data = disk(path)
+                if path == target:
+                    hits.append(path)
+                    return data + b"tamper"
+                return data
+            with mock.patch.object(live, "_disk", side_effect=poisoned):
+                with self.assertRaisesRegex(AssertionError, "Phase10 candidate byte mismatch"):
+                    test.test_live_candidate_requires_exact_current_topology()
+            self.assertEqual(hits, [target])
         finally:
             test.doCleanups()
 

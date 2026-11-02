@@ -525,6 +525,8 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
     def git(*args):
         if args == ("rev-parse", "HEAD"):
             return (head + "\n").encode()
+        if args == ("branch", "--show-current"):
+            return b"nayeon-v1\n"
         seal_data = synthetic_seal_git(args)
         if seal_data is not None:
             return seal_data
@@ -587,12 +589,42 @@ def snapshot(state="COMPLETE_UNSTAGED", *, stage_paths=None, parent=None, merge=
         if sealed_tree.get(path) != ref or base[path] != ref:
             raise AssertionError("Immutable B historical preimage changed")
         later_modified[scope.ROOT / path] = raw
+    # Literal Phase10-modified tests frozen in this synthetic checkpoint.
+    # Independently enumerated here: no successor manifest or current-disk
+    # bytes supply the historical authority. All other paths keep real reads.
+    phase10_historical = {}
+    for path, oid in (
+        ("tests/test_bound_credential_lifecycle.py", "dd99fc2a7812820e9e5bf23a79d3a697cdd05258"),
+        ("tests/test_computer_control_v1_freeze.py", "c94eb3e34fecddedec6530392f82b5c4521e35d2"),
+        ("tests/test_connection_reconciliation.py", "7db1700471f30f7450d9bcffba6888ae20055a53"),
+        ("tests/test_credential_onboarding_composition.py", "073a5f18d05c73153f29d9311e6c545739fc9e7c"),
+        ("tests/test_openai_canonical_client.py", "13bf41327068770b0483334aab28d060dd872deb"),
+        ("tests/test_presentation_configuration_bootstrap.py", "b8416a39b64aec76477db939dd0b12716599d3c7"),
+        ("tests/test_presentation_configuration_persistence.py", "7b2b575338ef5e29bf51934dea622bc78f8daa3b"),
+        ("tests/test_presentation_configuration_service.py", "71a518674092ad76df2f1d9b4f9d6094274491b4"),
+        ("tests/test_presentation_configuration_view.py", "eafdf777f20996cb6f2820c223b08d9008c78277"),
+        ("tests/test_presentation_identity_contracts.py", "84551f3c71176b8ae6da5a9fd8a514ae4e4b1788"),
+        ("tests/test_provider_connection_composition.py", "be9dea17b273ef2c66bc137c4c910e233ecbb61b"),
+        ("tests/test_provider_connection_service.py", "927c12f3be29a5a4b4bc4f5ac6002e1deef9ddd9"),
+        ("tests/test_provider_connection_startup.py", "e55093d3c7df974e809807a57aee18ff52f6b41e"),
+        ("tests/test_windows_credential_backend.py", "d73eb7285771cc39564c68d6bcad466588fa50eb"),
+    ):
+        raw = actual("show", sealed + ":" + path)
+        if sealed_tree.get(path) != ("100644", oid) or raw_blob_oid(raw) != oid:
+            raise AssertionError("Immutable Phase10 historical test preimage changed")
+        if base.get(path) != sealed_tree[path]:
+            raise AssertionError("Phase10 historical test differs from 8.32 baseline")
+        phase10_historical[path] = raw
+    later_modified.update({scope.ROOT / path: raw
+                           for path, raw in phase10_historical.items()})
     original_read_bytes = Path.read_bytes
     def sealed_snapshot_read_bytes(path):
         if path in later_modified:
             return later_modified[path]
         return original_read_bytes(path)
     def frozen_reader(path):
+        if path in phase10_historical:
+            return phase10_historical[path]
         if path in byok_historical:
             return byok_historical[path]
         if path == adapter:
@@ -626,14 +658,19 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
         expected = latest.assert_836_integrity()
         self.assertIn(expected, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(scope.assert_832_integrity(), expected)
+        from tests import phase10_perception_scope_migration as current
+        # This live assertion must reach the current admission reader, not an
+        # obsolete 8.34 frozen reader; historical readers remain tested via snapshot().
         reached = []
-        raw = successor._raw_frozen_disk
+        raw = current._disk
         def observed(path):
             reached.append(path)
             return raw(path)
-        with mock.patch.object(successor, "_raw_frozen_disk", side_effect=observed):
+        with mock.patch.object(current, "_disk", side_effect=observed):
+            # The old public wrapper validates the successor but intentionally
+            # does not return its topology result.
             old.assert_831_integrity()
-        self.assertIn("nayeon/desktop_alpha/conversation_session.py", reached)
+        self.assertEqual(reached.count("nayeon/desktop_alpha/conversation_session.py"), 1)
         self.assertEqual(len(scope.ENVELOPE), 14)
         self.assertEqual(len(successor.ENVELOPE), 20)
 

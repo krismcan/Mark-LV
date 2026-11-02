@@ -112,7 +112,8 @@ class ComputerControlV1FreezeTests(unittest.TestCase):
     def test_phase6_closure_tags_and_computer_control_files_remain_frozen(self):
         # HEAD may advance after Phase 6.23. Freeze the Computer Control trust
         # surface and historical milestones, not unrelated future subsystems.
-        self.assertEqual(git("branch", "--show-current").decode().strip(), "nayeon-v1")
+        from tests.phase10_perception_scope_migration import assert_phase10_integrity
+        self.assertIn(assert_phase10_integrity(), {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         self.assertEqual(git("rev-parse", TAG + "^{commit}").decode().strip(), CHECKPOINT)
         self.assertEqual(git("rev-parse", CLOSURE_TAG + "^{commit}").decode().strip(), CLOSURE)
         for path in PROTECTED_FILES:
