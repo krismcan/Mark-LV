@@ -184,6 +184,9 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
         from tests import phase10_perception_scope_migration as successor
         state = successor.assert_phase10_integrity()
         self.assertIn(state, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
+        from tests import phase10_2_privacy_scope_migration as current
+        self.assertEqual(current.assert_phase10_2_privacy_integrity(), state)
+        self.assertNotIn("nayeon/desktop_alpha/window.py", current.ENVELOPE)
         actual = successor._git
         file_name = b"nayeon/desktop_alpha/window.py"
         reached = []
@@ -200,12 +203,16 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
                 raise AssertionError("Original entrypoint missing")
             return result
         with mock.patch.object(successor, "_git", side_effect=supplied):
-            expected = ("^Phase10 unapproved child/index inventory$"
-                        if state == "EXACT_CHILD" else "^Phase10 partial stage$")
+            expected = {
+                "COMPLETE_UNSTAGED": r"^Phase10\.2 partial stage$",
+                "EXACT_STAGED": r"^Phase10\.2 partial stage$",
+                "EXACT_CHILD": r"^Phase10\.2 unapproved child inventory$",
+            }[state]
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
         self.assertEqual(reached, [("ls-files", "--stage", "-z")],
                          "Forged frozen entrypoint index blob was not consumed")
+        self.assertEqual(current.assert_phase10_2_privacy_integrity(), state)
 
     def test_staged_unapproved_new_ui_blob_refused(self, _historical=False):
         from tests.test_phase_832_scope_integrity import snapshot
@@ -238,26 +245,38 @@ class Phase830ScopeIntegrityTests(unittest.TestCase):
             self.test_staged_unapproved_new_ui_blob_refused)
 
     def test_committed_unapproved_new_ui_blob_refused(self):
+        from tests import phase10_2_privacy_scope_migration as current
+        state = current.assert_phase10_2_privacy_integrity()
+        self.assertIn(state, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         actual = scope._git
         seen = []
+        injected = []
         relative = "nayeon/desktop_alpha/application.py"
+        ancestor_query = ("ls-tree", "-r", "-z", "--full-tree", scope.PROTECTED)
+        raw_ancestor = actual(*ancestor_query)
+        self.assertNotIn(b"\t" + relative.encode("ascii") + b"\0", raw_ancestor)
         def supplied(*args):
             result = actual(*args)
             if args and args[0] == "ls-tree":
-                seen.append(True)
+                seen.append(args)
                 if len(seen) == 2:
+                    self.assertEqual(args, ancestor_query)
+                    self.assertNotIn(b"\t" + relative.encode("ascii") + b"\0", result)
+                    injected.append(args)
                     return replace_or_add_record(result, relative, tree_record(relative))
             return result
-        # The exact malicious ls-tree injection remains required to fail.
-        # Once the separately sealed 8.31 docs child exists, its stronger
-        # ancestor-consistency guard can reject it before the old 8.30 guard.
-        expected = ("^Unexpected precommit 8.30 product source$"
-                    if actual("rev-parse", "HEAD").decode().strip() == scope.PROTECTED
-                    else "^(?:Missing or unapproved committed 8.30 source|Documentation descendant modified production|Maintenance descendant modified production)$")
+        # The second Git reply is the frozen 8.29 ancestor; the authenticated
+        # history rejects its injected source before the 8.30 product check.
+        expected = r"^Frozen historical 8\.29 source changed$"
         with mock.patch.object(scope, "_git", side_effect=supplied):
             with self.assertRaisesRegex(AssertionError, expected):
                 scope.assert_830_integrity()
-        self.assertGreaterEqual(len(seen), 2, "Malicious second ls-tree was not exercised")
+        self.assertEqual(injected, [ancestor_query],
+                         "Exactly one ancestor reply must be forged")
+        self.assertGreaterEqual(len(seen), 2, "Malicious second ls-tree not exercised")
+        self.assertEqual(seen[1], ancestor_query,
+                         "Second Git tree read must be the forged ancestor")
+        self.assertEqual(current.assert_phase10_2_privacy_integrity(), state)
 
     def test_approved_diff_scope_does_not_swallow_unrelated_changes(self):
         allow = set(scope.APPROVED_SOURCE_SHA256)

@@ -373,3 +373,15 @@ def assert_phase10_integrity():
             or _git("branch", "--show-current") != (BRANCH + "\n").encode("ascii")):
         raise AssertionError("Phase10 ref changed during admission")
     return result
+
+
+# Phase 10.2 current-source successor. The complete sealed Phase 10.1
+# implementation above is unchanged as a private historical witness.
+# This public name never falls back to old branch checks on successor failure.
+_phase10_1_historical_assert = assert_phase10_integrity
+
+
+def assert_phase10_integrity():
+    """Fresh Phase 10.2 exact-source admission for all current callers."""
+    from tests.phase10_2_privacy_scope_migration import assert_phase10_2_privacy_integrity
+    return assert_phase10_2_privacy_integrity()

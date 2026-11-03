@@ -462,7 +462,7 @@ class BYOKBHistoricalFixtureProjectionTests(unittest.TestCase):
             with self.subTest(target=target), mock.patch.object(
                     successor, "_disk", side_effect=corrupt):
                 with self.assertRaisesRegex(AssertionError,
-                        "^Phase10 frozen B disk bytes modified: " + re.escape(target) + "$"):
+                        "^Phase10.2 frozen source modified: " + re.escape(target) + "$"):
                     gate.assert_byok_b_integrity()
             self.assertEqual(reached, [target])
         self.assertIn(gate.assert_byok_b_integrity(), STATES)

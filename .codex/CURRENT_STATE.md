@@ -1,3 +1,87 @@
+# 3 November 2026 — Phase 10.2 historical test repair, RELEASE HOLD
+
+The first full native Windows regression on the earlier 13-path candidate
+finished with 3165 tests, native exit 1, two failures ONLY in
+tests/test_phase_830_scope_integrity.py; log SHA-256
+8C91232E33DC5A9C05FEFD83236DDECA46A08C726FBA22D1BA91DEDB45BF26A3.
+A fresh independent scope/design review
+D:\Nayeon\phase10_2_full1_legacy_failures_scope_review.md
+returned PROPOSED_SCOPE_AMENDMENT=GO and HISTORICAL_TEST_REPAIR_DESIGN=GO
+for precisely one additional previously frozen historical test. Source
+envelope is now 5 additions and 9 modifications, EXACTLY 14 files.
+The two negative tamper tests now require the correct strong rejection
+of the forged staged entrypoint or historical ancestor, with exact current
+topology, causal Git reply reach and live admission before/after. No
+production guard, permission ledger, sealed Phase10.1 source, credentials,
+camera/screen capture, API or provider authority changes.
+Candidate hashes require fresh fourteen-path static verification.
+Focused native tests, independent final-source review, and all THREE
+mandatory native Windows FULL regressions still OPEN. Previous 13-path
+prestage/source GO does not automatically apply to this amendment.
+No staging/commit/tag/push or original workbook/dashboard update yet.
+This is a current top-of-file status; all historical entries below are
+preserved, including the sealed prior-context suffix.
+
+# 2 November 2026 — Phase 10.2 current candidate: RELEASE HOLD
+
+This is the latest engineering checkpoint; older entries below are
+historical and preserved. Isolated branch:
+phase10-2-trusted-perception-20261102 at sealed Phase 10.1 parent
+be6c126dc5f3a6814925bb95009ef2b2e6be80b7.
+Source: D:\Nayeon\Source\Mark-LV_phase10_2_trusted_privacy_20261102.
+Exact source envelope: five additions + eight modified paths, with literal
+static SHA-256 pins and a complete Phase 10.1 parent-source witness.
+Independent design V3 GO and synthetic-only ledger SOURCE_PROTOTYPE GO.
+The stricter authenticated full-Git-view delta adapter obtained independent
+DELTA_ADAPTER GO. Native Windows evidence: 59/59 focused synthetic/perception;
+29/29 historical/source; 7/7 repair canaries; 3/3 cross-phase; and 4/4
+presentation Git-view red-to-green PASS, all exits 0. Latest four-case log:
+D:\Nayeon\phase10_2_delta_r1_native.log; SHA-256
+A1C5E818E505D0AFDD29317AE96745C2DEAC7805666DA7E12DC137C3FE5AA23D.
+Latest independent source review still HOLD because two new tests needed
+real staged/child topology handling; the two assertions are now repaired.
+Fresh exact-source admission/review, three mandatory native full regressions,
+one-child seal, GitHub publication and original same-ID XLSM/dashboard update
+remain OPEN. No API, credential, capture, consent broker, Windows OS permission,
+live redaction/provenance or production vision has been enabled.
+Phase 9, BYOK C1 and PRC remain separately held and untouched.
+Historic checkpoint content follows unchanged.
+
+# 2 November 2026 — Phase 10.2 trusted privacy design, release HOLD
+
+Phase 10.1 is verified SEALED, PUBLISHED AND RECONCILED: branch
+phase10-perception-foundation-20261101, commit
+be6c126dc5f3a6814925bb95009ef2b2e6be80b7, tree
+e6898712f51a070509929e4f40afe92f06a70b62, annotated tag
+nayeon-v1-phase-10-1-offline-perception-foundation-01, tag object
+c96dcea845bbab00a142d69341378d0f07f4b47f; remote tag peels to commit.
+Native Phase 10.1 full Windows regression evidence (historical):
+3 × 3,108/3,108 PASS, exits 0; independent SOURCE GO plus supplemental
+RELEASE_ASSURANCE GO after verifier-hash and Phase 9 status gaps.
+See docs/phase10_2_trusted_perception_privacy_rfc.md Open Failures & Prior-Issues
+Review for issue-level source, date, severity, affected callers, cause,
+repair, evidence paths, limitations and closure dispositions; original
+historical notes below remain preserved byte-for-byte.
+
+Phase 10.2 isolated branch: phase10-2-trusted-perception-20261102.
+Source worktree: D:\Nayeon\Source\Mark-LV_phase10_2_trusted_privacy_20261102.
+A new **unreleased SYNTHETIC-ONLY** permission lifecycle source/test is
+present, with no platform authority, screen/camera/OS permissions, providers
+or credentials. V1/V2 independent design reviews HOLD, revision 3
+independent DESIGN GO for fake-only implementation only.
+Initial 22/22 new focused PASS and post-repair combined 57/57
+(perception + synthetic) native Windows unit PASS, exit 0; these are NOT
+full regressions or source/release GO. Independent prototype SOURCE HOLD
+found two replay defects (cross-session request ID and reentrant clock);
+both were repaired with ledger-wide request reservation prior to clock,
+post-callback revalidation and expanded adversarial coverage. Independent
+source rereview and legacy exact-source scope amendment are REQUIRED.
+Do NOT run full native regressions or stage/commit/seal on a known-failing
+old source gate. Phase 9 (20 modified/7 untracked), BYOK C1, PRC remain
+separately held. Major Phase 10 IN PROGRESS; 0/12 release gates verified.
+
+Historical checkpoint content follows unchanged.
+
 # 1 November 2026 — Phase 10.1 perception contracts candidate (UNRELEASED)
 
 Latest completed product increment: Phase 8 BYOK B fake-only connection UI.

@@ -315,15 +315,17 @@ class NativeAdmissionTests(unittest.TestCase):
         self.assertIn(b_gate.assert_byok_b_integrity(), STATES)
 
     def test_actual_live_candidate_and_frozen_reader_tamper_has_exact_reach(self):
-        # Clean positive FIRST: an unrelated unfinalized pin cannot count as
-        # a successful rejection of the intended injection.
-        self.assertIn(gate.assert_phase10_integrity(), STATES)
-        baseline = gate._baseline()
+        # Native Phase 10.2 admission FIRST, then genuine disk tamper.
+        # Old Phase 10.1 envelope/error expectations are historical fixtures,
+        # not the current Phase 10.2 permission-source inventory.
+        from tests import phase10_2_privacy_scope_migration as current
+        self.assertIn(current.assert_phase10_2_privacy_integrity(), STATES)
+        baseline = current._baseline()
         frozen = "nayeon/brain/onboarding_coordination.py"
         self.assertIn(frozen, baseline)
-        self.assertNotIn(frozen, gate.MODIFIED)
-        actual = gate._disk
-        for target in sorted(gate.ENVELOPE | {frozen}):
+        self.assertNotIn(frozen, current.ENVELOPE)
+        actual = current._disk
+        for target in sorted(current.ENVELOPE | {frozen}):
             reached = []
             def corrupt(path):
                 raw = actual(path)
@@ -331,12 +333,15 @@ class NativeAdmissionTests(unittest.TestCase):
                     reached.append(path)
                     return raw + b"untrusted"
                 return raw
-            message = "frozen B disk bytes modified" if target == frozen else "candidate byte mismatch"
-            with self.subTest(target=target), mock.patch.object(gate, "_disk", side_effect=corrupt):
-                with self.assertRaisesRegex(AssertionError, "Phase10 " + message + ": "):
-                    gate.assert_phase10_integrity()
+            cause = ("frozen source modified" if target == frozen
+                     else "candidate byte mismatch")
+            with self.subTest(target=target), mock.patch.object(
+                    current, "_disk", side_effect=corrupt):
+                with self.assertRaisesRegex(
+                        AssertionError, r"^Phase10\.2 " + cause + r": "):
+                    current.assert_phase10_2_privacy_integrity()
             self.assertEqual(reached, [target])
-        self.assertIn(gate.assert_phase10_integrity(), STATES)
+        self.assertIn(current.assert_phase10_2_privacy_integrity(), STATES)
 
     def test_forged_B_tag_commit_tree_and_historical_blob_queries_are_reached(self):
         self.assertEqual(gate._tree_oid(gate._baseline()), gate.PARENT_TREE)

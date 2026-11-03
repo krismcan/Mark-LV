@@ -99,6 +99,7 @@ class Phase836IntegrityTests(unittest.TestCase):
         from tests import phase_8_37_scope_migration as successor
         from tests import phase8_byok_b_scope_migration as historical_b
         from tests import phase10_perception_scope_migration as admitted
+        from tests import phase10_2_privacy_scope_migration as current_gate
         # Bind both the historical predecessor and the latest sealed parent.
         # Admission still validates the complete Git/disk/index/tag topology.
         self.assertEqual(successor.PROTECTED, historical_b.historical.PARENT_PARENT)
@@ -112,11 +113,11 @@ class Phase836IntegrityTests(unittest.TestCase):
         self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})
         head = scope._git("rev-parse", "HEAD").decode("ascii").strip()
         if current == "EXACT_CHILD":
-            self.assertNotEqual(head, admitted.PARENT)
+            self.assertNotEqual(head, current_gate.PARENT)
             self.assertEqual(scope._git("rev-list", "--parents", "-n", "1", head)
-                             .decode("ascii").split(), [head, admitted.PARENT])
+                             .decode("ascii").split(), [head, current_gate.PARENT])
         else:
-            self.assertEqual(head, admitted.PARENT)
+            self.assertEqual(head, current_gate.PARENT)
 
     def test_historical_tag_cannot_be_replaced(self):
         actual=scope._git

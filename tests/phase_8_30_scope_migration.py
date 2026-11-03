@@ -516,3 +516,140 @@ def _project_837_draft_sources(actual: set[str]) -> set[str]:
             raise AssertionError("Unadmitted Phase 10 perception source projection")
         projected -= _PHASE10_PERCEPTION_SOURCES
     return projected
+
+
+# Phase 10.2 addition: project ONLY the explicitly added synthetic permission
+# source when the exact current successor has authenticated the entire
+# inventory. Preserve the sealed Phase 10.1 two-module projection above.
+_phase10_2_prior_projection = _project_837_draft_sources
+_PHASE10_2_PERMISSION_PATH = "nayeon/perception/permissions.py"
+
+
+def _project_837_draft_sources(actual: set[str]) -> set[str]:
+    """Exact three-module projection without wildcard or cached admission."""
+    three = _PHASE10_PERCEPTION_SOURCES | {_PHASE10_2_PERMISSION_PATH}
+    complete = three <= actual  # Previous projector may mutate this set.
+    if actual & three and not complete:
+        raise AssertionError("Partial Phase10.2 perception source inventory")
+    projected = _phase10_2_prior_projection(actual)
+    if complete:
+        from tests.phase10_2_privacy_scope_migration import assert_phase10_2_privacy_integrity
+        verified = assert_phase10_2_privacy_integrity()
+        if type(verified) is not str or verified not in {
+                "COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"}:
+            raise AssertionError("Unadmitted Phase10.2 permission source projection")
+        projected -= {_PHASE10_2_PERMISSION_PATH}
+    return projected
+
+# Phase 10.2 historical presentation tests ask for separate complete Git
+# tracked/untracked *delta views*, not full production inventories. Do not
+# weaken _project_837_draft_sources or approved_830_files, which must still
+# reject every incomplete three-source inventory. Exception below is limited
+# to full, exactly authenticated Git views in COMPLETE_UNSTAGED only.
+import re as _phase10_2_re
+
+_phase10_2_original_approved_scope = approved_830_scope
+_PHASE10_2_DELTA_BASELINES = frozenset({
+    "94e0c2896c8df87421c80edcfc4fd3de48fd8ac7",
+    "35c0246362fbecc3df8532b63d42087b32b22646",
+})
+_PHASE10_2_TRIO = _PHASE10_PERCEPTION_SOURCES | {
+    _PHASE10_2_PERMISSION_PATH}
+
+
+def _phase10_2_nul_git_paths(*args: str) -> frozenset[str]:
+    """Parse a complete Git -z view; never parse display-quoted filenames."""
+    data = _git(*args)
+    if type(data) is not bytes or (data and not data.endswith(b"\0")):
+        raise AssertionError("Phase10.2 malformed exact Git delta view")
+    if not data:
+        return frozenset()
+    fields = data[:-1].split(b"\0")
+    if any(not part for part in fields):
+        raise AssertionError("Phase10.2 empty Git delta path")
+    try:
+        paths = [part.decode("utf-8", "strict") for part in fields]
+    except UnicodeError:
+        raise AssertionError("Phase10.2 invalid Git delta encoding") from None
+    if len(paths) != len(set(paths)):
+        raise AssertionError("Phase10.2 duplicate Git delta path")
+    from tests import phase10_2_privacy_scope_migration as current
+    current.prior.historical.prior._canonical_paths(set(paths))
+    if any(not _production_git_path(p) for p in paths):
+        raise AssertionError("Phase10.2 nonproduction delta path")
+    return frozenset(paths)
+
+
+def _phase10_2_partial_view(actual: set[str],
+                           *, required_baseline: str | None = None
+                           ) -> str | None:
+    """Require exact current Git view on each side of a legacy projection."""
+    from tests.phase10_2_privacy_scope_migration import (
+        assert_phase10_2_privacy_integrity,
+    )
+    if assert_phase10_2_privacy_integrity() != "COMPLETE_UNSTAGED":
+        raise AssertionError("Phase10.2 delta exception requires unstaged source")
+    index = _git("ls-files", "--stage", "-z", "--",
+                 *sorted(_PHASE10_2_TRIO))
+    rows = index[:-1].split(b"\0") if index.endswith(b"\0") else []
+    expected = set(_PHASE10_PERCEPTION_SOURCES)
+    if len(rows) != len(expected):
+        raise AssertionError("Phase10.2 wrong tracked perception index")
+    observed = set()
+    for row in rows:
+        try:
+            header, name = row.decode("ascii", "strict").split("\t", 1)
+        except (ValueError, UnicodeError):
+            raise AssertionError("Phase10.2 malformed perception index") from None
+        if (name not in expected or name in observed
+                or not _phase10_2_re.fullmatch(r"100644 [0-9a-f]{40} 0", header)):
+            raise AssertionError("Phase10.2 wrong tracked perception index")
+        observed.add(name)
+    if observed != expected:
+        raise AssertionError("Phase10.2 missing tracked perception source")
+    subset = actual & _PHASE10_2_TRIO
+    if subset == _PHASE10_PERCEPTION_SOURCES:
+        for baseline in sorted(_PHASE10_2_DELTA_BASELINES):
+            if required_baseline is not None and baseline != required_baseline:
+                continue
+            view = _phase10_2_nul_git_paths(
+                "diff", "--no-renames", "--name-only", "-z",
+                baseline, "--", "nayeon")
+            if actual == view:
+                return baseline
+    if subset == {_PHASE10_2_PERMISSION_PATH} and required_baseline is None:
+        view = _phase10_2_nul_git_paths(
+            "ls-files", "--others", "--exclude-standard",
+            "-z", "--", "nayeon")
+        if actual == view:
+            return None
+    if subset == {_PHASE10_2_PERMISSION_PATH} and required_baseline == "":
+        view = _phase10_2_nul_git_paths(
+            "ls-files", "--others", "--exclude-standard",
+            "-z", "--", "nayeon")
+        if actual == view:
+            return None
+    raise AssertionError("Phase10.2 partial delta not exact current Git view")
+
+
+def approved_830_scope(actual: set[str]) -> set[str]:
+    """Exact legacy Git-view adapter; never permit invented partial inputs."""
+    if type(actual) is not set or any(type(p) is not str for p in actual):
+        raise AssertionError("Untrusted production delta")
+    subset = actual & _PHASE10_2_TRIO
+    if subset not in (_PHASE10_PERCEPTION_SOURCES,
+                      {_PHASE10_2_PERMISSION_PATH}):
+        return _phase10_2_original_approved_scope(actual)
+    original = set(actual)
+    baseline = _phase10_2_partial_view(original)
+    result = _phase10_2_original_approved_scope(
+        original | _PHASE10_2_TRIO)
+    if type(result) is not set:
+        raise AssertionError("Phase10.2 invalid projected delta")
+    # No cached success or staged/committed exemption: bracket the complete
+    # delegate with a fresh source/branch/tag/index/disk and exact-view proof.
+    _phase10_2_partial_view(original, required_baseline=(
+        "" if baseline is None else baseline))
+    if original != actual:
+        raise AssertionError("Phase10.2 caller delta mutated")
+    return result

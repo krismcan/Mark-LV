@@ -92,6 +92,7 @@ class ExactBYOKScopeTests(unittest.TestCase):
         from tests.test_phase_836_scope_integrity import Phase836IntegrityTests
         from tests import phase8_byok_b_scope_migration as historical_b
         from tests import phase10_perception_scope_migration as live
+        from tests import phase10_2_privacy_scope_migration as current_gate
         from tests.test_phase8_byok_b_scope_integrity import candidate as b_candidate
         path = "tests/test_phase_836_scope_integrity.py"
         old_source = gate._git("show", gate.PARENT + ":tests/test_phase_836_scope_integrity.py")
@@ -164,8 +165,8 @@ class ExactBYOKScopeTests(unittest.TestCase):
             raw=live._git
             for wanted,replacement,message in (
                 (("branch","--show-current"),b"untrusted-branch\n","Phase10 wrong exact branch"),
-                (("show-ref","--verify","--hash","--","refs/tags/"+live.PARENT_TAG),
-                 b"0"*40+b"\n","Phase10 B annotated tag mismatch"),
+                (("show-ref","--verify","--hash","--","refs/tags/"+current_gate.PARENT_TAG),
+                 b"0"*40+b"\n","Phase10.2 sealed parent tag mismatch"),
             ):
                 hits = []
                 def tampered(*a,w=wanted,b=replacement):
@@ -187,7 +188,7 @@ class ExactBYOKScopeTests(unittest.TestCase):
                     return data + b"tamper"
                 return data
             with mock.patch.object(live, "_disk", side_effect=poisoned):
-                with self.assertRaisesRegex(AssertionError, "Phase10 candidate byte mismatch"):
+                with self.assertRaisesRegex(AssertionError, r"^Phase10\.2 candidate byte mismatch: tests/test_phase_836_scope_integrity\.py$"):
                     test.test_live_candidate_requires_exact_current_topology()
             self.assertEqual(hits, [target])
         finally:
