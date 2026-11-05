@@ -99,15 +99,15 @@ class Phase836IntegrityTests(unittest.TestCase):
         from tests import phase_8_37_scope_migration as successor
         from tests import phase8_byok_b_scope_migration as historical_b
         from tests import phase10_perception_scope_migration as admitted
-        from tests import phase10_2_privacy_scope_migration as current_gate
+        from tests import phase10_3_scope_migration as current_gate
         # Bind both the historical predecessor and the latest sealed parent.
         # Admission still validates the complete Git/disk/index/tag topology.
         self.assertEqual(successor.PROTECTED, historical_b.historical.PARENT_PARENT)
         self.assertEqual(admitted.PARENT_PARENT, historical_b.PARENT)
         self.assertEqual(admitted.PARENT,
             "e3612279cb972e68e2487702183d5bf5b8f6c4a1")
-        with mock.patch.object(admitted, "assert_phase10_integrity",
-                               wraps=admitted.assert_phase10_integrity) as fresh:
+        with mock.patch.object(current_gate, "assert_phase10_3_integrity",
+                               wraps=current_gate.assert_phase10_3_integrity) as fresh:
             current = scope.assert_836_integrity()
         fresh.assert_called_once_with()
         self.assertIn(current, {"COMPLETE_UNSTAGED", "EXACT_STAGED", "EXACT_CHILD"})

@@ -315,11 +315,11 @@ class NativeAdmissionTests(unittest.TestCase):
         self.assertIn(b_gate.assert_byok_b_integrity(), STATES)
 
     def test_actual_live_candidate_and_frozen_reader_tamper_has_exact_reach(self):
-        # Native Phase 10.2 admission FIRST, then genuine disk tamper.
+        # Native Phase10.3 admission FIRST, then genuine disk tamper.
         # Old Phase 10.1 envelope/error expectations are historical fixtures,
-        # not the current Phase 10.2 permission-source inventory.
-        from tests import phase10_2_privacy_scope_migration as current
-        self.assertIn(current.assert_phase10_2_privacy_integrity(), STATES)
+        # not the current Phase10.3 eleven-path source inventory.
+        from tests import phase10_3_scope_migration as current
+        self.assertIn(current.assert_phase10_3_integrity(), STATES)
         baseline = current._baseline()
         frozen = "nayeon/brain/onboarding_coordination.py"
         self.assertIn(frozen, baseline)
@@ -339,9 +339,9 @@ class NativeAdmissionTests(unittest.TestCase):
                     current, "_disk", side_effect=corrupt):
                 with self.assertRaisesRegex(
                         AssertionError, r"^Phase10\.2 " + cause + r": "):
-                    current.assert_phase10_2_privacy_integrity()
+                    current.assert_phase10_3_integrity()
             self.assertEqual(reached, [target])
-        self.assertIn(current.assert_phase10_2_privacy_integrity(), STATES)
+        self.assertIn(current.assert_phase10_3_integrity(), STATES)
 
     def test_forged_B_tag_commit_tree_and_historical_blob_queries_are_reached(self):
         self.assertEqual(gate._tree_oid(gate._baseline()), gate.PARENT_TREE)

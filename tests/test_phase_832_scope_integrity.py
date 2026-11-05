@@ -670,7 +670,24 @@ class Phase832ScopeIntegrityTests(unittest.TestCase):
             # The old public wrapper validates the successor but intentionally
             # does not return its topology result.
             old.assert_831_integrity()
-        self.assertEqual(reached.count("nayeon/desktop_alpha/conversation_session.py"), 1)
+        target = "nayeon/desktop_alpha/conversation_session.py"
+        self.assertEqual(reached.count(target), 2)
+
+        second_reads = []
+        def corrupt_second(path):
+            data = raw(path)
+            if path == target:
+                second_reads.append(path)
+                if len(second_reads) == 2:
+                    return data + b"untrusted"
+            return data
+        with mock.patch.object(current, "_disk", side_effect=corrupt_second):
+            with self.assertRaisesRegex(
+                    AssertionError,
+                    r"^Phase10\.2 frozen source modified: nayeon/desktop_alpha/conversation_session\.py$"):
+                old.assert_831_integrity()
+        self.assertEqual(second_reads, [target, target])
+        old.assert_831_integrity()
         self.assertEqual(len(scope.ENVELOPE), 14)
         self.assertEqual(len(successor.ENVELOPE), 20)
 

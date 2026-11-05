@@ -267,3 +267,13 @@ def assert_phase10_2_privacy_integrity():
             "refs/tags/" + PARENT_TAG) != (PARENT_TAG_OBJECT + "\n").encode():
         raise AssertionError("Phase10.2 sealed parent tag changed during admission")
     return result
+
+
+# Phase10.3 successor: retain the complete sealed guard above as history.
+_phase10_2_historical_assert = assert_phase10_2_privacy_integrity
+
+
+def assert_phase10_2_privacy_integrity():
+    """Unconditional current source route; no historical fallback."""
+    from tests.phase10_3_scope_migration import assert_phase10_3_integrity
+    return assert_phase10_3_integrity()

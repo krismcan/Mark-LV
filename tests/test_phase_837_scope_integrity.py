@@ -156,10 +156,10 @@ class Phase837IntegrityTests(unittest.TestCase):
         # The live current acceptance is the complete exact Phase10 successor;
         # all historical synthetic negative fixtures use the frozen body.
         from tests import phase10_perception_scope_migration as admitted
-        from tests import phase10_2_privacy_scope_migration as current_gate
+        from tests import phase10_3_scope_migration as current_gate
         self.assertEqual(admitted.PARENT, "e3612279cb972e68e2487702183d5bf5b8f6c4a1")
-        with mock.patch.object(admitted, "assert_phase10_integrity",
-                               wraps=admitted.assert_phase10_integrity) as fresh:
+        with mock.patch.object(current_gate, "assert_phase10_3_integrity",
+                               wraps=current_gate.assert_phase10_3_integrity) as fresh:
             current = scope.assert_837_integrity()
         fresh.assert_called_once_with()
         self.assertIn(current, STATES)

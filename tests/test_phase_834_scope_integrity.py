@@ -334,7 +334,23 @@ class Phase834CandidateTests(unittest.TestCase):
             return actual(path)
         with mock.patch.object(current, "_disk", side_effect=read):
             old.assert_831_integrity()
-        self.assertEqual(reached.count(target), 1)
+        self.assertEqual(reached.count(target), 2)
+
+        second_reads = []
+        def corrupt_second(path):
+            data = actual(path)
+            if path == target:
+                second_reads.append(path)
+                if len(second_reads) == 2:
+                    return data + b"untrusted"
+            return data
+        with mock.patch.object(current, "_disk", side_effect=corrupt_second):
+            with self.assertRaisesRegex(
+                    AssertionError,
+                    r"^Phase10\.2 frozen source modified: nayeon/desktop_alpha/conversation_session\.py$"):
+                old.assert_831_integrity()
+        self.assertEqual(second_reads, [target, target])
+        old.assert_831_integrity()
 
     def test_all_three_complete_controls_reach_current_pin_reads(self):
         for state in STATES:

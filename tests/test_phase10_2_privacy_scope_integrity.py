@@ -245,63 +245,72 @@ class NativeExactSourceAdmissionTests(unittest.TestCase):
                          {other})
 
     def test_legacy_presentation_git_delta_view_exact_not_subset(self):
-        from tests import phase_8_30_scope_migration as projection
-        state = gate.assert_phase10_2_privacy_integrity()
-        self.assertIn(state, STATES)
-        trio = projection._PHASE10_2_TRIO
-        pair = projection._PHASE10_PERCEPTION_SOURCES
-        if state != "COMPLETE_UNSTAGED":
-            other = "unrelated-valid.py"
-            self.assertEqual(projection._project_837_draft_sources(
-                set(trio) | {other}), {other})
-            self.assertEqual(projection.approved_830_scope(set(trio) | {other}),
-                             {other})
-            self.assertEqual(projection.approved_830_scope(set()), set())
-            for partial in (set(pair), {"nayeon/perception/permissions.py"}):
-                with self.subTest(state=state, partial=sorted(partial)):
-                    with self.assertRaisesRegex(
-                            AssertionError,
-                            "delta exception requires unstaged source"):
-                        projection.approved_830_scope(partial)
-            for baseline in sorted(projection._PHASE10_2_DELTA_BASELINES):
-                view = projection._phase10_2_nul_git_paths(
-                    "diff", "--no-renames", "--name-only", "-z",
-                    baseline, "--", "nayeon")
-                self.assertEqual(view & trio, trio)
-            self.assertEqual(projection._phase10_2_nul_git_paths(
-                "ls-files", "--others", "--exclude-standard",
-                "-z", "--", "nayeon"), frozenset())
-            return
-        for baseline in sorted(projection._PHASE10_2_DELTA_BASELINES):
-            raw = projection._phase10_2_nul_git_paths(
-                "diff", "--no-renames", "--name-only", "-z",
-                baseline, "--", "nayeon")
-            self.assertEqual(raw & trio, pair)
-            self.assertGreater(len(raw), len(pair))
-            supplied = set(raw)
-            result = projection.approved_830_scope(supplied)
-            self.assertIs(type(result), set)
-            self.assertFalse(result & trio)
-            self.assertEqual(supplied, raw)
-            for bad in (set(pair), set(raw) - {next(
-                    p for p in sorted(raw) if p not in trio)},
-                    set(raw) | {"nayeon/unapproved-unknown.py"}):
-                with self.subTest(baseline=baseline, partial=len(bad)):
-                    with self.assertRaisesRegex(
-                            AssertionError,
-                            "^Phase10\\.2 partial delta not exact current Git view$"):
-                        projection.approved_830_scope(bad)
-        untracked = projection._phase10_2_nul_git_paths(
-            "ls-files", "--others", "--exclude-standard",
-            "-z", "--", "nayeon")
-        self.assertEqual(untracked, {_p for _p in trio if _p not in pair})
-        supplied = set(untracked)
-        self.assertEqual(projection.approved_830_scope(supplied), set())
-        self.assertEqual(supplied, untracked)
-        with self.assertRaisesRegex(
-                AssertionError, "partial delta not exact current Git view"):
-            projection.approved_830_scope(
-                supplied | {"nayeon/unapproved-unknown.py"})
+        # Prove current admission independently, then replay ONLY sealed 10.2
+        # bytes under its original tracked/untracked production topology.
+        live_state = gate.assert_phase10_2_privacy_integrity()
+        self.assertIn(live_state, STATES)
+        from tests.test_phase10_3_scope_integrity import sealed_phase10_2
+        try:
+            with sealed_phase10_2(live_state):
+                from tests import phase_8_30_scope_migration as projection
+                state = gate.assert_phase10_2_privacy_integrity()
+                self.assertIn(state, STATES)
+                trio = projection._PHASE10_2_TRIO
+                pair = projection._PHASE10_PERCEPTION_SOURCES
+                if state != "COMPLETE_UNSTAGED":
+                    other = "unrelated-valid.py"
+                    self.assertEqual(projection._project_837_draft_sources(
+                        set(trio) | {other}), {other})
+                    self.assertEqual(projection.approved_830_scope(set(trio) | {other}),
+                                     {other})
+                    self.assertEqual(projection.approved_830_scope(set()), set())
+                    for partial in (set(pair), {"nayeon/perception/permissions.py"}):
+                        with self.subTest(state=state, partial=sorted(partial)):
+                            with self.assertRaisesRegex(
+                                    AssertionError,
+                                    "delta exception requires unstaged source"):
+                                projection.approved_830_scope(partial)
+                    for baseline in sorted(projection._PHASE10_2_DELTA_BASELINES):
+                        view = projection._phase10_2_nul_git_paths(
+                            "diff", "--no-renames", "--name-only", "-z",
+                            baseline, "--", "nayeon")
+                        self.assertEqual(view & trio, trio)
+                    self.assertEqual(projection._phase10_2_nul_git_paths(
+                        "ls-files", "--others", "--exclude-standard",
+                        "-z", "--", "nayeon"), frozenset())
+                    return
+                for baseline in sorted(projection._PHASE10_2_DELTA_BASELINES):
+                    raw = projection._phase10_2_nul_git_paths(
+                        "diff", "--no-renames", "--name-only", "-z",
+                        baseline, "--", "nayeon")
+                    self.assertEqual(raw & trio, pair)
+                    self.assertGreater(len(raw), len(pair))
+                    supplied = set(raw)
+                    result = projection.approved_830_scope(supplied)
+                    self.assertIs(type(result), set)
+                    self.assertFalse(result & trio)
+                    self.assertEqual(supplied, raw)
+                    for bad in (set(pair), set(raw) - {next(
+                            p for p in sorted(raw) if p not in trio)},
+                            set(raw) | {"nayeon/unapproved-unknown.py"}):
+                        with self.subTest(baseline=baseline, partial=len(bad)):
+                            with self.assertRaisesRegex(
+                                    AssertionError,
+                                    "^Phase10\\.2 partial delta not exact current Git view$"):
+                                projection.approved_830_scope(bad)
+                untracked = projection._phase10_2_nul_git_paths(
+                    "ls-files", "--others", "--exclude-standard",
+                    "-z", "--", "nayeon")
+                self.assertEqual(untracked, {_p for _p in trio if _p not in pair})
+                supplied = set(untracked)
+                self.assertEqual(projection.approved_830_scope(supplied), set())
+                self.assertEqual(supplied, untracked)
+                with self.assertRaisesRegex(
+                        AssertionError, "partial delta not exact current Git view"):
+                    projection.approved_830_scope(
+                        supplied | {"nayeon/unapproved-unknown.py"})
+        finally:
+            self.assertIn(gate.assert_phase10_2_privacy_integrity(), STATES)
 
     def test_legacy_delta_adapter_refuses_fake_staged_or_child(self):
         from tests import phase_8_30_scope_migration as projection
