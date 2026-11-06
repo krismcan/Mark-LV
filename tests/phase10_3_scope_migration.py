@@ -255,3 +255,15 @@ def assert_phase10_3_integrity():
         raise AssertionError("Phase10.2 sealed parent tag changed during admission")
     _tag()
     return result
+
+
+# P76 isolated offline successor experiment only. The original Phase10.3
+# admission implementation above remains byte-for-byte preserved as a private
+# historical witness. This prototype grants NO privileged effect authority.
+_phase10_3_sealed_historical_assert = assert_phase10_3_integrity
+
+
+def assert_phase10_3_integrity():
+    """Current P76 offline source proof; no fallback after any denial."""
+    from tests.phase8_byok_c1_p76_scope import assert_p76_offline_integrity
+    return assert_p76_offline_integrity()
