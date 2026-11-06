@@ -1,0 +1,54 @@
+name: P83 Pinned P80 Offline Windows Evidence
+
+on:
+  push:
+    branches:
+      - byok-c1-p83-windows-ci-20261106
+permissions:
+  contents: read
+jobs:
+  pinned-p80-offline:
+    name: P80 Windows Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Select pinned official Python action
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify pinned GitHub source, ancestor, clean LF worktree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p80-sealed-historical-fixture-20261106 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'Clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $tree = (git -C reviewed rev-parse 'HEAD^{tree}').Trim()
+          $parents = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne '24da07345c67566d2e79f442aabfba36a1ebddb4') { throw 'Unexpected head' }
+          if ($tree -ne '1795b59895b7fd52da525d237eb4282d5d10851f') { throw 'Unexpected tree' }
+          if ($parents -ne '24da07345c67566d2e79f442aabfba36a1ebddb4 cacb5c320d26ffa28faf1f15a5e088029ee1453b') { throw 'Unexpected parent' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Unclean checkout' }
+          Write-Output "P83_PINNED_HEAD=$head"
+          Write-Output "P83_PINNED_TREE=$tree"
+          Write-Output "P83_PINNED_PARENT=$parents"
+      - name: Run offline 41-test review suite only (no credentials or service)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $suite = "import sys,unittest;sys.path.insert(0,'reviewed');names='tests.test_pending_credential_policy,tests.test_pending_credential_recovery_document,tests.test_byok_c1_p73_offline_boundary,tests.test_phase8_byok_c1_p76_scope,tests.test_phase8_byok_c1_p77_historical_compat'.split(',');tests=unittest.defaultTestLoader.loadTestsFromNames(names);result=unittest.TextTestRunner(verbosity=1).run(tests);sys.exit(0 if result.wasSuccessful() else 1)"
+          python -I -B -c $suite
+          if ($LASTEXITCODE -ne 0) { throw 'P80 offline review tests failed' }
+          Write-Output "P83_OFFLINE_REVIEW_TESTS_EXIT=0"
+      - name: Reconfirm exact source after tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne '24da07345c67566d2e79f442aabfba36a1ebddb4') { throw 'Head drift' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Source changed during test' }
+          Write-Output "P83_SOURCE_RESTORED_CLEAN=TRUE"
