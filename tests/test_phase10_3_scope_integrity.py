@@ -386,7 +386,12 @@ class NativeAdmissionTests(unittest.TestCase):
         # Only the literal itself changes, retaining the normalized digest.
         self.assertIn(gate.assert_phase10_3_integrity(), STATES)
         original = gate._disk
-        raw = original(gate.SELF)
+        # P80 review-only migration: the historical self-pin authenticates
+        # the sealed Phase10.3 parent Git blob, not the appended C1 router.
+        raw = gate._git("show", "cacb5c320d26ffa28faf1f15a5e088029ee1453b:" + gate.SELF)
+        self.assertEqual(gate.prior._blob(raw),
+                         gate._tree("cacb5c320d26ffa28faf1f15a5e088029ee1453b")[gate.SELF][1])
+        self.assertTrue(original(gate.SELF).startswith(raw))
         matches = list(gate.SELF_PIN.finditer(raw))
         self.assertEqual(len(matches), 1)
         match = matches[0]
