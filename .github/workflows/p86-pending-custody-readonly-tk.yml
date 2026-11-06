@@ -1,0 +1,66 @@
+name: P86 Pending Custody Read-Only Tk Review
+
+on:
+  push:
+    branches:
+      - byok-c1-p86-live-readonly-status-20261106
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-offline:
+    name: Windows Tk / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone and authenticate exact review-only candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p86-live-readonly-status-20261106 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'Review clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $parentLine = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'Review source HEAD does not match CI trigger' }
+          if ($parentLine -ne ($head + ' ad1b635e4c56c3a7eb939b3dc7e5059095f0e06a')) { throw 'Wrong sealed P85 direct parent' }
+          $paths = @(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $allowed = @('.github/workflows/p86-pending-custody-readonly-tk.yml',
+                       'nayeon/desktop_alpha/workspace_window.py',
+                       'tests/test_p86_live_pending_status_integration.py') | Sort-Object
+          if (@(Compare-Object -ReferenceObject $allowed -DifferenceObject $paths).Count -ne 0) { throw 'Unexpected changed-path scope' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Dirty source before tests' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source diff check failed' }
+          Write-Output "P86_VERIFIED_HEAD=$head"
+          Write-Output "P86_VERIFIED_PARENT=$parentLine"
+          Write-Output 'P86_WORKTREE_CLEAN_AT_START=TRUE'
+      - name: Native Tk read-only connection and workspace regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'Offline Tk and workspace tests failed' }
+            Write-Output 'P86_TK_WORKSPACE_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Ensure source unchanged and no native credential effects
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Review HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Review source changed after tests' }
+          Write-Output 'P86_FINAL_SOURCE_CLEAN=TRUE'
+          Write-Output 'P86_OFFLINE_UI_ONLY_CI=TRUE'
