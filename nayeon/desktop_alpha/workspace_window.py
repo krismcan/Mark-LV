@@ -1000,7 +1000,17 @@ class ConnectionWindow(WorkspacePane):
         ttk.Label(self, text="Connection", style="Heading.Offline.TLabel").pack(anchor="w")
         self.status_label = ttk.Label(self, text="Not observed; connection operations unavailable in this prototype",
                                       wraplength=580, style="Offline.TLabel")
-        self.status_label.pack(anchor="w", pady=(18, 24))
+        self.status_label.pack(anchor="w", pady=(18, 12))
+        # C1 has no trusted native custody observation in the offline app.
+        # Render an explicit UNKNOWN state, never infer ABSENT from silence.
+        # No approval, refresh, secret, service or provider callback is added.
+        self.pending_custody_label = ttk.Label(
+            self,
+            text=("BYOK C1 pending-key custody: NOT OBSERVED. "
+                  "This preview has no trusted pending-key observation or "
+                  "credential authority."),
+            wraplength=580, style="Offline.TLabel")
+        self.pending_custody_label.pack(anchor="w", pady=(0, 16))
         self.back_button = ttk.Button(self, name="back", text="Back to Conversation",
                                       command=lambda: self._dispatch(on_conversation))
         self.back_button.pack(anchor="w")
@@ -1010,6 +1020,54 @@ class ConnectionWindow(WorkspacePane):
             state="normal" if on_manage is not None else "disabled",
             command=lambda: self._dispatch(on_manage) if on_manage is not None else None)
         self.manage_button.pack(anchor="w", pady=(12, 0))
+
+    def show_pending_custody_advisory(self, legacy, assessment) -> bool:
+        """Display typed P84 advice only; no pending observation is performed.
+
+        This optional, explicit source is NOT wired to credential storage or
+        approval. Default remains NOT OBSERVED when no trusted input exists.
+        The import is lazy so default offline startup has no BYOK dependency.
+        """
+        self._require_creator_thread()
+        if not self._alive:
+            return False
+        try:
+            from nayeon.brain.pending_custody_status_view import (
+                PendingCustodyDisplay, present_pending_custody_advice,
+            )
+            view = present_pending_custody_advice(legacy, assessment)
+            # Render only fixed bounded strings, never arbitrary/source text.
+            if view.pending_display is PendingCustodyDisplay.RECOVERY_HOLD:
+                message = (
+                    "BYOK C1 pending-key custody: RECOVERY HOLD CLAIM (advisory only). "
+                    "No automatic retry or recovery clearance. No credential "
+                    "state or service was independently observed.")
+            elif view.pending_display is PendingCustodyDisplay.UNVERIFIED_PENDING_CLAIM:
+                message = (
+                    "BYOK C1 pending-key custody: UNVERIFIED PENDING CLAIM "
+                    "(advisory only). Storage, key validity and connection "
+                    "are NOT confirmed. Re-observe through a reviewed service.")
+            elif view.pending_display is PendingCustodyDisplay.NO_PENDING_EVIDENCE_ASSERTED:
+                message = (
+                    "BYOK C1 pending-key custody: NO PENDING EVIDENCE ASSERTED "
+                    "(advisory only; NOT proof of absence). A trusted custody "
+                    "service is required for real state observation.")
+            else:
+                raise ValueError("Unknown pending custody display")
+            if not self._alive:
+                return False
+            self.pending_custody_label.configure(text=message)
+            return True
+        except Exception:
+            if not self._alive:
+                return False
+            try:
+                self.pending_custody_label.configure(text=(
+                    "BYOK C1 pending-key custody: STATUS UNAVAILABLE. "
+                    "No key state, provider connection or operation is verified."))
+            except tk.TclError:
+                return False
+            return False
 
     def focus_initial(self) -> None:
         self._require_creator_thread()
