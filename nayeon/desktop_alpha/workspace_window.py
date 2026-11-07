@@ -997,6 +997,11 @@ class ConversationWindow(WorkspacePane):
 class ConnectionWindow(WorkspacePane):
     def __init__(self, parent, *, on_destroy, on_conversation, on_manage=None):
         super().__init__(parent, name="connection_view", on_destroy=on_destroy)
+        # P87 is explicit, synthetic-only; no observer runs on page creation.
+        self._synthetic_pending_owner = None
+        self._synthetic_pending_generation = 0
+        self._synthetic_pending_busy = False
+        self._synthetic_pending_reset_requested = False
         ttk.Label(self, text="Connection", style="Heading.Offline.TLabel").pack(anchor="w")
         self.status_label = ttk.Label(self, text="Not observed; connection operations unavailable in this prototype",
                                       wraplength=580, style="Offline.TLabel")
@@ -1011,6 +1016,7 @@ class ConnectionWindow(WorkspacePane):
                   "credential authority."),
             wraplength=580, style="Offline.TLabel")
         self.pending_custody_label.pack(anchor="w", pady=(0, 16))
+        self._synthetic_pending_default_text = self.pending_custody_label.cget("text")
         self.back_button = ttk.Button(self, name="back", text="Back to Conversation",
                                       command=lambda: self._dispatch(on_conversation))
         self.back_button.pack(anchor="w")
@@ -1020,6 +1026,115 @@ class ConnectionWindow(WorkspacePane):
             state="normal" if on_manage is not None else "disabled",
             command=lambda: self._dispatch(on_manage) if on_manage is not None else None)
         self.manage_button.pack(anchor="w", pady=(12, 0))
+
+    def begin_synthetic_pending_observation(self):
+        """Opt-in test lease, not a service subscription or consent ticket."""
+        self._require_creator_thread()
+        if not self._alive or self._synthetic_pending_busy:
+            return None
+        from nayeon.brain.pending_custody_observation_boundary import (
+            SyntheticObservationLease,
+        )
+        self._synthetic_pending_generation += 1
+        self._synthetic_pending_owner = object()
+        return SyntheticObservationLease(
+            self._synthetic_pending_owner, self._synthetic_pending_generation)
+
+    def cancel_synthetic_pending_observation(self, lease) -> bool:
+        """Revoke exact owner/generation; stale cancellation cannot erase newer UI."""
+        self._require_creator_thread()
+        from nayeon.brain.pending_custody_observation_boundary import (
+            SyntheticObservationLease,
+        )
+        if (type(lease) is not SyntheticObservationLease
+                or self._synthetic_pending_owner is None
+                or lease.owner is not self._synthetic_pending_owner
+                or lease.generation != self._synthetic_pending_generation):
+            return False
+        self._synthetic_pending_owner = None
+        self._synthetic_pending_generation += 1
+        if self._synthetic_pending_busy:
+            self._synthetic_pending_reset_requested = True
+            return True
+        if not self._alive:
+            return True
+        self._synthetic_pending_busy = True
+        try:
+            self.pending_custody_label.configure(
+                text=self._synthetic_pending_default_text)
+        except tk.TclError:
+            return False
+        finally:
+            self._synthetic_pending_busy = False
+        return True
+
+    def publish_synthetic_pending_observation(self, lease, observation) -> bool:
+        """Explicit one-use presentation only. No implicit polling or callbacks.
+
+        A lease is view-owned and generation-bound. Every displayed response
+        clearly says SYNTHETIC TEST ONLY; it is never real custody evidence.
+        Invalid observations are mapped to a fixed unavailable message.
+        """
+        self._require_creator_thread()
+        from nayeon.brain.pending_custody_observation_boundary import (
+            SyntheticObservationLease, synthetic_observation_message,
+        )
+        if (not self._alive or self._synthetic_pending_busy
+                or type(lease) is not SyntheticObservationLease
+                or self._synthetic_pending_owner is None
+                or lease.owner is not self._synthetic_pending_owner
+                or lease.generation != self._synthetic_pending_generation):
+            return False
+        self._synthetic_pending_busy = True
+        try:
+            valid = True
+            try:
+                message = synthetic_observation_message(observation)
+            except Exception:
+                valid = False
+                message = (
+                    "BYOK C1 pending-key custody: STATUS UNAVAILABLE "
+                    "(SYNTHETIC TEST ONLY). No credential state or operation verified.")
+            if not self._alive:
+                return False
+            self.pending_custody_label.configure(text=message)
+            if (not self._alive or lease.owner is not self._synthetic_pending_owner
+                    or lease.generation != self._synthetic_pending_generation):
+                return False
+            # Consume before returning: delayed/replayed publications are denied.
+            self._synthetic_pending_owner = None
+            self._synthetic_pending_generation += 1
+            return valid
+        except tk.TclError:
+            if (lease.owner is self._synthetic_pending_owner
+                    and lease.generation == self._synthetic_pending_generation):
+                self._synthetic_pending_owner = None
+                self._synthetic_pending_generation += 1
+            return False
+        finally:
+            # Cancellation reentered during configure: restore NOT OBSERVED.
+            if self._synthetic_pending_reset_requested:
+                self._synthetic_pending_reset_requested = False
+                if self._alive and self._synthetic_pending_owner is None:
+                    try:
+                        self.pending_custody_label.configure(
+                            text=self._synthetic_pending_default_text)
+                    except tk.TclError:
+                        pass
+            self._synthetic_pending_busy = False
+
+    def destroy(self):
+        self._require_creator_thread()
+        self._synthetic_pending_owner = None
+        self._synthetic_pending_generation += 1
+        super().destroy()
+
+    def _destroyed(self, event):
+        self._require_creator_thread()
+        if event.widget is self:
+            self._synthetic_pending_owner = None
+            self._synthetic_pending_generation += 1
+        super()._destroyed(event)
 
     def show_pending_custody_advisory(self, legacy, assessment) -> bool:
         """Display typed P84 advice only; no pending observation is performed.

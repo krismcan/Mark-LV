@@ -1,0 +1,66 @@
+name: P87 Synthetic Read-Only Custody Observation Review
+
+on:
+  push:
+    branches:
+      - byok-c1-p87-readonly-observation-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  offline-native-windows:
+    name: Windows synthetic custody / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Authenticate exact P86 child and four-file scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p87-readonly-observation-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P87 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $parentLine = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P87 HEAD differs from push trigger' }
+          if ($parentLine -ne ($head + ' ff1e6ad30a21fc0912b3f13fb1a10e2f873ef980')) { throw 'P87 not exact child of P86' }
+          $actual = @(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $allowed = @('.github/workflows/p87-readonly-custody-observation.yml',
+                       'nayeon/brain/pending_custody_observation_boundary.py',
+                       'nayeon/desktop_alpha/workspace_window.py',
+                       'tests/test_p87_readonly_custody_observation.py') | Sort-Object
+          if (@(Compare-Object -ReferenceObject $allowed -DifferenceObject $actual).Count -ne 0) { throw 'Unexpected P87 scope' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Dirty P87 source' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P87 diff check failed' }
+          Write-Output "P87_VERIFIED_HEAD=$head"
+          Write-Output "P87_VERIFIED_PARENT=$parentLine"
+      - name: Native synthetic + P86 Connection and Workspace regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P87 affected native tests failed' }
+            Write-Output 'P87_AFFECTED_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Ensure no source modification or deployment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'P87 HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'P87 source changed' }
+          Write-Output 'P87_SYNTHETIC_ONLY_NO_NATIVE_CUSTODY=TRUE'
+          Write-Output 'P87_RELEASE_HOLD=TRUE'
