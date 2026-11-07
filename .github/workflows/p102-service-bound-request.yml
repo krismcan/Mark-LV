@@ -1,0 +1,205 @@
+name: P102 Immutable Untrusted Request Binding, Native CSharp Host (x64 HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p102-service-bound-request-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64-review:
+    name: Frozen original P49 + disabled P102 host / Windows x64 / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Windows Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone exact P101 child; verify six changed paths and 11 frozen native P49 hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p102-service-bound-request-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P102 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          $parents=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P102 source SHA does not match run trigger' }
+          if ($parents -ne ($head + ' 9e00e37c6ca6860e0799bcf56f2b52c2bcc57658')) {
+            throw 'P102 not sole direct final P101 child'
+          }
+          $expected=@('.github/workflows/p102-service-bound-request.yml',
+                      'docs/byok-c1-p102-bound-request-review.md',
+                      'native_c1_candidate/CustodyService.cs',
+                      'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs',
+                      'native_c1_candidate/ServiceBoundRequestIdentity.cs',
+                      'tests/p102_service_bound_request/ServiceBoundRequestTests.cs') | Sort-Object
+          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
+            throw 'P102 unexpected native source change'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach ($pin in $pins.GetEnumerator()) {
+            $path=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $pin.Key
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash -ne $pin.Value) {
+              throw ('Frozen original P49 changed: ' + $pin.Key)
+            }
+          }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P102 source whitespace invalid' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) {
+            throw 'P102 source checkout dirty'
+          }
+          Write-Output "P102_EXACT_VERIFIED_HEAD=$head"
+          Write-Output 'P102_FROZEN_11_ORIGINAL_NATIVE_P49_SHA256=EXACT'
+          Write-Output 'P102_REVIEW_SOURCE_DELTA=SIX_SCOPED_PATHS'
+      - name: Re-run unchanged original 11-unit native P49 denial baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $dir=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial').Path
+          $source=@(Get-ChildItem -LiteralPath $dir -Filter '*.cs' -File |
+                    ForEach-Object { $_.FullName })
+          if ($source.Count -ne 12) { throw 'P99 native original source inventory changed' }
+          $exe=Join-Path $env:RUNNER_TEMP 'P102_Frozen_P99_OriginalNativeDenial_x64.exe'
+          $out=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P99FullOriginalNativeDenialTests "/out:$exe" $source 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or -not [String]::IsNullOrWhiteSpace($out)) {
+            throw 'Original native P49 baseline compile failed'
+          }
+          $run=(& $exe 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $run -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_PASSED=20' -or
+              $run -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_FAILED=0') {
+            throw 'Original native P49 denial-gate test failed'
+          }
+          Write-Output 'P102_ORIGINAL_FULL_NATIVE_DENIAL=20_PASS'
+      - name: Compile real CSharp host candidate with immutable request binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $old=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial').Path
+          $candidate=(Resolve-Path -LiteralPath 'reviewed/native_c1_candidate').Path
+          $source=@(Get-ChildItem -LiteralPath $old -Filter '*.cs' -File |
+              Where-Object { $_.Name -ne 'CustodyService.cs' -and
+                             $_.Name -ne 'FullOriginalNativeDenialTests.cs' } |
+              ForEach-Object { $_.FullName })
+          if ($source.Count -ne 10) { throw 'Expected ten genuine native units' }
+          $candidateHost=Join-Path $candidate 'CustodyService.cs'
+          $fence=Join-Path $candidate 'ServiceOwnedAdmissionBoundary.cs'
+          $identity=Join-Path $candidate 'ServiceBoundRequestIdentity.cs'
+          $tests=(Resolve-Path -LiteralPath 'reviewed/tests/p102_service_bound_request/ServiceBoundRequestTests.cs').Path
+          foreach ($file in @($candidateHost,$fence,$identity)) {
+            $text=Get-Content -LiteralPath $file -Raw
+            if ($text -match 'DllImport|CredWrite\s*\(|CredDelete\s*\(|CredRead\s*\(|(?m)^\s*ServiceBase\.Run\s*\(|NamedPipeServerStream|RegistryKey|System\.IO\.File') {
+              throw 'P102 candidate unexpectedly has native effects or service IPC'
+            }
+          }
+          $exe=Join-Path $env:RUNNER_TEMP 'P102_ServiceBoundRequest_x64.exe'
+          $output=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P102ServiceBoundRequestTests "/out:$exe" $source $candidateHost $fence $identity $tests 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or -not [String]::IsNullOrWhiteSpace($output)) {
+            throw 'P102 actual Windows native CSharp build failed or emitted warnings'
+          }
+          Write-Output 'P102_NATIVE_CSHARP_COMPILER_EXIT=0'
+          for ($i=1; $i -le 5; $i++) {
+            $result=(& $exe 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0 -or
+                $result -notmatch 'P102_BOUND_REQUEST_NATIVE_TESTS_PASSED=34' -or
+                $result -notmatch 'P102_BOUND_REQUEST_NATIVE_TESTS_FAILED=0' -or
+                $result -notmatch 'P102_STRUCTURAL_DUPLICATE_RECORD=NOT_AUTHENTICATED_CONSENT' -or
+                $result -notmatch 'P102_NATIVE_EFFECT_AND_REAL_WIN_CRED=NONE' -or
+                $result -notmatch 'P102_C1_PRODUCTION_RELEASE=HOLD') {
+              throw 'P102 bound request assertion failed'
+            }
+          }
+          Write-Output 'P102_NEW_HOST_NATIVE_CASE_EXECUTIONS=170'
+          Write-Output 'P102_NEW_HOST_NATIVE_EXIT=0'
+      - name: P101 host regression and P96/P97 security comparators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $old=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial').Path
+          $candidate=(Resolve-Path -LiteralPath 'reviewed/native_c1_candidate').Path
+          $source=@(Get-ChildItem -LiteralPath $old -Filter '*.cs' -File |
+              Where-Object { $_.Name -ne 'CustodyService.cs' -and
+                             $_.Name -ne 'FullOriginalNativeDenialTests.cs' } |
+              ForEach-Object { $_.FullName })
+          $candidateHost=Join-Path $candidate 'CustodyService.cs'
+          $fence=Join-Path $candidate 'ServiceOwnedAdmissionBoundary.cs'
+          $identity=Join-Path $candidate 'ServiceBoundRequestIdentity.cs'
+          $hostTest=Join-Path $candidate 'ServiceHostAdmissionTests.cs'
+          $exe=Join-Path $env:RUNNER_TEMP 'P102_P101HostRegression_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P101ServiceHostAdmissionTests "/out:$exe" $source $candidateHost $fence $identity $hostTest
+          if ($LASTEXITCODE -ne 0) { throw 'P101 host regression compilation failed' }
+          $result=(& $exe 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $result -notmatch 'P101_CANDIDATE_NATIVE_HOST_TESTS_PASSED=24' -or
+              $result -notmatch 'P101_CANDIDATE_NATIVE_HOST_TESTS_FAILED=0') {
+            throw 'P101 host affected native regression failed'
+          }
+          Write-Output 'P102_P101_HOST_REGRESSION=24_PASS'
+          $ledger=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial/CustodyLedger.cs').Path
+          $oldCoordinator=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial/PendingCustodyTransaction.cs').Path
+          $oldTest=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs').Path
+          $exeOld=Join-Path $env:RUNNER_TEMP 'P102_P96_OriginalNativeRace_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 "/out:$exeOld" $ledger $oldCoordinator $oldTest
+          if ($LASTEXITCODE -ne 0) { throw 'P96 original native negative build failed' }
+          $result=(& $exeOld 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $result -notmatch 'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15' -or
+              $result -notmatch 'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY') {
+            throw 'P96 source-authentic flaw proof missing'
+          }
+          Write-Output 'P102_P96_ORIGINAL_NATIVE_RACE=OPEN_REPRODUCED_15_PASS'
+          $new=(Resolve-Path -LiteralPath 'reviewed/tests/p97_disabled_admission_remedy/DisabledNativeAdmissionCoordinator.cs').Path
+          $test=(Resolve-Path -LiteralPath 'reviewed/tests/p97_disabled_admission_remedy/DisabledAdmissionRaceTests.cs').Path
+          $exeP97=Join-Path $env:RUNNER_TEMP 'P102_P97_SeparateCorrectedFake_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 "/out:$exeP97" $ledger $new $test
+          if ($LASTEXITCODE -ne 0) { throw 'P97 separate fake model compile failed' }
+          $result=(& $exeP97 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $result -notmatch 'P97_DISABLED_NATIVE_RACE_TESTS_PASSED=40') {
+            throw 'P97 separate model tests failed'
+          }
+          Write-Output 'P102_P97_SEPARATE_CORRECTED_FAKE=40_PASS'
+      - name: Re-run affected Python native Windows test inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'Affected native Python suite failed' }
+            Write-Output 'P102_AFFECTED_WINDOWS_PYTHON_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Hold C1 production authority, Windows x86 and independent review
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'P102 HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout changed' }
+          Write-Output 'P102_REQUEST_IDENTITY=IMMUTABLE_UNTRUSTED_NONSECRET'
+          Write-Output 'P102_REAL_USER_APPROVAL=NOT_IMPLEMENTED'
+          Write-Output 'P102_PRODUCTION_NATIVE_DISPATCH=NONE'
+          Write-Output 'P102_P61_ORIGINAL_RACE=STILL_OPEN'
+          Write-Output 'P102_WINDOWS_X86_CODE_INTEGRITY=BLOCKED_NOT_RETRIED'
+          Write-Output 'P102_OPENAI_P62_HISTORICAL_RESTRICTION=UNTOUCHED'
+          Write-Output 'P102_QUALIFIED_SECURITY_GO=NOT_RECEIVED'
+          Write-Output 'P102_BYOK_C1_PRODUCTION_RELEASE=HOLD'
