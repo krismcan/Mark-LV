@@ -29,6 +29,20 @@ namespace Nayeon.ByokC1
                 candidateLength, deleteAcknowledged);
         }
 
+        // Pure metadata, structurally validated but NOT authenticated.
+        // Every request remains a denial; no key bytes or WinCred effect.
+        internal CustodyOutcome RefuseBoundPendingOperation(
+            ServiceBoundRequestIdentity untrustedClaim)
+        {
+            return admission.RefuseBoundRequest(untrustedClaim);
+        }
+
+        internal int StructurallyRepeatedRequestCount
+        { get { return admission.StructuralReplaysRejected; } }
+
+        internal int TrackedNonSecretRequestCount
+        { get { return admission.NonSecretRequestCount; } }
+
         internal void RevokePendingAdmission()
         {
             admission.Revoke();

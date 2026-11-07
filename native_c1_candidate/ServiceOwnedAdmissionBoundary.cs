@@ -5,6 +5,7 @@
 // This class can only refuse requests and latch a fault/revocation/stop.
 // Independent native/IPC/security review is required before ANY true dispatch.
 using System;
+using System.Collections.Generic;
 
 namespace Nayeon.ByokC1
 {
@@ -15,6 +16,12 @@ namespace Nayeon.ByokC1
         private bool faulted;
         private bool stopped;
         private int refusedRequests;
+        private int structuralReplaysRejected;
+        // Bounded NON-authority bookkeeping only. Untrusted duplicate data
+        // cannot create a consent session or grant native effect permission.
+        private readonly HashSet<string> seenUntrustedRequests =
+            new HashSet<string>(StringComparer.Ordinal);
+        private const int MaxTrackedUntrustedRequests = 128;
 
         internal CustodyOutcome RefuseRequest(LedgerOperation operation,
             int candidateLength, bool deleteAcknowledged)
@@ -52,6 +59,51 @@ namespace Nayeon.ByokC1
                 return CustodyOutcome.Denied;
             }
         }
+
+        internal CustodyOutcome RefuseBoundRequest(ServiceBoundRequestIdentity claim)
+        {
+            lock (gate)
+            {
+                ++refusedRequests;
+                if (faulted) return CustodyOutcome.RecoveryRequired;
+                if (revoked || stopped || claim == null)
+                    return CustodyOutcome.Denied;
+
+                // The service reads its own clock. Even a syntactically valid
+                // digest, session and expiry are UNTRUSTED caller metadata,
+                // not an elevated user's one-use approval.
+                if (!claim.HasSafeClockWindow(DateTime.UtcNow.Ticks))
+                    return CustodyOutcome.Denied;
+
+                string replayKey = claim.NonSecretReplayKey;
+                if (seenUntrustedRequests.Contains(replayKey))
+                {
+                    ++structuralReplaysRejected;
+                    return CustodyOutcome.Denied;
+                }
+                // Do not allow arbitrary unauthenticated requests to grow
+                // the service's ledger without bound or latch a recovery
+                // fault merely by saturating their metadata.
+                if (seenUntrustedRequests.Count >= MaxTrackedUntrustedRequests)
+                    return CustodyOutcome.Denied;
+
+                seenUntrustedRequests.Add(replayKey);
+                // All original P49 real service/legacy/WinCred guards remain
+                // untouched. This is a structurally bound DENIAL boundary
+                // with NO issuance, effect or authority path.
+                if (!ServiceGate.LiveEligible() ||
+                    PendingServiceState.LegacyEffectEntryDisabled() ||
+                    PendingWinCredStore.NativeMutationAdmissionPending())
+                    return CustodyOutcome.Denied;
+                return CustodyOutcome.Denied;
+            }
+        }
+
+        internal int StructuralReplaysRejected
+        { get { lock (gate) { return structuralReplaysRejected; } } }
+
+        internal int NonSecretRequestCount
+        { get { lock (gate) { return seenUntrustedRequests.Count; } } }
 
         internal void Revoke()
         {
