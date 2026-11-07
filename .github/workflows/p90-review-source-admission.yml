@@ -1,0 +1,65 @@
+name: P90 Read-Only Successor Source Review (HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p90-review-source-admission-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-review:
+    name: Exact P88 child and adversarial Git / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone the review branch without modifying its history
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p90-review-source-admission-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P90 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'GitHub source SHA drift' }
+      - name: Verify exactly reviewer-pinned successor source snapshot
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m tests.p90_review_source_admission --worktree . --expected-head $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'P90 source review refused candidate' }
+            Write-Output 'P90_EXTERNAL_SOURCE_SHA_PIN=GITHUB_SHA'
+          } finally {
+            Pop-Location
+          }
+      - name: P88 connection and P90 review-only combined tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p90_review_source_admission tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P90 combined Windows tests failed' }
+            Write-Output 'P90_COMBINED_WINDOWS_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Fail-closed disposition
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'HEAD changed' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout changed' }
+          Write-Output 'P90_EXTERNAL_INDEPENDENT_REVIEW=NOT_RECEIVED'
+          Write-Output 'P90_NATIVE_CUSTODY=NOT_OBSERVED'
+          Write-Output 'P90_C1_PRODUCTION_RELEASE=HOLD'
