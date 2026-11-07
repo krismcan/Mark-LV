@@ -32,14 +32,18 @@ jobs:
           $head=(git -C reviewed rev-parse HEAD).Trim()
           $parent=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
           if ($head -ne $env:GITHUB_SHA) { throw 'P101 SHA does not match trigger' }
-          if ($parent -ne ($head + ' 57eb2836a0739b8657b98dc320b6806c7fe639c5')) { throw 'P101 not exact P99 child' }
+          if ($parent -ne ($head + ' bafd4030dff619d0273696dcffbfb1159b76c778')) { throw 'P101 corrective commit not an exact initial P101 child' }
+          $grandparent=(git -C reviewed rev-parse 'HEAD^^').Trim()
+          if ($grandparent -ne '57eb2836a0739b8657b98dc320b6806c7fe639c5') { throw 'P101 baseline no longer exact P99' }
           $expected=@('.github/workflows/p101-native-service-host-admission.yml',
                       'docs/byok-c1-p101-service-host-candidate-review.md',
                       'native_c1_candidate/CustodyService.cs',
                       'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs',
                       'native_c1_candidate/ServiceHostAdmissionTests.cs') | Sort-Object
-          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
-          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'Unapproved P101 source delta' }
+          $actual=@(git -C reviewed diff --name-only 57eb2836a0739b8657b98dc320b6806c7fe639c5 HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'Unapproved cumulative P101 source delta' }
+          $workflowOnly=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD)
+          if ($workflowOnly.Count -ne 1 -or $workflowOnly[0] -ne '.github/workflows/p101-native-service-host-admission.yml') { throw 'P101 correction changed more than CI workflow' }
           $original=@{
             'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
             'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
@@ -57,12 +61,13 @@ jobs:
             $path=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $kv.Key
             if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash -ne $kv.Value) { throw 'Frozen original P49 CSharp source altered' }
           }
-          git -C reviewed diff --check HEAD^ HEAD
+          git -C reviewed diff --check 57eb2836a0739b8657b98dc320b6806c7fe639c5 HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Whitespace invalid' }
           if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Source checkout dirty' }
           Write-Output "P101_EXACT_GITHUB_HEAD=$head"
           Write-Output 'P101_ALL_11_FROZEN_ORIGINAL_NATIVE_FILES=UNCHANGED'
           Write-Output 'P101_SOURCE_DELTA=FIVE_ADDITIVE_REVIEW_ONLY'
+          Write-Output 'P101_COMMIT_CHAIN=ORIGINAL_P101_PLUS_WORKFLOW_ONLY_CORRECTION'
       - name: Compare unchanged original full-service deny gate on native x64
         shell: pwsh
         run: |
@@ -89,7 +94,7 @@ jobs:
                     Where-Object { $_.Name -ne 'CustodyService.cs' -and $_.Name -ne 'FullOriginalNativeDenialTests.cs' } |
                     ForEach-Object { $_.FullName })
           if ($oldTen.Count -ne 10) { throw 'P101 candidate must use exactly 10 frozen P49 units' }
-          $host=Join-Path $candidate 'CustodyService.cs'
+          $candidateHost=Join-Path $candidate 'CustodyService.cs'
           $fence=Join-Path $candidate 'ServiceOwnedAdmissionBoundary.cs'
           $tests=Join-Path $candidate 'ServiceHostAdmissionTests.cs'
           $source=Get-Content -LiteralPath $fence -Raw
@@ -97,7 +102,7 @@ jobs:
             throw 'Service-owned candidate contains forbidden native effect or IPC code'
           }
           $exe=Join-Path $env:RUNNER_TEMP 'P101_QuarantinedNativeHost_x64.exe'
-          $output=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P101ServiceHostAdmissionTests "/out:$exe" $oldTen $host $fence $tests 2>&1|Out-String)
+          $output=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P101ServiceHostAdmissionTests "/out:$exe" $oldTen $candidateHost $fence $tests 2>&1|Out-String)
           if ($LASTEXITCODE -ne 0 -or -not [String]::IsNullOrWhiteSpace($output)) { throw 'P101 native host-substitution CSharp compile diagnostics' }
           Write-Output 'P101_X64_CSHARP_NATIVE_COMPILER_EXIT=0'
           for($i=1;$i -le 5;$i++) {
