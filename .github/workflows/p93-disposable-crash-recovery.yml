@@ -1,0 +1,76 @@
+name: P93 Disposable Crash Recovery Structural Evidence (HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p93-disposable-crash-recovery-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  windows-crash-fixture:
+    name: Windows force-exit disposable journal / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Authenticate exact P92 parent, three-file scope and clean clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p93-disposable-crash-recovery-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P93 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $parent = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P93 trigger SHA drift' }
+          if ($parent -ne ($head + ' 1ff9ab57e24413f8d1b14627265cba92c1df2f38')) { throw 'P93 parent not exact P92' }
+          $actual = @(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $allowed = @('.github/workflows/p93-disposable-crash-recovery.yml',
+                       'tests/p93_disposable_crash_recovery.py',
+                       'tests/test_p93_disposable_crash_recovery.py') | Sort-Object
+          if (@(Compare-Object -ReferenceObject $allowed -DifferenceObject $actual).Count -ne 0) { throw 'P93 extra changed paths' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P93 diff whitespace' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty clone' }
+          Write-Output "P93_VERIFIED_HEAD=$head"
+          Write-Output 'P93_PRODUCTION_RECOVERY_CODEC_UNMODIFIED=TRUE'
+      - name: Test actual read-only codec and eight child-process crash cutpoints
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document
+            if ($LASTEXITCODE -ne 0) { throw 'P93 crash and codec tests failed' }
+            Write-Output 'P93_FOCUSED_WINDOWS_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Run combined P93 and existing affected test suites without branch-specific skips
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P93 combined regressions failed' }
+            Write-Output 'P93_COMBINED_WINDOWS_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Assert no installed service, credentials or release authority
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'P93 HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'P93 checkout modified' }
+          Write-Output 'P93_OS_PROTECTED_CUSTODY=NOT_TESTED'
+          Write-Output 'P93_SERVICE_AND_CREDENTIAL_EFFECTS=NONE'
+          Write-Output 'P93_TRUSTED_ANCHOR=NOT_IMPLEMENTED'
+          Write-Output 'P93_INDEPENDENT_SECURITY_REVIEW=NOT_RECEIVED'
+          Write-Output 'P93_C1_PRODUCTION_RELEASE=HOLD'
