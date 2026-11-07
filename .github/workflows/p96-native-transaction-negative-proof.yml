@@ -1,0 +1,110 @@
+name: P96 Genuine Native Coordinator Revocation Race NEGATIVE Proof (HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p96-native-transaction-race-proof-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  native-negative-proof:
+    name: Actual CSharp coordinator FAKE-only negative / Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            csc: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+            python-version: '3.12'
+          - arch: x86
+            csc: 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+            python-version: '3.14'
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone exact P95 child with unchanged authentic CSharp sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p96-native-transaction-race-proof-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P96 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          $parents=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'Unpinned P96 source' }
+          if ($parents -ne ($head + ' 8db72ba7197b22a11ed0f17de76db28de4d1c39e')) { throw 'Wrong P95 parent' }
+          $expected=@('.github/workflows/p96-native-transaction-negative-proof.yml',
+                      'docs/byok-c1-p96-native-transaction-race-negative.md',
+                      'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+                      'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs') | Sort-Object
+          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'Unapproved P96 scope' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P96 diff check failed' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty source checkout' }
+          $txn=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Path
+          $ledger=(Resolve-Path -LiteralPath 'reviewed/tests/p95_native_custody_preflight/CustodyLedger.cs').Path
+          $txnSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $txn).Hash
+          $ledgerSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $ledger).Hash
+          if ($txnSha -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB') { throw 'Genuine transaction code altered' }
+          if ($ledgerSha -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B') { throw 'Genuine ledger code altered' }
+          Write-Output "P96_VERIFIED_HEAD=$head"
+          Write-Output "P96_GENUINE_COORDINATOR_SOURCE_SHA256=$txnSha"
+          Write-Output "P96_GENUINE_LEDGER_SOURCE_SHA256=$ledgerSha"
+      - name: Compile native CSharp coordinator and reproduce known negative finding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $csc='${{ matrix.csc }}'
+          if (-not (Test-Path -LiteralPath $csc)) { throw 'Windows CSharp Framework compiler missing' }
+          $transaction=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Path
+          $ledger=(Resolve-Path -LiteralPath 'reviewed/tests/p95_native_custody_preflight/CustodyLedger.cs').Path
+          $tests=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs').Path
+          $source = Get-Content -Raw -LiteralPath $tests
+          if ($source -match 'DllImport|CredWrite|CredDelete|CredRead|WindowsIdentity|RegistryKey|System.Runtime.InteropServices') { throw 'Unexpected native effect in fake harness' }
+          $exe=Join-Path $env:RUNNER_TEMP ('P96_NegativeProof_${{ matrix.arch }}.exe')
+          & $csc /nologo /target:exe '/platform:${{ matrix.arch }}' "/out:$exe" $ledger $transaction $tests
+          if ($LASTEXITCODE -ne 0) { throw 'Actual coordinator compile failed' }
+          Write-Output 'P96_NATIVE_CSHARP_COMPILATION_EXIT=0'
+          for ($i=1; $i -le 10; $i++) {
+            $result=(& $exe 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0 -or
+                $result -notmatch 'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15' -or
+                $result -notmatch 'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_FAILED=0' -or
+                $result -notmatch 'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY' -or
+                $result -notmatch 'P96_REAL_NATIVE_EFFECTS=NONE' -or
+                $result -notmatch 'P96_C1_PRODUCTION_RELEASE=HOLD') {
+              throw 'Genuine coordinator race negative finding could not be reproduced safely'
+            }
+          }
+          Write-Output 'P96_NATIVE_NEGATIVE_PROOF_RUNS=10'
+          Write-Output 'P96_NATIVE_NEGATIVE_CASE_EXECUTIONS=150'
+          Write-Output 'P96_LEGACY_NATIVE_CONSENT_RACE=OPEN_NOT_FIXED'
+          Write-Output 'P96_NATIVE_TEST_EXEC_EXIT=0'
+      - name: Verify existing affected Windows Python regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P96 affected Python regressions failed' }
+            Write-Output 'P96_AFFECTED_WINDOWS_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Preserve negative finding and release hold
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Source drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout changed' }
+          Write-Output 'P96_NATIVE_CONSENT_TO_EFFECT_GAP=CONFIRMED_BY_FAKE_INTERLEAVING'
+          Write-Output 'P96_TRUE_WIN_CRED_EFFECT=NOT_PERFORMED'
+          Write-Output 'P96_P62_PLATFORM_HOLD=UNTOUCHED'
+          Write-Output 'P96_INDEPENDENT_SECURITY_REVIEW=NOT_RECEIVED'
+          Write-Output 'P96_C1_PRODUCTION_RELEASE=HOLD'
