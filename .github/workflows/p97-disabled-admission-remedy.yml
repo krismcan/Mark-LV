@@ -1,0 +1,122 @@
+name: P97 Disabled Native Admission Corrective Ordering (x64 ONLY, HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p97-disabled-admission-remedy-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  native-x64-review:
+    name: Original P96 negative vs corrected P97 fake-only / Windows x64 / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone exact P96 child and admit only four new review-only paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p97-disabled-admission-remedy-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P97 source clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          $parents=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P97 exact source SHA mismatch' }
+          if ($parents -ne ($head + ' b8fc930ffe0e611cb5a22b6a899ea93916b18966')) { throw 'P97 not sole P96 child' }
+          $expected=@('.github/workflows/p97-disabled-admission-remedy.yml',
+                      'docs/byok-c1-p97-disabled-admission-remedy-review.md',
+                      'tests/p97_disabled_admission_remedy/DisabledNativeAdmissionCoordinator.cs',
+                      'tests/p97_disabled_admission_remedy/DisabledAdmissionRaceTests.cs') | Sort-Object
+          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'P97 unexpected changed-file scope' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P97 changed-source whitespace failed' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'P97 checkout dirty' }
+          $ledger=(Get-FileHash -Algorithm SHA256 -LiteralPath 'reviewed/tests/p95_native_custody_preflight/CustodyLedger.cs').Hash
+          $original=(Get-FileHash -Algorithm SHA256 -LiteralPath 'reviewed/tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Hash
+          if ($ledger -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B') { throw 'Authentic CSharp ledger changed' }
+          if ($original -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB') { throw 'Genuine flawed coordinator changed' }
+          Write-Output "P97_VERIFIED_HEAD=$head"
+          Write-Output "P97_ORIGINAL_NATIVE_COORDINATOR_SHA256=$original"
+          Write-Output "P97_REAL_CSHARP_LEDGER_SHA256=$ledger"
+      - name: Reproduce P96 original-security-race NEGATIVE proof unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $ledger=(Resolve-Path -LiteralPath 'reviewed/tests/p95_native_custody_preflight/CustodyLedger.cs').Path
+          $old=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Path
+          $cases=(Resolve-Path -LiteralPath 'reviewed/tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs').Path
+          if (-not (Test-Path -LiteralPath $csc)) { throw 'Windows CSharp compiler unavailable' }
+          $exe=Join-Path $env:RUNNER_TEMP 'P97_GenuineOriginalP96_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 "/out:$exe" $ledger $old $cases
+          if ($LASTEXITCODE -ne 0) { throw 'P96 original evidence failed compilation' }
+          $result=(& $exe 2>&1|Out-String)
+          if ($LASTEXITCODE -ne 0 -or
+              $result -notmatch 'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15' -or
+              $result -notmatch 'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY' -or
+              $result -notmatch 'P96_SECURITY_FINDING=OPEN') {
+            throw 'Original security gap not reproduced exactly'
+          }
+          Write-Output 'P97_ORIGINAL_COORDINATOR_NEGATIVE_TESTS=15_PASS_OPEN_FINDING'
+      - name: Compile separate disabled corrected lock with authentic ledger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $ledger=(Resolve-Path -LiteralPath 'reviewed/tests/p95_native_custody_preflight/CustodyLedger.cs').Path
+          $core=(Resolve-Path -LiteralPath 'reviewed/tests/p97_disabled_admission_remedy/DisabledNativeAdmissionCoordinator.cs').Path
+          $tests=(Resolve-Path -LiteralPath 'reviewed/tests/p97_disabled_admission_remedy/DisabledAdmissionRaceTests.cs').Path
+          $source=(Get-Content -LiteralPath $core -Raw)
+          if ($source -match 'DllImport|CredWrite\s*\(|CredDelete\s*\(|CredRead\s*\(|ServiceBase|RegistryKey|WindowsIdentity|System\.IO\.File|System\.Net\.') {
+            throw 'Unexpected credential, OS persistence or native service API in disabled source'
+          }
+          $exe=Join-Path $env:RUNNER_TEMP 'P97_DisabledNativeAdmission_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 "/out:$exe" $ledger $core $tests
+          if ($LASTEXITCODE -ne 0) { throw 'P97 disabled native admission CSharp compilation failed' }
+          Write-Output 'P97_CORRECTED_FAKE_CSHARP_COMPILER_EXIT=0'
+          for ($i=1; $i -le 5; $i++) {
+            $result=(& $exe 2>&1|Out-String)
+            if ($LASTEXITCODE -ne 0 -or
+                $result -notmatch 'P97_DISABLED_NATIVE_RACE_TESTS_PASSED=40' -or
+                $result -notmatch 'P97_DISABLED_NATIVE_RACE_TESTS_FAILED=0' -or
+                $result -notmatch 'P97_IN_PROCESS_TEST_REMEDY=SERIALIZES_FAKE_DISPATCH_AND_REVOCATION' -or
+                $result -notmatch 'P97_PRODUCTION_RELEASE=HOLD') {
+              throw 'P97 corrected fake-only admission test failed'
+            }
+          }
+          Write-Output 'P97_CORRECTED_FAKE_NATIVE_RUNS=5'
+          Write-Output 'P97_CORRECTED_FAKE_NATIVE_CASE_EXECUTIONS=200'
+          Write-Output 'P97_CORRECTED_FAKE_NATIVE_EXIT=0'
+      - name: Verify existing Windows affected Python suites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P97 affected Windows product tests failed' }
+            Write-Output 'P97_AFFECTED_PYTHON_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Confirm x86 policy boundary and release hold
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Source HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Review checkout changed' }
+          Write-Output 'P97_KRISTIAN_X86_APPLICATION_CONTROL_POLICY=BLOCKED_UNVERIFIED'
+          Write-Output 'P97_X86_RUNNER_NOT_ATTEMPTED_BY_DESIGN=TRUE'
+          Write-Output 'P97_NATIVE_SERVICE_OR_WINCRED_EFFECTS=NONE'
+          Write-Output 'P97_ORIGINAL_P61_RACE=STILL_OPEN'
+          Write-Output 'P97_QUALIFIED_INDEPENDENT_REVIEW=NOT_RECEIVED'
+          Write-Output 'P97_BYOK_C1_PRODUCTION_RELEASE=HOLD'
