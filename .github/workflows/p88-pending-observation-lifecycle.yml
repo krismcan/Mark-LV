@@ -1,0 +1,65 @@
+name: P88 Synthetic Observation Lifecycle Hardening Review
+
+on:
+  push:
+    branches:
+      - byok-c1-p88-observation-lifecycle-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-review:
+    name: Windows lifecycle hardening / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Authenticate P88 exact P87 parent and three-file scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p88-observation-lifecycle-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P88 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $parent = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P88 checkout is not trigger HEAD' }
+          if ($parent -ne ($head + ' 0d44b53ade8a2e97e10b7568a7d25d099152e416')) { throw 'P88 parent differs from verified P87' }
+          $actual = @(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $allowed = @('.github/workflows/p88-pending-observation-lifecycle.yml',
+                       'nayeon/desktop_alpha/workspace_window.py',
+                       'tests/test_p88_pending_observation_lifecycle.py') | Sort-Object
+          if (@(Compare-Object -ReferenceObject $allowed -DifferenceObject $actual).Count -ne 0) { throw 'P88 changed source paths differ' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'Dirty source' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P88 diff check failed' }
+          Write-Output "P88_VERIFIED_HEAD=$head"
+          Write-Output "P88_VERIFIED_PARENT=$parent"
+      - name: Native adversarial Tk and Connection/Workspace regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P88 native affected tests failed' }
+            Write-Output 'P88_AFFECTED_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Prove unchanged source and release hold
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'P88 HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) { throw 'P88 checkout modified' }
+          Write-Output 'P88_SYNTHETIC_ONLY_NO_CREDENTIAL_EFFECT=TRUE'
+          Write-Output 'P88_RELEASE_HOLD=TRUE'

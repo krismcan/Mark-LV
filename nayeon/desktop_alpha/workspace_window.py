@@ -999,6 +999,7 @@ class ConnectionWindow(WorkspacePane):
         super().__init__(parent, name="connection_view", on_destroy=on_destroy)
         # P87 is explicit, synthetic-only; no observer runs on page creation.
         self._synthetic_pending_owner = None
+        self._synthetic_pending_lease = None  # Exact instance identity, not copied fields.
         self._synthetic_pending_generation = 0
         self._synthetic_pending_busy = False
         self._synthetic_pending_reset_requested = False
@@ -1037,8 +1038,9 @@ class ConnectionWindow(WorkspacePane):
         )
         self._synthetic_pending_generation += 1
         self._synthetic_pending_owner = object()
-        return SyntheticObservationLease(
+        self._synthetic_pending_lease = SyntheticObservationLease(
             self._synthetic_pending_owner, self._synthetic_pending_generation)
+        return self._synthetic_pending_lease
 
     def cancel_synthetic_pending_observation(self, lease) -> bool:
         """Revoke exact owner/generation; stale cancellation cannot erase newer UI."""
@@ -1047,11 +1049,13 @@ class ConnectionWindow(WorkspacePane):
             SyntheticObservationLease,
         )
         if (type(lease) is not SyntheticObservationLease
+                or lease is not self._synthetic_pending_lease
                 or self._synthetic_pending_owner is None
                 or lease.owner is not self._synthetic_pending_owner
                 or lease.generation != self._synthetic_pending_generation):
             return False
         self._synthetic_pending_owner = None
+        self._synthetic_pending_lease = None
         self._synthetic_pending_generation += 1
         if self._synthetic_pending_busy:
             self._synthetic_pending_reset_requested = True
@@ -1062,7 +1066,8 @@ class ConnectionWindow(WorkspacePane):
         try:
             self.pending_custody_label.configure(
                 text=self._synthetic_pending_default_text)
-        except tk.TclError:
+        except Exception:
+            # Any Tk publication failure leaves the presentation lease revoked.
             return False
         finally:
             self._synthetic_pending_busy = False
@@ -1081,6 +1086,7 @@ class ConnectionWindow(WorkspacePane):
         )
         if (not self._alive or self._synthetic_pending_busy
                 or type(lease) is not SyntheticObservationLease
+                or lease is not self._synthetic_pending_lease
                 or self._synthetic_pending_owner is None
                 or lease.owner is not self._synthetic_pending_owner
                 or lease.generation != self._synthetic_pending_generation):
@@ -1098,18 +1104,28 @@ class ConnectionWindow(WorkspacePane):
             if not self._alive:
                 return False
             self.pending_custody_label.configure(text=message)
-            if (not self._alive or lease.owner is not self._synthetic_pending_owner
+            if (not self._alive or lease is not self._synthetic_pending_lease
+                    or lease.owner is not self._synthetic_pending_owner
                     or lease.generation != self._synthetic_pending_generation):
                 return False
             # Consume before returning: delayed/replayed publications are denied.
             self._synthetic_pending_owner = None
+            self._synthetic_pending_lease = None
             self._synthetic_pending_generation += 1
             return valid
-        except tk.TclError:
-            if (lease.owner is self._synthetic_pending_owner
-                    and lease.generation == self._synthetic_pending_generation):
+        except Exception:
+            # A partially applied Tk write or injected exception is not a success.
+            # Revoke FIRST, then best-effort restore non-authoritative UNKNOWN.
+            if lease is self._synthetic_pending_lease:
                 self._synthetic_pending_owner = None
+                self._synthetic_pending_lease = None
                 self._synthetic_pending_generation += 1
+            if self._alive:
+                try:
+                    self.pending_custody_label.configure(
+                        text=self._synthetic_pending_default_text)
+                except Exception:
+                    pass
             return False
         finally:
             # Cancellation reentered during configure: restore NOT OBSERVED.
@@ -1119,13 +1135,14 @@ class ConnectionWindow(WorkspacePane):
                     try:
                         self.pending_custody_label.configure(
                             text=self._synthetic_pending_default_text)
-                    except tk.TclError:
+                    except Exception:
                         pass
             self._synthetic_pending_busy = False
 
     def destroy(self):
         self._require_creator_thread()
         self._synthetic_pending_owner = None
+        self._synthetic_pending_lease = None
         self._synthetic_pending_generation += 1
         super().destroy()
 
@@ -1133,6 +1150,7 @@ class ConnectionWindow(WorkspacePane):
         self._require_creator_thread()
         if event.widget is self:
             self._synthetic_pending_owner = None
+            self._synthetic_pending_lease = None
             self._synthetic_pending_generation += 1
         super()._destroyed(event)
 
@@ -1144,8 +1162,14 @@ class ConnectionWindow(WorkspacePane):
         The import is lazy so default offline startup has no BYOK dependency.
         """
         self._require_creator_thread()
-        if not self._alive:
+        # Do not let a P84 advisory race a synthetic Tk publication. A newer
+        # explicit P84 advisory revokes an outstanding synthetic response.
+        if not self._alive or self._synthetic_pending_busy:
             return False
+        if self._synthetic_pending_lease is not None:
+            self._synthetic_pending_lease = None
+            self._synthetic_pending_owner = None
+            self._synthetic_pending_generation += 1
         try:
             from nayeon.brain.pending_custody_status_view import (
                 PendingCustodyDisplay, present_pending_custody_advice,
