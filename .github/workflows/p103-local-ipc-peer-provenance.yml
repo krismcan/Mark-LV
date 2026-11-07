@@ -1,0 +1,156 @@
+name: P103 Windows Local Peer Identity Is Not Consent (x64, C1 HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p103-local-ipc-provenance-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-windows-peer:
+    name: Real local named-pipe peer observation / Windows x64 / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Fresh exact-source clone with immutable P49 native hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p103-local-ipc-provenance-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P103 source fetch failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          $parent=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P103 source does not equal workflow head' }
+          if ($parent -ne ($head + ' d0989ea0e814ffe2537cd9f3a168bc744e5af13c')) {
+            throw 'P103 is not direct sole child of P102'
+          }
+          $expected=@('.github/workflows/p103-local-ipc-peer-provenance.yml',
+                      'docs/byok-c1-p103-windows-local-ipc-provenance.md',
+                      'native_c1_candidate/DisposablePipePeerEvidence.cs',
+                      'tests/p103_local_ipc_provenance/NativePipePeerDenialTests.cs') | Sort-Object
+          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
+            throw 'P103 unexpected source change or missing review document'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach ($item in $pins.GetEnumerator()) {
+            $path=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $item.Key
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash -ne $item.Value) {
+              throw ('Original P49 CSharp changed: '+$item.Key)
+            }
+          }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P103 source diff whitespace invalid' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) {
+            throw 'P103 GitHub source clone not clean'
+          }
+          Write-Output "P103_EXACT_VERIFIED_HEAD=$head"
+          Write-Output 'P103_ORIGINAL_NATIVE_P49_SHA256=ELEVEN_VERIFIED'
+          Write-Output 'P103_SOURCE_SCOPE=FOUR_ADDITIVE_PATHS'
+      - name: Native CSharp x64 disposable Windows peer-identity proof (NO service effects)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $old=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial').Path
+          $source=@(Get-ChildItem -LiteralPath $old -File -Filter '*.cs' |
+            Where-Object { $_.Name -ne 'CustodyService.cs' -and
+                           $_.Name -ne 'FullOriginalNativeDenialTests.cs' } |
+            ForEach-Object { $_.FullName })
+          if ($source.Count -ne 10) { throw 'Expected ten frozen native CSharp dependencies' }
+          $candidate=(Resolve-Path -LiteralPath 'reviewed/native_c1_candidate').Path
+          $parts=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+                   'ServiceBoundRequestIdentity.cs','DisposablePipePeerEvidence.cs') |
+                  ForEach-Object { Join-Path $candidate $_ }
+          $tests=(Resolve-Path -LiteralPath 'reviewed/tests/p103_local_ipc_provenance/NativePipePeerDenialTests.cs').Path
+          $review=(Get-Content -LiteralPath (Join-Path $candidate 'DisposablePipePeerEvidence.cs') -Raw)
+          if ($review -match 'CredWrite\s*\(|CredDelete\s*\(|CredRead\s*\(|DllImport|ServiceBase\.Run\s*\(|RegistryKey|System\.Net\.Sockets') {
+            throw 'P103 disposable peer probe contains prohibited effect or install code'
+          }
+          $exe=Join-Path $env:RUNNER_TEMP 'P103_DisposableWindowsPeer_x64.exe'
+          $compiler=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /r:System.Core.dll /main:P103NativePipePeerDenialTests "/out:$exe" $source $parts $tests 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or -not [String]::IsNullOrWhiteSpace($compiler)) {
+            throw 'P103 native CSharp compilation failed or emitted diagnostic'
+          }
+          Write-Output 'P103_DISPOSABLE_NATIVE_CSHARP_COMPILER_EXIT=0'
+          for ($n=1;$n -le 3;$n++) {
+            $out=(& $exe 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0 -or
+                $out -notmatch 'P103_GENUINE_WINDOWS_PIPE_TESTS_PASSED=12' -or
+                $out -notmatch 'P103_GENUINE_WINDOWS_PIPE_TESTS_FAILED=0' -or
+                $out -notmatch 'P103_WINDOWS_SAME_USER_PEER_AUTHENTICATED_TRUSTED_UI=FALSE' -or
+                $out -notmatch 'P103_UNPRIVILEGED_PIPE_EFFECTS=NONE' -or
+                $out -notmatch 'P103_C1_PRODUCTION_RELEASE=HOLD') {
+              throw 'P103 Windows peer-identity negative-proof failure'
+            }
+          }
+          Write-Output 'P103_REAL_WINDOWS_NAMED_PIPE_TEST_CASE_EXECUTIONS=36'
+          Write-Output 'P103_REAL_WINDOWS_NAMED_PIPE_NATIVE_EXIT=0'
+      - name: Existing Windows native host and affected Python regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $old=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial').Path
+          $source=@(Get-ChildItem -LiteralPath $old -File -Filter '*.cs' |
+            Where-Object { $_.Name -ne 'CustodyService.cs' -and
+                           $_.Name -ne 'FullOriginalNativeDenialTests.cs' } |
+            ForEach-Object { $_.FullName })
+          $candidate=(Resolve-Path -LiteralPath 'reviewed/native_c1_candidate').Path
+          $parts=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+                   'ServiceBoundRequestIdentity.cs') |
+                 ForEach-Object { Join-Path $candidate $_ }
+          $tests=(Resolve-Path -LiteralPath 'reviewed/tests/p102_service_bound_request/ServiceBoundRequestTests.cs').Path
+          $exe=Join-Path $env:RUNNER_TEMP 'P103_P102HostRegression_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P102ServiceBoundRequestTests "/out:$exe" $source $parts $tests
+          if ($LASTEXITCODE -ne 0) { throw 'P102 host native regression compile failed' }
+          $out=(& $exe 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch 'P102_BOUND_REQUEST_NATIVE_TESTS_PASSED=34' -or
+              $out -notmatch 'P102_C1_PRODUCTION_RELEASE=HOLD') {
+            throw 'P102 host native regression failed'
+          }
+          Write-Output 'P103_P102_NATIVE_HOST_REGRESSION=34_PASS'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P103 affected Python Windows suite failed' }
+            Write-Output 'P103_AFFECTED_WINDOWS_PYTHON_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Preserve real source consent and all release holds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'GitHub source head drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout changed' }
+          Write-Output 'P103_LOCAL_PEER_SID_SAME_USER_NOT_TRUSTED_UI=TRUE'
+          Write-Output 'P103_AUTHENTICATED_ELEVATED_CONSENT_ISSUER=NOT_IMPLEMENTED'
+          Write-Output 'P103_PRIVILEGED_SERVICE_IPC=NOT_IMPLEMENTED'
+          Write-Output 'P103_REAL_WINCRED_EFFECTS=NONE'
+          Write-Output 'P103_ORIGINAL_P61_CONSENT_TO_EFFECT_DEFECT=OPEN'
+          Write-Output 'P103_KRISTIAN_X86_APP_CONTROL=BLOCKED_NOT_ATTEMPTED'
+          Write-Output 'P103_OPENAI_P62_RESTRICTION=UNTOUCHED'
+          Write-Output 'P103_INDEPENDENT_QUALIFIED_REVIEW=NOT_RECEIVED'
+          Write-Output 'P103_BYOK_C1_PRODUCTION_RELEASE=HOLD'
