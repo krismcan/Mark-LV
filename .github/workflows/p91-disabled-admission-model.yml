@@ -1,0 +1,79 @@
+name: P91 Disabled Admission State Machine — Fake-Only Review
+
+on:
+  push:
+    branches:
+      - byok-c1-p91-disabled-admission-model-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  fake-only-windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    name: Fake-only serialisation contract / Python ${{ matrix.python-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Authenticate exact P90 child and only three additive test files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p91-disabled-admission-model-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P91 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          $parent = (git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P91 source SHA drift' }
+          if ($parent -ne ($head + ' efa43cb96c9c9090377173bb70a3d1b5d5fed510')) { throw 'P91 parent differs from P90' }
+          $actual = @(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $allowed = @('.github/workflows/p91-disabled-admission-model.yml',
+                       'tests/p91_disabled_admission_model.py',
+                       'tests/test_p91_disabled_admission_model.py') | Sort-Object
+          if (@(Compare-Object -ReferenceObject $allowed -DifferenceObject $actual).Count -ne 0) { throw 'Unexpected changed file scope' }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P91 diff --check failed' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty review checkout' }
+          Write-Output "P91_VERIFIED_HEAD=$head"
+          Write-Output 'P91_DISABLED_NATIVE_SERVICE_UNCHANGED=TRUE'
+      - name: Test fake-only revocation, dispatch and restart ordering
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p91_disabled_admission_model
+            if ($LASTEXITCODE -ne 0) { throw 'P91 fake admission tests failed' }
+            Write-Output 'P91_FAKE_ONLY_WINDOWS_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Verify entire successor affected Tk and review-test suites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'P91 combined review tests failed' }
+            Write-Output 'P91_COMBINED_NATIVE_EXIT=0'
+          } finally {
+            Pop-Location
+          }
+      - name: Preserve no-operation and no-release evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'HEAD drift' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout mutation' }
+          Write-Output 'P91_NO_NATIVE_CREDENTIAL_OR_CONSENT_EFFECTS=TRUE'
+          Write-Output 'P91_P62_HISTORICAL_HOLD_UNTOUCHED=TRUE'
+          Write-Output 'P91_INDEPENDENT_SECURITY_REVIEW=NOT_RECEIVED'
+          Write-Output 'P91_BYOK_C1_PRODUCTION_RELEASE=HOLD'
