@@ -1,0 +1,117 @@
+name: P98 Actual Disabled CSharp Service Source Preflight (x64 Only, HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p98-service-source-preflight-20261107
+
+permissions:
+  contents: read
+
+jobs:
+  native-service-start-denied:
+    name: Original P49 CSharp service startup refusal / Windows x64 / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
+    steps:
+      - name: Set up pinned Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Clone exact P97 child, source gate, and seven changed paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p98-service-source-preflight-20261107 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P98 clone failed' }
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          $parents=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'P98 trigger SHA not exact published commit' }
+          if ($parents -ne ($head + ' 22d38851ea574765f3e30cf220dabb10a7fb5ca6')) { throw 'P98 parent not exact P97' }
+          $expected=@('.github/workflows/p98-native-service-source-preflight.yml',
+                      'docs/byok-c1-p98-native-service-preflight-review.md',
+                      'native_c1_review/DisabledServiceCompositionFence.cs',
+                      'tests/p98_native_service_preflight/CustodyService.cs',
+                      'tests/p98_native_service_preflight/ServiceGate.cs',
+                      'tests/p98_native_service_preflight/ProtectedAcl.cs',
+                      'tests/p98_native_service_preflight/NativeServicePreflightTests.cs') | Sort-Object
+          $actual=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'Unexpected P98 changed source file' }
+          $pin=@{
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+          }
+          foreach ($item in $pin.GetEnumerator()) {
+            $path=Join-Path 'reviewed/tests/p98_native_service_preflight' $item.Key
+            $got=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+            if ($got -ne $item.Value) { throw 'Original P49 source changed' }
+            Write-Output ("P98_ORIGINAL_NATIVE_FILE=$($item.Key) SHA256=$got")
+          }
+          git -C reviewed diff --check HEAD^ HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid whitespace' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Source checkout not clean' }
+          Write-Output "P98_VERIFIED_HEAD=$head"
+      - name: Compile original P49 service and deny-only fence; never start SCM service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          if (-not (Test-Path -LiteralPath $csc)) { throw 'Original x64 CSharp compiler unavailable' }
+          $dir=(Resolve-Path -LiteralPath 'reviewed/tests/p98_native_service_preflight').Path
+          $service=Join-Path $dir 'CustodyService.cs'
+          $gate=Join-Path $dir 'ServiceGate.cs'
+          $acl=Join-Path $dir 'ProtectedAcl.cs'
+          $tests=Join-Path $dir 'NativeServicePreflightTests.cs'
+          $fence=(Resolve-Path -LiteralPath 'reviewed/native_c1_review/DisabledServiceCompositionFence.cs').Path
+          $body=Get-Content -LiteralPath $fence -Raw
+          if ($body -match 'DllImport|CredWrite\s*\(|CredDelete\s*\(|CredRead\s*\(|ServiceBase\.Run|System\.IO\.File|RegistryKey|System\.Net\.') {
+            throw 'Unexpected effect or installer capability in dormant boundary'
+          }
+          $exe=Join-Path $env:RUNNER_TEMP 'P98_OriginalServicePreflight_x64.exe'
+          & $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P98PreflightTests "/out:$exe" $service $gate $acl $fence $tests
+          if ($LASTEXITCODE -ne 0) { throw 'Original P49 CSharp source failed compilation' }
+          Write-Output 'P98_ORIGINAL_SERVICE_NATIVE_CSHARP_COMPILER_EXIT=0'
+          for ($i=1;$i -le 5;$i++) {
+            $result=(& $exe 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0 -or
+                $result -notmatch 'P98_ACTUAL_NATIVE_SERVICE_GATE_TESTS_PASSED=24' -or
+                $result -notmatch 'P98_ACTUAL_NATIVE_SERVICE_GATE_TESTS_FAILED=0' -or
+                $result -notmatch 'P98_REAL_P49_ONSTART=DENIED' -or
+                $result -notmatch 'P98_NATIVE_SERVICE_INSTALLATION=NONE' -or
+                $result -notmatch 'P98_CREDENTIAL_EFFECTS=NONE' -or
+                $result -notmatch 'P98_BYOK_C1_PRODUCTION_RELEASE=HOLD') {
+              throw 'P98 original native startup refusal was not verified'
+            }
+          }
+          Write-Output 'P98_GENUINE_NATIVE_SERVICE_PREFLIGHT_RUNS=5'
+          Write-Output 'P98_GENUINE_NATIVE_SERVICE_PREFLIGHT_CASE_EXECUTIONS=120'
+          Write-Output 'P98_NATIVE_SERVICE_NOT_STARTED=TRUE'
+          Write-Output 'P98_NATIVE_SERVICE_PREFLIGHT_EXIT=0'
+      - name: Existing Windows Python affected regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m unittest -q tests.test_p93_disposable_crash_recovery tests.test_pending_credential_recovery_document tests.test_p91_disabled_admission_model tests.test_p88_pending_observation_lifecycle tests.test_p87_readonly_custody_observation tests.test_p86_live_pending_status_integration tests.test_pending_custody_status_view tests.test_first_run_connection_application tests.test_first_run_connection_window tests.test_first_run_connection_effect_isolation tests.test_phase_830_workspace tests.test_phase_831_workspace tests.test_first_run_connection_cancelled_effect
+            if ($LASTEXITCODE -ne 0) { throw 'Affected Python native regression exit nonzero' }
+            Write-Output 'P98_AFFECTED_PYTHON_NATIVE_EXIT=0'
+          } finally { Pop-Location }
+      - name: Hold P61 actual service race, P62 restriction and x86 signed-execution gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Source commit changed' }
+          if (@(git -C reviewed status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Source checkout modified' }
+          Write-Output 'P98_ORIGINAL_P49_STARTUP=DENY'
+          Write-Output 'P98_ORIGINAL_P61_CONSENT_RACE=OPEN'
+          Write-Output 'P98_WINDOWS_X86_CODE_INTEGRITY=BLOCKED_NOT_RETRIED'
+          Write-Output 'P98_WIN_CRED_AND_PRIVILEGED_OPERATIONS=NONE'
+          Write-Output 'P98_INDEPENDENT_SECURITY_REVIEW=NOT_RECEIVED'
+          Write-Output 'P98_C1_PRODUCTION_RELEASE=HOLD'
