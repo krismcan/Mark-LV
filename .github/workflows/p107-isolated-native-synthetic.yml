@@ -1,0 +1,191 @@
+name: P107 Isolated Windows Native Synthetic Denial Acceptance (C1 HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p107-isolated-windows-synthetic-native-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  original-native-unprivileged-synthetic:
+    name: P106 original-source 23 tests plus P99 native 20 denials; no privileged effects
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Authorised ephemeral runner and exact source integrity gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows'){
+            throw 'Not a GitHub Actions Windows runner'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p107-isolated-windows-synthetic-native-20261108 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'GitHub source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          if($head -ne $env:GITHUB_SHA){throw 'Source head mismatch'}
+          $p106='3cb73013aa063e0e0732f7e07c2d7e0020934b2d'
+          if((git -C reviewed merge-base HEAD $p106).Trim() -ne $p106){
+            throw 'P106 exact immutable ancestor mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p107-isolated-native-synthetic.yml'
+            'docs/byok-c1-p107-isolated-windows-test-review.md'
+          ) | Sort-Object
+          $changed=@(git -C reviewed diff --name-only $p106 HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P107 changed production or existing test sources'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach($entry in $pins.GetEnumerator()){
+            $file=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $entry.Key
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('Original P49 source sha changed: '+$entry.Key)
+            }
+          }
+          $candidate=@{
+            'native_c1_candidate/CustodyService.cs'='6AF798E6F6BD7A19ACAB806745A984105F9E599D8235B316067F80B8F261E98E'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'='4C919C6CC65FE92CD351F149B4217264EA769E50FB99A17791C1A73C37297294'
+            'native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs'='F3CE1F26EF471A9A8CA178760192F108AEB633220BE285D028B5FA49099B77C1'
+            'native_c1_candidate/ServiceBoundRequestIdentity.cs'='D426D888998D748371FF65AC4AF690046498BCB422373A1B30ABBF00F85F3D62'
+            'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'='BD616B2BC4B3A861A01776CBB9A7E5D9FBCEC705DEF8ED108A54F6A5AF921CB3'
+          }
+          foreach($entry in $candidate.GetEnumerator()){
+            $file=Join-Path 'reviewed' $entry.Key
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('P106 tested source sha changed: '+$entry.Key)
+            }
+          }
+          git -C reviewed diff --check $p106 HEAD
+          if($LASTEXITCODE -ne 0){throw 'Source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source checkout dirty'}
+          Write-Output 'P107_P49_ORIGINAL_SHA256_PINS=11_PASS'
+          Write-Output 'P107_P106_CANDIDATE_AND_DRIVER_SHA256_PINS=5_PASS'
+          Write-Output 'P107_CHANGES_WORKFLOW_AND_REVIEW_DOC_ONLY=TRUE'
+      - name: Unprivileged and denial-only safety preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+          if($null -eq $identity -or $null -eq $identity.User -or
+             $identity.User.IsWellKnown([Security.Principal.WellKnownSidType]::LocalSystemSid)){
+            throw 'Privileged LocalSystem identity; refuse synthetic runtime'
+          }
+          $test=Get-Content 'reviewed/tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs' -Raw
+          $candidate=Get-Content 'reviewed/native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs' -Raw
+          $service=Get-Content 'reviewed/native_c1_candidate/CustodyService.cs' -Raw
+          $boundary=Get-Content 'reviewed/native_c1_candidate/ServiceOwnedAdmissionBoundary.cs' -Raw
+          if($test -notmatch 'Run\("real-local-system-registry-guard-is-non-bypassable"' -or
+             $test -notmatch 'Run\("inflight-is-always-recovery-required"' -or
+             $candidate -notmatch 'CustodyLedger.Verify\(' -or
+             $service -match 'ServiceBase.Run\s*\(' -or
+             $boundary -notmatch 'internal bool CanDispatchNativeCredentialEffect \{ get \{ return false; \} \}'){
+            throw 'Unprivileged safety source guard mismatch'
+          }
+          foreach($text in @($test,$candidate,$service,$boundary)){
+            if($text -match '(?m)^\s*#\s*define\s+BYOK_TEST' -or
+               $text -match '\bCred(?:WriteW|DeleteW|ReadW)\s*\(' -or
+               $text -match '\.SaveOrReplace\s*\(' -or
+               $text -match '\.DeletePending\s*\(' -or
+               $text -match '\bRegistry\.SetValue\s*\('){
+              throw 'Prohibited direct credential effect or synthetic test unlock'
+            }
+          }
+          Write-Output 'P107_RUNNER_LOCALSYSTEM=FALSE'
+          Write-Output 'P107_DENIAL_SOURCE_GUARDS=PASS'
+          Write-Output 'P107_PRIVILEGED_EFFECT_TESTS=NONE'
+      - name: Compile and execute only pinned P106 synthetic refusal and preflight tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'reviewed').Path
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $originalDir=Join-Path $root 'tests/p99_original_native_c1_denial'
+          $original=@(Get-ChildItem -LiteralPath $originalDir -Filter '*.cs' -File |
+            Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs' -and $_.Name -ne 'CustodyService.cs'} |
+            ForEach-Object {$_.FullName})
+          if($original.Count -ne 10){throw 'Wrong P49 native dependency count'}
+          $candidateDir=Join-Path $root 'native_c1_candidate'
+          $parts=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+                   'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs') |
+                 ForEach-Object {Join-Path $candidateDir $_}
+          $driver=Join-Path $root 'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'
+          $exe=Join-Path $env:RUNNER_TEMP 'P107_Approved_Isolated_Synthetic_Native_x64.exe'
+          $compile=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P106NativeJ2HostPreflightTests "/out:$exe" $original $parts $driver 2>&1 | Out-String)
+          $compileExit=$LASTEXITCODE
+          if($compileExit -ne 0 -or -not [string]::IsNullOrWhiteSpace($compile)){
+            Write-Output ('P107_COMPILE_DIAGNOSTICS='+$compile)
+            throw 'P107 native compile failed'
+          }
+          Write-Output 'P107_NATIVE_COMPILER_EXIT=0'
+          try{
+            $output=(& $exe 2>&1 | Out-String)
+            $nativeExit=$LASTEXITCODE
+          }catch{
+            throw ('P107 native executable refused or failed to start: '+$_.Exception.GetType().Name)
+          }
+          Write-Output $output
+          if($nativeExit -ne 0 -or
+             $output -notmatch 'P106_REAL_NATIVE_SERVICE_J2_PREFLIGHT_TESTS_PASSED=23' -or
+             $output -notmatch 'P106_REAL_NATIVE_SERVICE_J2_PREFLIGHT_TESTS_FAILED=0' -or
+             $output -notmatch 'P106_REAL_LOCAL_SYSTEM_EFFECTS=NONE' -or
+             $output -notmatch 'P106_G0_G1_G2_G3_G4_G5_G6=HOLD' -or
+             $output -notmatch 'P106_PRODUCTION_RELEASE=HOLD'){
+             throw ('P107 original P106 cases failed; native exit='+$nativeExit)
+          }
+          Write-Output 'P107_P106_ORIGINAL_23_SYNTHETIC_CASES=PASS'
+          Write-Output 'P107_NATIVE_EXECUTABLE_EXIT=0'
+          Write-Output 'P107_RUNNER_NOT_KRISTIAN=TRUE'
+      - name: Preserve original P99 twenty native denial regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'reviewed').Path
+          $originalDir=Join-Path $root 'tests/p99_original_native_c1_denial'
+          $sources=@(Get-ChildItem -LiteralPath $originalDir -Filter '*.cs' -File |
+            Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} |
+            ForEach-Object {$_.FullName})
+          if($sources.Count -ne 11){throw 'Wrong original P49 source count'}
+          $test=Join-Path $originalDir 'FullOriginalNativeDenialTests.cs'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $exe=Join-Path $env:RUNNER_TEMP 'P107_Approved_Isolated_OriginalP99_Denial_x64.exe'
+          $compile=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P99FullOriginalNativeDenialTests "/out:$exe" $sources $test 2>&1 | Out-String)
+          $compileExit=$LASTEXITCODE
+          if($compileExit -ne 0 -or -not [string]::IsNullOrWhiteSpace($compile)){
+            Write-Output ('P107_P99_COMPILE_DIAGNOSTICS='+$compile)
+            throw 'Original P99 native compile failed'
+          }
+          try{
+            $output=(& $exe 2>&1 | Out-String)
+            $nativeExit=$LASTEXITCODE
+          }catch{
+            throw ('P107 original P99 executable refused or failed: '+$_.Exception.GetType().Name)
+          }
+          if($nativeExit -ne 0 -or
+             $output -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_PASSED=20' -or
+             $output -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_FAILED=0' -or
+             $output -notmatch 'P99_C1_PRODUCTION_RELEASE=HOLD'){
+              Write-Output $output
+              throw ('P99 original native refusal regression failed; exit='+$nativeExit)
+          }
+          Write-Output 'P107_ORIGINAL_P99_NATIVE_20_CASES=PASS'
+          Write-Output 'P107_P99_NATIVE_EXECUTABLE_EXIT=0'
+          Write-Output 'P107_PRIVILEGED_OR_CREDENTIAL_EFFECTS=NONE'
+          Write-Output 'P107_KRISTIAN_SMART_APP_CONTROL=UNCHANGED'
+          Write-Output 'P107_G5_SIGNED_PRODUCTION_ACCEPTANCE=NOT_PERFORMED'
+          Write-Output 'P107_3X_FULL_PRODUCT_REGRESSIONS=NOT_PERFORMED'
+          Write-Output 'P107_BYOK_C1_PRODUCTION_RELEASE=HOLD'
