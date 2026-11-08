@@ -69,7 +69,7 @@ jobs:
           $candidate='reviewed/native_c1_candidate'
           $reader=Get-Content -LiteralPath (Join-Path $candidate 'NativeJ2ProtectedReadOnlyPreflight.cs') -Raw
           $boundary=Get-Content -LiteralPath (Join-Path $candidate 'ServiceOwnedAdmissionBoundary.cs') -Raw
-          $host=Get-Content -LiteralPath (Join-Path $candidate 'CustodyService.cs') -Raw
+          $hostSource=Get-Content -LiteralPath (Join-Path $candidate 'CustodyService.cs') -Raw
           if($reader -notmatch 'CustodyLedger.Verify\(' -or
              $reader -notmatch 'CustodyJournalFile.ForInstalledService\(' -or
              $reader -notmatch 'CustodyRegistryAnchor\(' -or
@@ -78,11 +78,11 @@ jobs:
              $reader -notmatch 'return Recovery\(\)') { throw 'P106 native protected read-only topology drift' }
           if($boundary -notmatch 'lock \(gate\)' -or
              $boundary -notmatch 'if \(faulted\)' -or
-             $host -match 'ServiceBase.Run\s*\(' -or
-             $host -match '(?m)^\s*(?:internal|public|private)\s+static\s+void\s+Main\s*\('){
+             $hostSource -match 'ServiceBase.Run\s*\(' -or
+             $hostSource -match '(?m)^\s*(?:internal|public|private)\s+static\s+void\s+Main\s*\('){
              throw 'Unexpected service lifecycle or denial boundary change'
           }
-          foreach($src in @($reader,$boundary,$host)){
+          foreach($src in @($reader,$boundary,$hostSource)){
             if($src -match '\b(?:CredReadW|CredWriteW|CredDeleteW)\s*\(' -or
                $src -match '\bDllImport\b' -or
                $src -match '\b(?:WriteJournal|WriteAnchor|SaveOrReplace|DeletePending)\s*\(' -or
