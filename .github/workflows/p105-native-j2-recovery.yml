@@ -66,7 +66,7 @@ jobs:
           $dir='reviewed/tests/p99_original_native_c1_denial'
           $original=@(Get-ChildItem $dir -Filter '*.cs' -File | Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} | ForEach-Object {$_.FullName})
           if($original.Count -ne 11){throw 'Expected 11 original CSharp files'}
-          $test='reviewed/tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs'
+          $test=(Resolve-Path -LiteralPath 'reviewed/tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs').Path
           $exe=Join-Path $env:RUNNER_TEMP 'P105_J2_A2_OriginalNative_x64.exe'
           $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P105NativeLedgerFormatTests "/out:$exe" $original $test 2>&1 | Out-String)
           $compileExit=$LASTEXITCODE
@@ -90,7 +90,7 @@ jobs:
           $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
           $original=@(Get-ChildItem 'reviewed/tests/p99_original_native_c1_denial' -Filter '*.cs' -File |
              Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} | ForEach-Object {$_.FullName})
-          $test='reviewed/tests/p99_original_native_c1_denial/FullOriginalNativeDenialTests.cs'
+          $test=(Resolve-Path -LiteralPath 'reviewed/tests/p99_original_native_c1_denial/FullOriginalNativeDenialTests.cs').Path
           $exe=Join-Path $env:RUNNER_TEMP 'P105_P99_FullOriginalDenial_x64.exe'
           $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P99FullOriginalNativeDenialTests "/out:$exe" $original $test 2>&1 | Out-String)
           $compileExit=$LASTEXITCODE
