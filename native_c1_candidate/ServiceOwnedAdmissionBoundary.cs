@@ -17,6 +17,8 @@ namespace Nayeon.ByokC1
         private bool stopped;
         private int refusedRequests;
         private int structuralReplaysRejected;
+        private int terminalEffectRefusals;
+        private bool terminalBoundaryObserved;
         // Bounded NON-authority bookkeeping only. Untrusted duplicate data
         // cannot create a consent session or grant native effect permission.
         private readonly HashSet<string> seenUntrustedRequests =
@@ -111,6 +113,43 @@ namespace Nayeon.ByokC1
                 return NativeJ2ProtectedReadOnlyPreflight.ObserveInstalledService();
             }
         }
+
+        // P108: terminal-effect boundary for the nondeployable candidate.
+        // Serialized with Revoke, Stop, MarkFault and native J2 observation
+        // using THIS service-owned gate. It has no effect adapter, trusted
+        // consent issuer, key input, callback, grant or WinCred capability.
+        // A previous StillCurrent() result cannot be treated as a permit.
+        internal CustodyOutcome RefuseUnreviewedTerminalEffect()
+        {
+            lock (gate)
+            {
+                ++terminalEffectRefusals;
+                terminalBoundaryObserved = true;
+                if (faulted) return CustodyOutcome.RecoveryRequired;
+                if (revoked || stopped) return CustodyOutcome.Denied;
+                // Missing G1 trusted issuer and G2 atomic dispatch actor:
+                // terminal admission NEVER approves a native effect.
+                return CustodyOutcome.Denied;
+            }
+        }
+
+        // An uncertain or even reportedly durable IN_FLIGHT intent must
+        // remain recovery-required; a caller can NEVER rearm this boundary.
+        internal CustodyOutcome RefuseUncertainTerminalIntent()
+        {
+            lock (gate)
+            {
+                terminalBoundaryObserved = true;
+                faulted = true;
+                ++terminalEffectRefusals;
+                return CustodyOutcome.RecoveryRequired;
+            }
+        }
+
+        internal int TerminalEffectRefusals
+        { get { lock (gate) { return terminalEffectRefusals; } } }
+        internal bool TerminalBoundaryObserved
+        { get { lock (gate) { return terminalBoundaryObserved; } } }
 
         internal int StructuralReplaysRejected
         { get { lock (gate) { return structuralReplaysRejected; } } }

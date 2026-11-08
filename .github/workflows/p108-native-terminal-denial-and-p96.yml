@@ -1,0 +1,178 @@
+name: P108 G2 Terminal Boundary and Historical Race Regression — ISOLATED Windows
+
+on:
+  push:
+    branches:
+      - byok-c1-p108-original-transaction-race-proof-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-refusal-with-original-negative-comparator:
+    name: P108 refusal + P106/P99 denials + P96 known TOCTOU — native 73 tests, HOLD
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Exact isolated source readback and P49/P106/P108 hash pins
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows'){
+            throw 'Only explicitly isolated GitHub Windows CI allowed'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p108-original-transaction-race-proof-20261108 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Exact native source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'HEAD mismatch'}
+          $p107='3503895974ecbeb99b75c566217112227bd75c86'
+          if((git -C reviewed merge-base HEAD $p107).Trim() -ne $p107){
+             throw 'P107 original source ancestor mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p108-native-terminal-denial-and-p96.yml'
+            'docs/byok-c1-p108-terminal-denial-service-boundary.md'
+            'native_c1_candidate/CustodyService.cs'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'
+            'tests/p108_native_terminal_denial/NativeTerminalDenialTests.cs'
+          )|Sort-Object
+          $actual=@(git -C reviewed diff --name-only $p107 HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Unexpected native/product source scope changes'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach($entry in $pins.GetEnumerator()){
+            $file=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $entry.Key
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('Original P49 C# changed '+$entry.Key)
+            }
+          }
+          $candidatePins=@{
+            'native_c1_candidate/CustodyService.cs'='800C55A054906B1C3DE94C90F2C5E5B82707AC7DC060C327410C5B063AC02081'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'='8E4512BA46F10126E754EDA13B8F7FCAB05E6676CC81D534865ABA36A79A824C'
+            'tests/p108_native_terminal_denial/NativeTerminalDenialTests.cs'='C71C7D21793FC8D62C74EE19084BDF8C9BBE1DEE2BA54936B52A98E68EDD7C82'
+            'native_c1_candidate/ServiceBoundRequestIdentity.cs'='D426D888998D748371FF65AC4AF690046498BCB422373A1B30ABBF00F85F3D62'
+            'native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs'='F3CE1F26EF471A9A8CA178760192F108AEB633220BE285D028B5FA49099B77C1'
+            'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'='BD616B2BC4B3A861A01776CBB9A7E5D9FBCEC705DEF8ED108A54F6A5AF921CB3'
+          }
+          foreach($entry in $candidatePins.GetEnumerator()){
+            $file=Join-Path 'reviewed' $entry.Key
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('Candidate/driver pin mismatch '+$entry.Key)
+            }
+          }
+          $p96=Join-Path 'reviewed/tests/p96_native_transaction_negative' 'PendingCustodyTransaction.cs'
+          if((Get-FileHash -LiteralPath $p96 -Algorithm SHA256).Hash -ne
+            $pins['PendingCustodyTransaction.cs']){throw 'P96 original coordinator drift'}
+          git -C reviewed diff --check $p107 HEAD
+          if($LASTEXITCODE -ne 0){throw 'Whitespace drift'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'GitHub readback checkout dirty'}
+          Write-Output 'P108_SOURCE_SCOPE_FIVE_FILES_ONLY=PASS'
+          Write-Output 'P108_FROZEN_ORIGINAL_P49_SHA256=11_PASS'
+          Write-Output 'P108_P96_TRANSACTION_EQUALS_ORIGINAL_P49=TRUE'
+          Write-Output 'P108_CANDIDATE_AND_DRIVER_HASHES=6_PASS'
+
+      - name: Assert no production effect/consent capability and unprivileged runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $id=[Security.Principal.WindowsIdentity]::GetCurrent()
+          if($null -eq $id -or $null -eq $id.User -or
+            $id.User.IsWellKnown([Security.Principal.WellKnownSidType]::LocalSystemSid)){
+            throw 'No LocalSystem runtime for synthetic proof'
+          }
+          $hostSource=Get-Content 'reviewed/native_c1_candidate/CustodyService.cs' -Raw
+          $actorSource=Get-Content 'reviewed/native_c1_candidate/ServiceOwnedAdmissionBoundary.cs' -Raw
+          if($hostSource -match 'ServiceBase.Run\s*\(' -or
+             $hostSource -match '(?m)^\s*(?:internal|public|private)\s+static\s+void\s+Main\s*\(' -or
+             $actorSource -notmatch 'internal CustodyOutcome RefuseUnreviewedTerminalEffect\(' -or
+             $actorSource -notmatch 'internal CustodyOutcome RefuseUncertainTerminalIntent\(' -or
+             $actorSource -notmatch 'faulted = true;' -or
+             $actorSource -notmatch 'lock \(gate\)'){
+            throw 'Missing original admission safety boundary'
+          }
+          foreach($source in @($hostSource,$actorSource)){
+            if($source -match '#\s*define\s+BYOK_TEST' -or
+              $source -match '\b(?:CredReadW|CredWriteW|CredDeleteW)\s*\(' -or
+              $source -match '\bDllImport\b' -or
+              $source -match '\.SaveOrReplace\s*\(' -or
+              $source -match '\.DeletePending\s*\(' -or
+              $source -match 'Registry\.SetValue\s*\('){
+              throw 'Effect-capable code introduced into candidate actor'
+            }
+          }
+          Write-Output 'P108_UNPRIVILEGED_WINDOWS_RUNNER=TRUE'
+          Write-Output 'P108_CANDIDATE_TERMINAL_BOUNDARY_HAS_NO_NATIVE_EFFECT=TRUE'
+          Write-Output 'P108_TRUSTED_APPROVAL_AND_EFFECT_GATES=UNIMPLEMENTED'
+
+      - name: Execute genuine native focused suites and legacy negative comparator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'reviewed').Path
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $sourceDir=Join-Path $root 'tests/p99_original_native_c1_denial'
+          $originalAll=@(Get-ChildItem -LiteralPath $sourceDir -Filter '*.cs' -File |
+            Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} |
+            ForEach-Object {$_.FullName})
+          $originalTen=@($originalAll|Where-Object{[IO.Path]::GetFileName($_) -ne 'CustodyService.cs'})
+          if($originalAll.Count -ne 11 -or $originalTen.Count -ne 10){
+            throw 'Original P49 source inventory changed'
+          }
+          $candidateDir=Join-Path $root 'native_c1_candidate'
+          $candidate=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+            'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs') |
+            ForEach-Object{Join-Path $candidateDir $_}
+          $p108=Join-Path $root 'tests/p108_native_terminal_denial/NativeTerminalDenialTests.cs'
+          $p106=Join-Path $root 'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'
+          $p99=Join-Path $sourceDir 'FullOriginalNativeDenialTests.cs'
+          $p96Dir=Join-Path $root 'tests/p96_native_transaction_negative'
+          $ledger=Join-Path $sourceDir 'CustodyLedger.cs'
+          function Run-SyntheticNative(
+            [string]$label,[string]$main,[string[]]$sources,[int]$expected,[string]$marker){
+            $exe=Join-Path $env:RUNNER_TEMP ($label+'_Synthetic_x64.exe')
+            $compile=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll "/main:$main" "/out:$exe" $sources 2>&1 | Out-String)
+            if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($compile)){
+              Write-Output ('COMPILER_ERROR '+$label+' '+$compile)
+              throw ('Native compile failed '+$label)
+            }
+            try{$out=(& $exe 2>&1 | Out-String);$exit=$LASTEXITCODE}
+            catch{throw ('Synthetic executable failed to start '+$label)}
+            Write-Output $out
+            if($exit -ne 0 -or $out -notmatch [regex]::Escape($marker)){
+              throw ('Native test failed '+$label+' exit='+$exit)
+            }
+            $passes=([regex]::Matches($out,'(?m)^PASS\s+')).Count
+            if($passes -ne $expected){
+              throw ('Wrong actual named PASS count '+$label+' expected='+$expected+' observed='+$passes)
+            }
+            Write-Output ('P108_'+$label+'_NATIVE_EXIT=0')
+            Write-Output ('P108_'+$label+'_ACTUAL_PASS_COUNT='+$passes)
+          }
+          Run-SyntheticNative -label 'TERMINAL_G2_DENIAL' -main 'P108NativeTerminalDenialTests' -sources ($originalTen+$candidate+@($p108)) -expected 15 -marker 'P108_NATIVE_TERMINAL_BOUNDARY_TESTS_PASSED=15'
+          Run-SyntheticNative -label 'P106_ORIGINAL_NATIVE_PREVIEW' -main 'P106NativeJ2HostPreflightTests' -sources ($originalTen+$candidate+@($p106)) -expected 23 -marker 'P106_REAL_NATIVE_SERVICE_J2_PREFLIGHT_TESTS_PASSED=23'
+          Run-SyntheticNative -label 'P99_ORIGINAL_DENIAL' -main 'P99FullOriginalNativeDenialTests' -sources ($originalAll+@($p99)) -expected 20 -marker 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_PASSED=20'
+          $p96Sources=@(
+            (Join-Path $p96Dir 'PendingCustodyTransaction.cs')
+            (Join-Path $p96Dir 'NativeTransactionRaceProof.cs')
+            $ledger
+          )
+          Run-SyntheticNative -label 'P96_ACTUAL_LEGACY_RACE_NEGATIVE' -main 'Nayeon.ByokC1.P96NegativeProof' -sources $p96Sources -expected 15 -marker 'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY'
+          Write-Output 'P108_TOTAL_FOCUSED_WINDOWS_NATIVE_CASES_PASS=73'
+          Write-Output 'P108_P96_ACTUAL_LEGACY_G2_RACE=STILL_REPRODUCED_NOT_FIXED'
+          Write-Output 'P108_REAL_WINCRED_OPERATIONS=NONE'
+          Write-Output 'P108_REAL_KEYS_OR_PRIVILEGED_SERVICE=NONE'
+          Write-Output 'P108_KRISTIAN_APP_CONTROL=UNCHANGED'
+          Write-Output 'P108_NATIVE_PRODUCTION_RELEASE=HOLD'
