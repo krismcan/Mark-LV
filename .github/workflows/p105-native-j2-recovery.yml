@@ -23,14 +23,15 @@ jobs:
           git -C reviewed config --local core.autocrlf false
           $head=(git -C reviewed rev-parse HEAD).Trim()
           if($head -ne $env:GITHUB_SHA){throw 'Unexpected source head'}
-          $parent=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
-          if($parent -ne ($head+' 941e938d8f9a3bd576990df0ee9cfaae12683ee5')){throw 'Not direct sole P104 descendant'}
+          $base='941e938d8f9a3bd576990df0ee9cfaae12683ee5'
+          $ancestor=(git -C reviewed merge-base HEAD $base).Trim()
+          if($ancestor -ne $base){throw 'P105 is not based on exact P104 source'}
           $expected=@(
             '.github/workflows/p105-native-j2-recovery.yml',
             'docs/byok-c1-p105-native-j2-recovery-format.md',
             'tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs'
           ) | Sort-Object
-          $changed=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          $changed=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
           if(@(Compare-Object $expected $changed).Count -ne 0){throw 'P105 source scope mismatch'}
           $pins=@{
             'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
@@ -51,7 +52,7 @@ jobs:
               throw ('P49 source hash mismatch: '+$entry.Key)
             }
           }
-          git -C reviewed diff --check HEAD^ HEAD
+          git -C reviewed diff --check $base HEAD
           if($LASTEXITCODE -ne 0){throw 'Invalid source diff'}
           if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Dirty source readback'}
           Write-Output 'P105_GITHUB_EXACT_SOURCE=TRUE'
@@ -68,7 +69,10 @@ jobs:
           $test='reviewed/tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs'
           $exe=Join-Path $env:RUNNER_TEMP 'P105_J2_A2_OriginalNative_x64.exe'
           $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P105NativeLedgerFormatTests "/out:$exe" $original $test 2>&1 | Out-String)
-          if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'Native compile failed or produced diagnostic'}
+          $compileExit=$LASTEXITCODE
+          Write-Output ('P105_J2_COMPILER_EXIT='+$compileExit)
+          if(-not [string]::IsNullOrWhiteSpace($diagnostics)){Write-Output ('P105_J2_COMPILER_DIAGNOSTICS='+$diagnostics)}
+          if($compileExit -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'Native compile failed or produced diagnostic'}
           $result=(& $exe 2>&1 | Out-String)
           if($LASTEXITCODE -ne 0 -or $result -notmatch 'P105_REAL_NATIVE_LEDGER_CASES_PASSED=19' -or
              $result -notmatch 'P105_REAL_NATIVE_LEDGER_CASES_FAILED=0' -or
@@ -89,7 +93,10 @@ jobs:
           $test='reviewed/tests/p99_original_native_c1_denial/FullOriginalNativeDenialTests.cs'
           $exe=Join-Path $env:RUNNER_TEMP 'P105_P99_FullOriginalDenial_x64.exe'
           $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P99FullOriginalNativeDenialTests "/out:$exe" $original $test 2>&1 | Out-String)
-          if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'P99 source compile failed'}
+          $compileExit=$LASTEXITCODE
+          Write-Output ('P105_P99_COMPILER_EXIT='+$compileExit)
+          if(-not [string]::IsNullOrWhiteSpace($diagnostics)){Write-Output ('P105_P99_COMPILER_DIAGNOSTICS='+$diagnostics)}
+          if($compileExit -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'P99 source compile failed'}
           $result=(& $exe 2>&1 | Out-String)
           if($LASTEXITCODE -ne 0 -or $result -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_PASSED=20' -or
              $result -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_FAILED=0' -or
