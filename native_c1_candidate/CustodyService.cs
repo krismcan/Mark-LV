@@ -42,6 +42,19 @@ namespace Nayeon.ByokC1
         internal NativeJ2ReadOnlyResult ObserveNativeJ2CustodyReadOnly()
         { return admission.ObserveNativeJ2CustodyReadOnly(); }
 
+        // Review-only G2 terminal boundary. Caller-provided approval booleans
+        // are not accepted. No native mutation method can be reached here.
+        internal CustodyOutcome RefuseUnreviewedTerminalEffect()
+        { return admission.RefuseUnreviewedTerminalEffect(); }
+
+        internal CustodyOutcome RefuseUncertainTerminalIntent()
+        { return admission.RefuseUncertainTerminalIntent(); }
+
+        internal int TerminalEffectRefusals
+        { get { return admission.TerminalEffectRefusals; } }
+        internal bool TerminalBoundaryObserved
+        { get { return admission.TerminalBoundaryObserved; } }
+
         internal int StructurallyRepeatedRequestCount
         { get { return admission.StructuralReplaysRejected; } }
 
