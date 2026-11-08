@@ -71,8 +71,8 @@ namespace Nayeon.ByokC1
 
             // Unexpectedly relaxed original effect gates imply tampering,
             // not an opportunity to turn this read-only diagnostic live.
-            if (!PendingServiceState.LegacyEffectEntryDisabled() ||
-                !PendingWinCredStore.NativeMutationAdmissionPending())
+            if (!CandidateCredentialEffectHold.LegacyEffectEntryDisabled() ||
+                !CandidateCredentialEffectHold.NativeMutationAdmissionPending())
                 return NativeJ2ReadOnlyResult.Recovery();
 
             try

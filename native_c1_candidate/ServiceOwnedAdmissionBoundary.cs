@@ -70,8 +70,8 @@ namespace Nayeon.ByokC1
                 // All three original P49 admission holds remain intact.
                 // These checks are NOT a permission or ticket mint.
                 if (!ServiceGate.LiveEligible() ||
-                    PendingServiceState.LegacyEffectEntryDisabled() ||
-                    PendingWinCredStore.NativeMutationAdmissionPending())
+                    CandidateCredentialEffectHold.LegacyEffectEntryDisabled() ||
+                    CandidateCredentialEffectHold.NativeMutationAdmissionPending())
                     return CustodyOutcome.Denied;
 
                 // An independent, security-reviewed service-owned consent
@@ -114,8 +114,8 @@ namespace Nayeon.ByokC1
                 // untouched. This is a structurally bound DENIAL boundary
                 // with NO issuance, effect or authority path.
                 if (!ServiceGate.LiveEligible() ||
-                    PendingServiceState.LegacyEffectEntryDisabled() ||
-                    PendingWinCredStore.NativeMutationAdmissionPending())
+                    CandidateCredentialEffectHold.LegacyEffectEntryDisabled() ||
+                    CandidateCredentialEffectHold.NativeMutationAdmissionPending())
                     return CustodyOutcome.Denied;
                 return CustodyOutcome.Denied;
             }
