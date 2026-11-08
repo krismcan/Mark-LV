@@ -1,0 +1,102 @@
+name: P105 Native J2 Recovery Format Compatibility (x64, C1 HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p105-native-j2-recovery-compat-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  original-native-j2:
+    name: Original P49 native J2/A2 compatibility, Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Exact-source clone and frozen original P49 hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p105-native-j2-recovery-compat-20261108 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P105 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          if($head -ne $env:GITHUB_SHA){throw 'Unexpected source head'}
+          $parent=(git -C reviewed rev-list --parents -n 1 HEAD).Trim()
+          if($parent -ne ($head+' 941e938d8f9a3bd576990df0ee9cfaae12683ee5')){throw 'Not direct sole P104 descendant'}
+          $expected=@(
+            '.github/workflows/p105-native-j2-recovery.yml',
+            'docs/byok-c1-p105-native-j2-recovery-format.md',
+            'tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs'
+          ) | Sort-Object
+          $changed=@(git -C reviewed diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+          if(@(Compare-Object $expected $changed).Count -ne 0){throw 'P105 source scope mismatch'}
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach($entry in $pins.GetEnumerator()){
+            $path=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $entry.Key
+            if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('P49 source hash mismatch: '+$entry.Key)
+            }
+          }
+          git -C reviewed diff --check HEAD^ HEAD
+          if($LASTEXITCODE -ne 0){throw 'Invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Dirty source readback'}
+          Write-Output 'P105_GITHUB_EXACT_SOURCE=TRUE'
+          Write-Output 'P105_ORIGINAL_P49_11_SOURCE_SHA256=PASS'
+          Write-Output 'P105_SOURCE_CHANGE_COUNT=3'
+      - name: Compile and run authentic J2 vs legacy J1 source test (no effects)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $dir='reviewed/tests/p99_original_native_c1_denial'
+          $original=@(Get-ChildItem $dir -Filter '*.cs' -File | Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} | ForEach-Object {$_.FullName})
+          if($original.Count -ne 11){throw 'Expected 11 original CSharp files'}
+          $test='reviewed/tests/p105_native_j2_recovery/NativeLedgerFormatTests.cs'
+          $exe=Join-Path $env:RUNNER_TEMP 'P105_J2_A2_OriginalNative_x64.exe'
+          $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P105NativeLedgerFormatTests "/out:$exe" $original $test 2>&1 | Out-String)
+          if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'Native compile failed or produced diagnostic'}
+          $result=(& $exe 2>&1 | Out-String)
+          if($LASTEXITCODE -ne 0 -or $result -notmatch 'P105_REAL_NATIVE_LEDGER_CASES_PASSED=19' -or
+             $result -notmatch 'P105_REAL_NATIVE_LEDGER_CASES_FAILED=0' -or
+             $result -notmatch 'P105_J2_A2_VS_J1_A1=NONINTERCHANGEABLE' -or
+             $result -notmatch 'P105_NATIVE_WINCRED_EFFECTS=NONE' -or
+             $result -notmatch 'P105_C1_PRODUCTION_RELEASE=HOLD'){
+              throw 'Original native codec acceptance failed'
+          }
+          Write-Output 'P105_AUTHENTIC_ORIGINAL_NATIVE_J2_LEDGER_CASES=19_PASS'
+          Write-Output 'P105_NATIVE_COMPILER_AND_EXE_EXIT=0'
+      - name: Original P99 service-denial regression remains closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $original=@(Get-ChildItem 'reviewed/tests/p99_original_native_c1_denial' -Filter '*.cs' -File |
+             Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} | ForEach-Object {$_.FullName})
+          $test='reviewed/tests/p99_original_native_c1_denial/FullOriginalNativeDenialTests.cs'
+          $exe=Join-Path $env:RUNNER_TEMP 'P105_P99_FullOriginalDenial_x64.exe'
+          $diagnostics=(& $csc /nologo /target:exe /platform:x64 /r:System.ServiceProcess.dll /main:P99FullOriginalNativeDenialTests "/out:$exe" $original $test 2>&1 | Out-String)
+          if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($diagnostics)){throw 'P99 source compile failed'}
+          $result=(& $exe 2>&1 | Out-String)
+          if($LASTEXITCODE -ne 0 -or $result -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_PASSED=20' -or
+             $result -notmatch 'P99_ORIGINAL_NATIVE_DENIAL_TESTS_FAILED=0' -or
+             $result -notmatch 'P99_C1_PRODUCTION_RELEASE=HOLD'){
+             throw 'P99 native denial regression failed'
+          }
+          Write-Output 'P105_P99_AUTHENTIC_ORIGINAL_NATIVE_DENIAL=20_PASS'
+          Write-Output 'P105_P96_LEGACY_CONSENT_EFFECT_RACE=OPEN'
+          Write-Output 'P105_G0_G1_G2_G3_G4_G5_G6=HOLD'
+          Write-Output 'P105_PRODUCTION_RELEASE=HOLD'
