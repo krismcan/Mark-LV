@@ -186,16 +186,16 @@ jobs:
           }
           $safeReader=Get-Content (Join-Path $candDir 'CandidateProtectedReadOnlySnapshot.cs') -Raw
           $writePatterns=@(
-            'FileAccess\\.Write','FileAccess\\.ReadWrite','FileMode\\.Create',
-            'FileMode\\.Append','\\.SetValue\\s*\\(','\\.DeleteValue\\s*\\(',
-            '\\.CreateSubKey\\s*\\(','\\.DeleteSubKey\\s*\\(',
-            '\\bDllImport\\b','\\bRegFlushKey\\b',
-            '\\bCred(?:Write|Delete|Read)\\w*\\s*\\('
+            'FileAccess\.Write','FileAccess\.ReadWrite','FileMode\.Create',
+            'FileMode\.Append','\.SetValue\s*\(','\.DeleteValue\s*\(',
+            '\.CreateSubKey\s*\(','\.DeleteSubKey\s*\(',
+            '\bDllImport\b','\bRegFlushKey\b',
+            '\bCred(?:Write|Delete|Read)\w*\s*\('
           )
           foreach($pattern in $writePatterns){
             # Strip C# comments before banning write-capable code snippets;
             # this is an additional guard, NOT a replacement for IL audits.
-            $stripped=[regex]::Replace($safeReader,'(?s)/\\*.*?\\*/','')
+            $stripped=[regex]::Replace($safeReader,'(?s)/\*.*?\*/','')
             $stripped=[regex]::Replace($stripped,'(?m)//.*$','')
             if([regex]::IsMatch($stripped,$pattern)){
               throw ('P112 read-only source mutation guard failed: '+$pattern)
