@@ -99,6 +99,19 @@ namespace Nayeon.ByokC1
             }
         }
 
+        // Native J2/A2 protected read-only preflight is serialized with
+        // service-owned revocation/stop/fault. It is NEVER an effect permit.
+        internal NativeJ2ReadOnlyResult ObserveNativeJ2CustodyReadOnly()
+        {
+            lock (gate)
+            {
+                if (faulted) return NativeJ2ReadOnlyResult.Recovery();
+                if (stopped || revoked)
+                    return NativeJ2ReadOnlyResult.Unavailable();
+                return NativeJ2ProtectedReadOnlyPreflight.ObserveInstalledService();
+            }
+        }
+
         internal int StructuralReplaysRejected
         { get { lock (gate) { return structuralReplaysRejected; } } }
 
