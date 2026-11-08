@@ -184,8 +184,7 @@ jobs:
               throw ('Writable/effect source in strict review assembly '+$src)
             }
           }
-          $safeReader=Get-Content (Join-Path $candDir
-            'CandidateProtectedReadOnlySnapshot.cs') -Raw
+          $safeReader=Get-Content (Join-Path $candDir 'CandidateProtectedReadOnlySnapshot.cs') -Raw
           $writePatterns=@(
             'FileAccess\\.Write','FileAccess\\.ReadWrite','FileMode\\.Create',
             'FileMode\\.Append','\\.SetValue\\s*\\(','\\.DeleteValue\\s*\\(',
@@ -202,11 +201,9 @@ jobs:
               throw ('P112 read-only source mutation guard failed: '+$pattern)
             }
           }
-          $audit=Join-Path $root
-            'tests/p112_readonly_native_assembly/ReadOnlyCandidateAssemblyAuditTests.cs'
+          $audit=Join-Path $root 'tests/p112_readonly_native_assembly/ReadOnlyCandidateAssemblyAuditTests.cs'
           $auditSrc=@($originalReview+$candidateReview+@($audit))
-          $isolatedReviewDll=Join-Path $env:RUNNER_TEMP
-            'P112_NoStorageWriteCapabilities_Review_x64.dll'
+          $isolatedReviewDll=Join-Path $env:RUNNER_TEMP 'P112_NoStorageWriteCapabilities_Review_x64.dll'
           $args=@('/nologo','/target:library','/platform:x64',
                   '/define:C1_REVIEW_ISOLATED_ASSEMBLY','/r:System.ServiceProcess.dll',
                   "/out:$isolatedReviewDll")
