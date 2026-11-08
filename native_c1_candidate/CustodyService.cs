@@ -37,6 +37,11 @@ namespace Nayeon.ByokC1
             return admission.RefuseBoundRequest(untrustedClaim);
         }
 
+        // Actual P49 J2 journal + HKLM anchor adapters are referenced only
+        // by this service-owned read-only preflight. No IPC or authority.
+        internal NativeJ2ReadOnlyResult ObserveNativeJ2CustodyReadOnly()
+        { return admission.ObserveNativeJ2CustodyReadOnly(); }
+
         internal int StructurallyRepeatedRequestCount
         { get { return admission.StructuralReplaysRejected; } }
 

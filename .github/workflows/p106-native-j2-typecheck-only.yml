@@ -1,0 +1,135 @@
+name: P106 Original Native J2 Host Preflight — COMPILE ONLY (App Control HOLD)
+
+on:
+  push:
+    branches:
+      - byok-c1-p106-readonly-native-j2-preflight-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  original-native-static-typecheck-only:
+    name: Original P49 and P106 candidate native typecheck, no execution
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Exact GitHub source readback, P49 pins, no unrelated changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p106-readonly-native-j2-preflight-20261108 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          if($head -ne $env:GITHUB_SHA){throw 'Exact head mismatch'}
+          $base='3813e9a8f5b3a5d899371b5192d1039586ae8ec3'
+          $ancestor=(git -C reviewed merge-base HEAD $base).Trim()
+          if($ancestor -ne $base){throw 'P105 base not immutable ancestor'}
+          $expected=@(
+            '.github/workflows/p106-native-j2-typecheck-only.yml'
+            'docs/byok-c1-p106-native-j2-readonly-preflight-review.md'
+            'native_c1_candidate/CustodyService.cs'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'
+            'native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs'
+            'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'
+          )|Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Source scope drift'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          foreach($pin in $pins.GetEnumerator()){
+            $path=Join-Path 'reviewed/tests/p99_original_native_c1_denial' $pin.Key
+            if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $pin.Value){
+              throw ('Original P49 source changed: '+$pin.Key)
+            }
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source checkout dirty'}
+          Write-Output 'P106_GITHUB_ORIGINAL_P49_ELEVEN_RAW_SHA256=PASS'
+          Write-Output 'P106_SOURCE_SCOPE_SIX_FILES_ONLY=PASS'
+      - name: Fail-closed candidate API and no side-effect source guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidate='reviewed/native_c1_candidate'
+          $reader=Get-Content -LiteralPath (Join-Path $candidate 'NativeJ2ProtectedReadOnlyPreflight.cs') -Raw
+          $boundary=Get-Content -LiteralPath (Join-Path $candidate 'ServiceOwnedAdmissionBoundary.cs') -Raw
+          $hostSource=Get-Content -LiteralPath (Join-Path $candidate 'CustodyService.cs') -Raw
+          if($reader -notmatch 'CustodyLedger.Verify\(' -or
+             $reader -notmatch 'CustodyJournalFile.ForInstalledService\(' -or
+             $reader -notmatch 'CustodyRegistryAnchor\(' -or
+             $reader -notmatch 'ServiceGate.LiveEligible\(' -or
+             $reader -notmatch 'LedgerPhase.InFlight' -or
+             $reader -notmatch 'return Recovery\(\)') { throw 'P106 native protected read-only topology drift' }
+          if($boundary -notmatch 'lock \(gate\)' -or
+             $boundary -notmatch 'if \(faulted\)' -or
+             $hostSource -match 'ServiceBase.Run\s*\(' -or
+             $hostSource -match '(?m)^\s*(?:internal|public|private)\s+static\s+void\s+Main\s*\('){
+             throw 'Unexpected service lifecycle or denial boundary change'
+          }
+          foreach($src in @($reader,$boundary,$hostSource)){
+            if($src -match '\b(?:CredReadW|CredWriteW|CredDeleteW)\s*\(' -or
+               $src -match '\bDllImport\b' -or
+               $src -match '\b(?:WriteJournal|WriteAnchor|SaveOrReplace|DeletePending)\s*\(' -or
+               $src -match 'Registry\.SetValue\s*\('){
+              throw 'Candidate contains direct mutation or native WinCred API'
+            }
+          }
+          Write-Output 'P106_CANDIDATE_READONLY_OS_ADAPTER_TOPOLOGY=PASS'
+          Write-Output 'P106_DIRECT_NATIVE_EFFECT_OR_CREDENTIAL_CALLS=NONE'
+      - name: Compile-only Windows x64 native candidate and original baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $sourceDir=(Resolve-Path 'reviewed/tests/p99_original_native_c1_denial').Path
+          $ten=@(Get-ChildItem -LiteralPath $sourceDir -Filter '*.cs' -File |
+            Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs' -and $_.Name -ne 'CustodyService.cs'} |
+            ForEach-Object {$_.FullName})
+          if($ten.Count -ne 10){throw 'Expected ten frozen original dependencies'}
+          $candidate=(Resolve-Path 'reviewed/native_c1_candidate').Path
+          $parts=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+                   'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs') |
+                 ForEach-Object {Join-Path $candidate $_}
+          $p106=(Resolve-Path 'reviewed/tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs').Path
+          $dll=Join-Path $env:RUNNER_TEMP 'P106_StaticHostTypecheck_x64.dll'
+          $out=(& $csc /nologo /target:library /platform:x64 /r:System.ServiceProcess.dll "/out:$dll" $ten $parts $p106 2>&1 | Out-String)
+          $code=$LASTEXITCODE
+          if($code -ne 0 -or -not [string]::IsNullOrWhiteSpace($out)){
+             Write-Output $out
+             throw 'Native candidate static typecheck failed'
+          }
+          $all=@(Get-ChildItem -LiteralPath $sourceDir -Filter '*.cs' -File |
+                 Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'} |
+                 ForEach-Object {$_.FullName})
+          if($all.Count -ne 11){throw 'Expected original eleven CSharp files'}
+          $p99=(Resolve-Path 'reviewed/tests/p99_original_native_c1_denial/FullOriginalNativeDenialTests.cs').Path
+          $oldDll=Join-Path $env:RUNNER_TEMP 'P106_P99_OriginalStaticTypecheck_x64.dll'
+          $out=(& $csc /nologo /target:library /platform:x64 /r:System.ServiceProcess.dll "/out:$oldDll" $all $p99 2>&1 | Out-String)
+          $code=$LASTEXITCODE
+          if($code -ne 0 -or -not [string]::IsNullOrWhiteSpace($out)){
+             Write-Output $out
+             throw 'Original P99 static typecheck failed'
+          }
+          Write-Output 'P106_NATIVE_X64_STATIC_COMPILER_EXIT=0'
+          Write-Output 'P106_P99_ORIGINAL_X64_STATIC_COMPILER_EXIT=0'
+          Write-Output 'P106_RUNTIME_TESTS_RUN=0'
+          Write-Output 'P106_ON_KRISTIAN_APP_CONTROL_DENIED=TRUE'
+          Write-Output 'P106_NO_WINCRED_OR_PRIVILEGED_EFFECTS=TRUE'
+          Write-Output 'P106_INDEPENDENT_NATIVE_SECURITY_REVIEW=NOT_RECEIVED'
+          Write-Output 'P106_BYOK_C1_PRODUCTION_RELEASE=HOLD'
