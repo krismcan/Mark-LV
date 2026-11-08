@@ -50,6 +50,21 @@ namespace Nayeon.ByokC1
         internal CustodyOutcome RefuseUncertainTerminalIntent()
         { return admission.RefuseUncertainTerminalIntent(); }
 
+#if C1_SYNTHETIC_TEST
+        // TEST-ASSEMBLY ONLY: this cannot create real UI approval,
+        // credential bytes, effect capabilities or release eligibility.
+        internal void PrepareSyntheticOnly()
+        { admission.PrepareSyntheticOnly(); }
+        internal bool CommitSyntheticDecisionOnly()
+        { return admission.CommitSyntheticDecisionOnly(); }
+        internal bool FinishSyntheticTerminalUnverified()
+        { return admission.FinishSyntheticTerminalUnverified(); }
+        internal int SyntheticDecisionCommits
+        { get { return admission.SyntheticDecisionCommits; } }
+        internal int SyntheticTooLateRevocations
+        { get { return admission.SyntheticTooLateRevocations; } }
+#endif
+
         internal int TerminalEffectRefusals
         { get { return admission.TerminalEffectRefusals; } }
         internal bool TerminalBoundaryObserved

@@ -19,6 +19,19 @@ namespace Nayeon.ByokC1
         private int structuralReplaysRejected;
         private int terminalEffectRefusals;
         private bool terminalBoundaryObserved;
+        // Nonsecret terminal sequencing ONLY. This enum does not identify
+        // signed UI consent, protected durable state or a WinCred permit.
+        private enum TerminalDecisionPhase
+        {
+            Unavailable, SyntheticPrepared, SyntheticCommitted,
+            SyntheticTerminalUnverified, Revoked, RecoveryRequired
+        }
+        private TerminalDecisionPhase terminalDecision =
+            TerminalDecisionPhase.Unavailable;
+#if C1_SYNTHETIC_TEST
+        private int syntheticDecisionCommits;
+        private int syntheticTooLateRevocations;
+#endif
         // Bounded NON-authority bookkeeping only. Untrusted duplicate data
         // cannot create a consent session or grant native effect permission.
         private readonly HashSet<string> seenUntrustedRequests =
@@ -141,10 +154,60 @@ namespace Nayeon.ByokC1
             {
                 terminalBoundaryObserved = true;
                 faulted = true;
+                terminalDecision = TerminalDecisionPhase.RecoveryRequired;
                 ++terminalEffectRefusals;
                 return CustodyOutcome.RecoveryRequired;
             }
         }
+
+        // The only POSITIVE synthetic commit API is compiled out of all
+        // ordinary/production assemblies. It changes in-memory integer
+        // metadata, NEVER invokes a callback or a credential API. These
+        // methods exercise the SAME lock owned by the candidate host.
+#if C1_SYNTHETIC_TEST
+        internal void PrepareSyntheticOnly()
+        {
+            lock (gate)
+            {
+                if (revoked || stopped || faulted ||
+                    terminalDecision != TerminalDecisionPhase.Unavailable)
+                    throw new LedgerBlocked();
+                terminalDecision = TerminalDecisionPhase.SyntheticPrepared;
+            }
+        }
+
+        internal bool CommitSyntheticDecisionOnly()
+        {
+            lock (gate)
+            {
+                if (revoked || stopped || faulted ||
+                    terminalDecision != TerminalDecisionPhase.SyntheticPrepared)
+                    return false;
+                // Exact one-use decision linearization point. Only a
+                // fake integer changes; there is NO actual native effect.
+                terminalDecision = TerminalDecisionPhase.SyntheticCommitted;
+                ++syntheticDecisionCommits;
+                return true;
+            }
+        }
+
+        internal bool FinishSyntheticTerminalUnverified()
+        {
+            lock (gate)
+            {
+                if (faulted || stopped ||
+                    terminalDecision != TerminalDecisionPhase.SyntheticCommitted)
+                    return false;
+                terminalDecision = TerminalDecisionPhase.SyntheticTerminalUnverified;
+                return true;
+            }
+        }
+
+        internal int SyntheticDecisionCommits
+        { get { lock (gate) { return syntheticDecisionCommits; } } }
+        internal int SyntheticTooLateRevocations
+        { get { lock (gate) { return syntheticTooLateRevocations; } } }
+#endif
 
         internal int TerminalEffectRefusals
         { get { lock (gate) { return terminalEffectRefusals; } } }
@@ -159,17 +222,46 @@ namespace Nayeon.ByokC1
 
         internal void Revoke()
         {
-            lock (gate) { revoked = true; }
+            lock (gate)
+            {
+                revoked = true;
+                if (terminalDecision == TerminalDecisionPhase.SyntheticPrepared)
+                    terminalDecision = TerminalDecisionPhase.Revoked;
+#if C1_SYNTHETIC_TEST
+                if (terminalDecision == TerminalDecisionPhase.SyntheticCommitted ||
+                    terminalDecision == TerminalDecisionPhase.SyntheticTerminalUnverified)
+                    ++syntheticTooLateRevocations;
+#endif
+                // Once a decision committed, a late cancel MUST NOT
+                // turn its possible effect into an asserted non-effect.
+            }
         }
 
         internal void MarkFault()
         {
-            lock (gate) { faulted = true; }
+            lock (gate)
+            {
+                faulted = true;
+                terminalDecision = TerminalDecisionPhase.RecoveryRequired;
+            }
         }
 
         internal void Stop()
         {
-            lock (gate) { stopped = true; revoked = true; }
+            lock (gate)
+            {
+                stopped = true;
+                revoked = true;
+                if (terminalDecision == TerminalDecisionPhase.SyntheticCommitted)
+                {
+                    // Stop after a possible attempt is UNKNOWN, never
+                    // evidence of cancellation or a safe automatic retry.
+                    faulted = true;
+                    terminalDecision = TerminalDecisionPhase.RecoveryRequired;
+                }
+                else if (terminalDecision == TerminalDecisionPhase.SyntheticPrepared)
+                    terminalDecision = TerminalDecisionPhase.Revoked;
+            }
         }
 
         internal bool IsRevoked
