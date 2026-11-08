@@ -113,7 +113,21 @@ Official Microsoft references (consulted for this refinement):
 
 This refinement changes **no executable files** and is NOT a substitute for qualified independent native Windows code review. All original G0–G6 HOLD decisions remain.
 
-## 8. Release disposition and invariants
+## 8. Existing Python C1 surfaces are not an approval issuer (8 November 2026 source reconciliation)
+
+The original C1 product workspace at `D:\\Nayeon\\BYOK_C1_PRODUCT_20261028` contains **17 pre-existing historical modified/untracked paths**. These were inspected read-only; they were **not** imported into this review branch, reset or released.
+
+- `nayeon/brain/pending_credential_policy.py`: frozen `PendingCredentialAssessment` and an explicit advisory decision matrix with `NEEDS_REVIEW`, `NEEDS_DESTRUCTIVE_ACK`, `DENY`, `RECOVERY_BLOCKED`. No decision is a service-issued one-use authorisation or evidence that a Windows user consented. **Reject** any mapping from `NEEDS_REVIEW` to permission to call `PendingServiceState.SaveOrReplace` or `PendingWinCredStore`.
+- `nayeon/brain/pending_credential_recovery_document.py`: bounded, untrusted structural `PendingEvidenceRecord` codec and SHA-256 chain. This is **not** a protected LocalSystem journal, HKLM rollback anchor, independent enrolled witness or persistent consumed-approval store. **Reject** reuse of structural hashes as an authenticated recovery authority.
+- `nayeon/desktop_alpha/first_run_connection_owner.py`: `TrustedFirstRunConnectionOwner` is a creator-thread local coordinator wrapper in a **fake-first** desktop onboarding flow. Its module documentation explicitly states that the default desktop application does not import/instantiate it, and it never supplies elevated Windows native service identity, protected WinCred custody or trusted UI provenance. Despite the class name, **it is not** `ITrustedPendingApproval`, authenticated IPC or the reviewed local elevated consent ceremony.
+
+**Concrete integration constraint:** Any future native G1 consent issuer must be a separately reviewed Windows service/UI trust composition with signed-origin provenance, explicit human consent and one-use durable service authority. The Python policy and connection UI may only render advisory status *after* an authenticated, privacy-preserving native response exists; no Python callback, local object identity, metadata SHA, client claim or self-named `Trusted` class may mint authorisation.
+
+**Acceptance review:** Prove that neither a fake-first Python `NEEDS_REVIEW` decision nor a replayed `PendingEvidenceRecord` can obtain `READY`, `APPROVED` or a native WinCred attempt, and that the default application remains disconnected from unreviewed native custody. Do this within actual source-specific integrated acceptance tests only after the qualified G1/G2/G3 reviewer has agreed on the trust design. No new synthetic model is needed here.
+
+G0 historical migration/source admission remains independent: these 17 workspace paths cannot simply be copied, force-added or merged into a release branch without review.
+
+## 9. Release disposition and invariants
 
 This P104 branch is **documentation-only**, with no new executable application code, native Windows API execution, IPC service, credentials, keys, source gate toggles, production effect, signer workaround or release. The 11 frozen original native files, three independent denial guards, old P96 finding, historical P85/P62 restrictions and original product worktree must stay intact. Neither author-written tests nor this design document is an independent expert approval.
 
