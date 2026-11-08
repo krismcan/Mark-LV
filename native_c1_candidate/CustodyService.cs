@@ -59,6 +59,18 @@ namespace Nayeon.ByokC1
         { return admission.CommitSyntheticDecisionOnly(); }
         internal bool FinishSyntheticTerminalUnverified()
         { return admission.FinishSyntheticTerminalUnverified(); }
+        internal void PrepareSyntheticFixedEffectOnly(
+            LedgerOperation operation, bool destructiveAcknowledgement)
+        { admission.PrepareSyntheticFixedEffectOnly(operation, destructiveAcknowledgement); }
+        internal CustodyOutcome AttemptSyntheticFixedEffectOnly(
+            LedgerOperation operation, System.Threading.ManualResetEvent entered,
+            System.Threading.ManualResetEvent release, bool simulateUnknownNativeResult)
+        { return admission.AttemptSyntheticFixedEffectOnly(operation, entered,
+            release, simulateUnknownNativeResult); }
+        internal int SyntheticEffectAttempts
+        { get { return admission.SyntheticEffectAttempts; } }
+        internal int SyntheticUnknownEffectOutcomes
+        { get { return admission.SyntheticUnknownEffectOutcomes; } }
         internal int SyntheticDecisionCommits
         { get { return admission.SyntheticDecisionCommits; } }
         internal int SyntheticTooLateRevocations

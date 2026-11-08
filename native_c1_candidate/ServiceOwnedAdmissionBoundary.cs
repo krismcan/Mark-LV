@@ -6,6 +6,7 @@
 // Independent native/IPC/security review is required before ANY true dispatch.
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Nayeon.ByokC1
 {
@@ -31,6 +32,12 @@ namespace Nayeon.ByokC1
 #if C1_SYNTHETIC_TEST
         private int syntheticDecisionCommits;
         private int syntheticTooLateRevocations;
+        // P110: synthetic fixed-pending-effect attempt counters, not credentials.
+        // Present in test assemblies only; none are an actual effect permit.
+        private LedgerOperation syntheticBoundOperation;
+        private int syntheticEffectAttempts;
+        private int syntheticUnknownEffectOutcomes;
+        private bool syntheticCommitEver;
 #endif
         // Bounded NON-authority bookkeeping only. Untrusted duplicate data
         // cannot create a consent session or grant native effect permission.
@@ -187,6 +194,7 @@ namespace Nayeon.ByokC1
                 // fake integer changes; there is NO actual native effect.
                 terminalDecision = TerminalDecisionPhase.SyntheticCommitted;
                 ++syntheticDecisionCommits;
+                syntheticCommitEver = true;
                 return true;
             }
         }
@@ -202,6 +210,75 @@ namespace Nayeon.ByokC1
                 return true;
             }
         }
+
+        // P110: sealed test-only fixed operation preparation. The actual
+        // candidate remains nondeployable and has NO credential effect port.
+        // This is an integration proof for the existing service-owned lock,
+        // NOT a signed consent issuer, credential operation or G2 release.
+        internal void PrepareSyntheticFixedEffectOnly(
+            LedgerOperation operation, bool destructiveAcknowledgement)
+        {
+            lock (gate)
+            {
+                bool shape =
+                    operation == LedgerOperation.Delete && destructiveAcknowledgement ||
+                    (operation == LedgerOperation.Save || operation == LedgerOperation.Replace) &&
+                    !destructiveAcknowledgement;
+                if (!shape || stopped || revoked || faulted ||
+                    terminalDecision != TerminalDecisionPhase.Unavailable)
+                    throw new LedgerBlocked();
+                syntheticBoundOperation = operation;
+                terminalDecision = TerminalDecisionPhase.SyntheticPrepared;
+            }
+        }
+
+        // Single irreversible *synthetic* attempt is under the SAME lock as
+        // Revoke/Stop/Fault. No injected effect callback, key, native adapter,
+        // journal or provider. Gate remains held while an optional test-only
+        // pause models the in-progress fixed API call. Even a completed fake
+        // marker MUST return RecoveryRequired because there is no durable
+        // ticket/intent/terminal witness. No automatic retry is possible.
+        internal CustodyOutcome AttemptSyntheticFixedEffectOnly(
+            LedgerOperation operation, ManualResetEvent entered,
+            ManualResetEvent release, bool simulateUnknownNativeResult)
+        {
+            lock (gate)
+            {
+                if (faulted) return CustodyOutcome.RecoveryRequired;
+                if (revoked || stopped ||
+                    terminalDecision != TerminalDecisionPhase.SyntheticPrepared ||
+                    operation != syntheticBoundOperation)
+                    return CustodyOutcome.Denied;
+                terminalDecision = TerminalDecisionPhase.SyntheticCommitted;
+                syntheticCommitEver = true;
+                ++syntheticDecisionCommits;
+                try
+                {
+                    // This integer is the entire fake effect. Deliberately
+                    // NO P/Invoke, WinCred, arbitrary callback or user data.
+                    ++syntheticEffectAttempts;
+                    if (entered != null) entered.Set();
+                    if (release != null && !release.WaitOne(3000))
+                        throw new LedgerBlocked();
+                    if (simulateUnknownNativeResult)
+                        throw new LedgerBlocked();
+                }
+                catch (Exception)
+                {
+                    ++syntheticUnknownEffectOutcomes;
+                }
+                // Missing durable G1/G3 evidence makes every fake attempt
+                // unreleasable, irrespective of apparent success.
+                faulted = true;
+                terminalDecision = TerminalDecisionPhase.RecoveryRequired;
+                return CustodyOutcome.RecoveryRequired;
+            }
+        }
+
+        internal int SyntheticEffectAttempts
+        { get { lock (gate) { return syntheticEffectAttempts; } } }
+        internal int SyntheticUnknownEffectOutcomes
+        { get { lock (gate) { return syntheticUnknownEffectOutcomes; } } }
 
         internal int SyntheticDecisionCommits
         { get { lock (gate) { return syntheticDecisionCommits; } } }
@@ -224,12 +301,12 @@ namespace Nayeon.ByokC1
         {
             lock (gate)
             {
+                bool wasAlreadyRevoked = revoked;
                 revoked = true;
                 if (terminalDecision == TerminalDecisionPhase.SyntheticPrepared)
                     terminalDecision = TerminalDecisionPhase.Revoked;
 #if C1_SYNTHETIC_TEST
-                if (terminalDecision == TerminalDecisionPhase.SyntheticCommitted ||
-                    terminalDecision == TerminalDecisionPhase.SyntheticTerminalUnverified)
+                if (!wasAlreadyRevoked && syntheticCommitEver)
                     ++syntheticTooLateRevocations;
 #endif
                 // Once a decision committed, a late cancel MUST NOT
@@ -252,7 +329,8 @@ namespace Nayeon.ByokC1
             {
                 stopped = true;
                 revoked = true;
-                if (terminalDecision == TerminalDecisionPhase.SyntheticCommitted)
+                if (terminalDecision == TerminalDecisionPhase.SyntheticCommitted ||
+                    terminalDecision == TerminalDecisionPhase.SyntheticTerminalUnverified)
                 {
                     // Stop after a possible attempt is UNKNOWN, never
                     // evidence of cancellation or a safe automatic retry.
