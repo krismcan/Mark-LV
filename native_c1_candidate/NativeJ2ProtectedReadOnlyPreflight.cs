@@ -59,58 +59,14 @@ namespace Nayeon.ByokC1
         { return "P106 native protected J2 read-only structural observation; NO AUTHORITY"; }
     }
 
+    // The fixed-path candidate reader has NO write-capable journal or registry
+    // class in the allowlisted production-shaped review assembly.
+    // Structural observations remain NON-AUTHORITY even when consistent.
     internal static class NativeJ2ProtectedReadOnlyPreflight
     {
         internal static NativeJ2ReadOnlyResult ObserveInstalledService()
         {
-            // This is a service-private candidate, not an IPC endpoint.
-            // No service installation proof exists, so it always short
-            // circuits to UNAVAILABLE on Kristian and all ordinary runners.
-            if (!ServiceGate.LiveEligible())
-                return NativeJ2ReadOnlyResult.Unavailable();
-
-            // Unexpectedly relaxed original effect gates imply tampering,
-            // not an opportunity to turn this read-only diagnostic live.
-            if (!CandidateCredentialEffectHold.LegacyEffectEntryDisabled() ||
-                !CandidateCredentialEffectHold.NativeMutationAdmissionPending())
-                return NativeJ2ReadOnlyResult.Recovery();
-
-            try
-            {
-                if (!ProtectedAcl.VerifyInstalledCustodyDirectory())
-                    return NativeJ2ReadOnlyResult.Recovery();
-
-                // These are the exact original P49 real OS-protected adapters.
-                // Registry OpenFixed enforces LocalSystem token and strict DACL.
-                CustodyRegistryAnchor anchor = new CustodyRegistryAnchor();
-                if (anchor.RecoveryFaulted())
-                    return NativeJ2ReadOnlyResult.Recovery();
-                CustodyJournalFile journal = CustodyJournalFile.ForInstalledService();
-
-                string rawJournal = journal.ReadJournal();
-                string rawAnchor = anchor.ReadAnchor();
-                if (rawJournal == null || rawAnchor == null)
-                    return NativeJ2ReadOnlyResult.Recovery();
-
-                // Only the original native J2/A2 parser, NEVER the J1 reader.
-                // Structural hashes alone cannot establish historic freshness.
-                LedgerPhase phase = CustodyLedger.Verify(rawJournal, rawAnchor);
-
-                // Two-store reads are not atomic; changed values must fail.
-                // Even stable reads are merely a non-authoritative snapshot.
-                if (!String.Equals(rawJournal, journal.ReadJournal(),
-                    StringComparison.Ordinal) ||
-                    !String.Equals(rawAnchor, anchor.ReadAnchor(),
-                    StringComparison.Ordinal) ||
-                    anchor.RecoveryFaulted())
-                    return NativeJ2ReadOnlyResult.Recovery();
-
-                return NativeJ2ReadOnlyResult.Structural(phase);
-            }
-            catch (Exception)
-            {
-                return NativeJ2ReadOnlyResult.Recovery();
-            }
+            return CandidateProtectedReadOnlySnapshot.ObserveInstalledService();
         }
     }
 }
