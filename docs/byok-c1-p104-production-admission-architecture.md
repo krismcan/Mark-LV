@@ -82,7 +82,38 @@ E. Final G0–G6 implementation GO; three complete native Windows product regres
 5. Which signed/managed Windows x86 test execution path is approved by the machine's policy owner? No alternate path or policy bypass is permitted.
 6. What are the exact staged acceptance proofs and source hashes before any real WinCred/native privileged effect is eligible?
 
-## 7. Release disposition and invariants
+## 7. Follow-on source review findings: capability topology, service startup, and impersonation (8 November 2026)
+
+This section is a **source-specific refinement**; not a native effect permission. It corrects any interpretation that a shared monitor, a successful SID observation or toggling old guards could make the original host production ready.
+
+### A. Effect capability isolation (G2/G4)
+
+- Original `IProtectedPendingState` in `PendingCustodyTransaction.cs` exposes `SaveOrReplace(byte[])` and `DeletePending()` alongside read-only metadata and journal operations. Its concrete `PendingServiceState.cs` forwards those calls to `PendingWinCredStore`, while the old transaction accepts an injected `ITrustedPendingApproval` and checks `StillCurrent()` separately from effect dispatch. Therefore simply flipping `ServiceGate.LiveEligible`, `PendingServiceState.LegacyEffectEntryDisabled` or `PendingWinCredStore.NativeMutationAdmissionPending` would expose the P96 race and preserve overly broad effect capabilities.
+- **Required proposed successor:** separate read-only custody observation and journal operations from sealed native-effect capability. The **only** effect-capable dependency must be held privately by one service-owned terminal dispatch actor after trusted consent/revocation/fault/intent checks, with static analysis proving no other path, reflective entry, IPC route or legacy transaction can invoke it. Do **not** wire `PendingCustodyTransaction.Apply()` into an installed service; retire the original coordinator from the future deployed effect assembly after independent migration review. A `bool` or assertion at call-site is not a capability boundary.
+- **Acceptance counterexamples:** alternate same-assembly caller invoking `PendingServiceState.SaveOrReplace` directly; reflective invocation of an internal method; legacy coordinator with caller-defined approval; second service actor instantiated after a fault; duplicated dispatch capability across threads. Each must fail at the architecture/API boundary, not only when the original three denial flags happen to remain true.
+
+### B. Startup admission cannot be enabled by ordinary code change (G2/G3/G5)
+
+- Original `ServiceCustodyMutex.cs` starts with `faulted=true` and its only synthetic unarm method is behind `#if BYOK_TEST`. Production has no reviewed startup reconciliation that can attest to a fault-free same-machine, same-credential-vault session. `CustodyRegistryAnchor.RecoveryFaulted()` defaults to faulted when the protected fault marker is absent or non-CLEAR, and no recovery-authorized installation/enrollment action is currently part of the original 11-source service host. Original `PendingCustodyTransaction.Apply()` additionally refuses when either journal or anchor is absent.
+- **Required proposed successor:** a separately reviewed installer/enrollment authority, protected independent witness and explicit **manual recovery authorization** must precede any path to READY. Device reboot, process crash, lost/stale journal, anchor or mutex ownership uncertainty must deny automatically. Never implement an unconditional `faulted=false`, `CLEAR`, state reset or auto-bootstrap to move past this prerequisite.
+- **Acceptance counterexamples:** first ordinary SAVE on a fresh machine; reinstall after losing anchor; replay old protected-looking journal+anchor; crash after native attempted but before terminal metadata; delayed dispose or wrong-thread native mutex release. None may create a new approvable custody session automatically.
+
+### C. The LocalSystem-vs-client impersonation boundary is security-critical (G1/G4)
+
+- In Windows `.NET`, `NamedPipeServerStream.RunAsClient` impersonates the *connected client on the executing server thread*. This can be useful for peer identity inspection but is not signed UI provenance; the P103 experiment correctly grants no approval. Native WinCred calls from an impersonated service thread could run under the **client's** account context rather than the intended LocalSystem vault. A future privileged custody service must separate transient peer identification from the protected service-owned storage operation, and independently verify its effective security context before any protected-state access.
+- Microsoft documents `CRED_PERSIST_LOCAL_MACHINE` as persistent **for subsequent logon sessions of the same user on the machine**, not a machine-global credential shared across user principals. Therefore testing a user-profile credential does not validate LocalSystem custody or persistence. The fixed pending target, native error semantics, LocalSystem environment/profile and a reboot must be verified on an authorized signed test path before claiming G4 approval.
+- A pipe's reported client PID (`GetNamedPipeClientProcessId`) or a matching SID is useful diagnostic identity, **not** independent proof of intended approved UI binary or human consent; a malicious same-user client and TOCTOU around process identity remain in scope. No caller-provided PID, SID, digest, marker or UI name can mint the one-use service authorization.
+- **Acceptance counterexamples:** request uses forged 'trusted UI' marker; same-user untrusted process connects; service mistakenly calls WinCred while impersonating; client disconnects/reconnects to reuse request; user-vault credential is misreported as LocalSystem pending credential. All must fail closed without provider connection or real key.
+
+Official Microsoft references (consulted for this refinement):
+- Client impersonation: https://learn.microsoft.com/en-us/windows/win32/secauthz/client-impersonation
+- NamedPipeServerStream.RunAsClient semantics: https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.namedpipeserverstream.runasclient
+- CREDENTIALW and CRED_PERSIST_LOCAL_MACHINE scope: https://learn.microsoft.com/en-us/windows/win32/api/wincred/ns-wincred-credentialw
+- GetNamedPipeClientProcessId provides a process identifier, not approval: https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid
+
+This refinement changes **no executable files** and is NOT a substitute for qualified independent native Windows code review. All original G0–G6 HOLD decisions remain.
+
+## 8. Release disposition and invariants
 
 This P104 branch is **documentation-only**, with no new executable application code, native Windows API execution, IPC service, credentials, keys, source gate toggles, production effect, signer workaround or release. The 11 frozen original native files, three independent denial guards, old P96 finding, historical P85/P62 restrictions and original product worktree must stay intact. Neither author-written tests nor this design document is an independent expert approval.
 
