@@ -239,7 +239,10 @@ internal static class P128WindowsEphemeralJournalTests
             WithFile(j=>{
                 Stage(j,1);
                 byte[] prior=File.ReadAllBytes(j.IsolatedTestFilePath);
-                Stage(j,3);
+                Need(j.AppendSynthetic(G3ReviewStage.FakeAttemptStarted),
+                    "second stage appended");
+                Need(j.AppendSynthetic(G3ReviewStage.TerminalDiagnostic),
+                    "third stage appended");
                 Observe(j,G3ReviewRecovery.TerminalDiagnosticOnly,3,true);
                 // Same-user TEST rollback can restore an old, correctly
                 // hashed prefix. This is a NEGATIVE G3 finding.
