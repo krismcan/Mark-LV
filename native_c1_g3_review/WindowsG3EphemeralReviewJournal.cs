@@ -168,7 +168,10 @@ namespace Nayeon.ByokC1
                         G3ReviewRecovery.MissingOrEmptyUnsafe,0,false);
                 using(var fs=new FileStream(path,FileMode.Open,
                     FileAccess.Read,FileShare.ReadWrite))
-                    return ObserveBytes(ReadBounded(fs));
+                {
+                    byte[] data=ReadBounded(fs);
+                    return data==null?Unsafe():ObserveBytes(data);
+                }
             }
             catch(Exception)
             {return Unsafe();}
