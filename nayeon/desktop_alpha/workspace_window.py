@@ -995,7 +995,8 @@ class ConversationWindow(WorkspacePane):
 
 
 class ConnectionWindow(WorkspacePane):
-    def __init__(self, parent, *, on_destroy, on_conversation, on_manage=None):
+    def __init__(self, parent, *, on_destroy, on_conversation, on_manage=None,
+                 on_local_byok=None):
         super().__init__(parent, name="connection_view", on_destroy=on_destroy)
         # P87 is explicit, synthetic-only; no observer runs on page creation.
         self._synthetic_pending_owner = None
@@ -1027,6 +1028,16 @@ class ConnectionWindow(WorkspacePane):
             state="normal" if on_manage is not None else "disabled",
             command=lambda: self._dispatch(on_manage) if on_manage is not None else None)
         self.manage_button.pack(anchor="w", pady=(12, 0))
+        # P133: a separate, explicitly user-clicked offline key setup.
+        # The callback is owned by the trusted root; this pane itself
+        # never imports a secret backend or launches an external process.
+        self.local_byok_button = ttk.Button(
+            self, text="Open local key setup (offline, not connected)",
+            state="normal" if on_local_byok is not None else "disabled",
+            command=lambda: self._dispatch(on_local_byok)
+            if on_local_byok is not None else None)
+        self.local_byok_button.pack(anchor="w", pady=(10, 0))
+
 
     def begin_synthetic_pending_observation(self):
         """Opt-in test lease, not a service subscription or consent ticket."""

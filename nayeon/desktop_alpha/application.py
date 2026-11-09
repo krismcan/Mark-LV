@@ -75,6 +75,10 @@ class OfflineWorkspaceApplication:
         self._connection = None
         self._connection_opening = False
         self._connection_blocked = False
+        # P133: kept entirely lazy; no WinCred import, IO or child process
+        # during normal startup, connection navigation, or app close.
+        self._local_byok_launcher = None
+        self._local_byok_opening = False
         self.root = root
         self.controller = PreviewOnlyController()
         self._conversation_root = object()
@@ -631,6 +635,51 @@ class OfflineWorkspaceApplication:
         self._require_creator_thread()
         self._show(_Page.CONNECTION)
 
+    def _open_local_byok(self, view, token, generation) -> None:
+        """Explicit Connection-page human click; NOT model/tool authority.
+
+        A separate current-user process owns the P132 key-entry window.
+        This root neither reads nor stores the key, and no new process
+        starts on import, startup, navigation, status refresh or shutdown.
+        """
+        self._require_creator_thread()
+        if (self._local_byok_opening or self._busy or self._reply_busy
+                or self._reply_closing or self._closed or
+                self._connection_opening or self._connection is not None
+                or self._reply_owner.has_worker
+                or type(view) is not ConnectionWindow
+                or not self._current(view, token, generation)):
+            return
+        self._local_byok_opening = True
+        try:
+            # Import only AFTER a deliberate current Connection-page click.
+            from nayeon.desktop_alpha.local_byok_launch_bridge import (
+                LocalByokLaunchBridge, LocalByokLaunchResult,
+            )
+            if self._local_byok_launcher is None:
+                self._local_byok_launcher = LocalByokLaunchBridge()
+            result = self._local_byok_launcher.launch()
+            if result is LocalByokLaunchResult.LAUNCHED_OFFLINE:
+                message = ("Separate local key setup requested. "
+                           "Not connected: no provider validation has run.")
+            elif result is LocalByokLaunchResult.ALREADY_RUNNING:
+                message = ("The separate local key setup process is already running. "
+                           "No new process was started.")
+            else:
+                message = ("Local key setup could not be opened. "
+                           "No credential action was performed by this page.")
+        except Exception:
+            message = ("Local key setup unavailable. "
+                       "No credential action was performed by this page.")
+        finally:
+            self._local_byok_opening = False
+
+        if self._current(view, token, generation):
+            try:
+                view.status_label.configure(text=message)
+            except tk.TclError:
+                pass
+
     def _retire_connection(self, *, destroy=True):
         self._require_creator_thread()
         child = self._connection
@@ -727,6 +776,7 @@ class OfflineWorkspaceApplication:
                 view = ConnectionWindow(
                     self.workspace.content,
                     on_manage=lambda: self._open_connection(view, token, generation),
+                    on_local_byok=lambda: self._open_local_byok(view, token, generation),
                     on_destroy=lambda: self._view_destroyed(view, token, generation),
                     on_conversation=lambda: self._cancel(view, token, generation))
             elif page is _Page.SETTINGS:
