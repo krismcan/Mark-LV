@@ -109,8 +109,10 @@ internal static class P126NativeWindowsMutexTests
             if(Process.HasExited)return;
             Process.StandardInput.WriteLine("GO");
             Process.StandardInput.Flush();
-            Need(Process.WaitForExit(5000)&&Process.ExitCode==0,
-                "real external native mutex owner exited after release");
+            Need(Process.WaitForExit(5000),
+                "external native owner did not exit after release");
+            Need(Process.ExitCode==0,
+                "external native owner exit code="+Process.ExitCode);
         }
         public void Dispose()
         {
