@@ -40,6 +40,7 @@ jobs:
             'nayeon/brain/local_byok_user_scope.py'
             'nayeon/desktop_alpha/local_byok_window.py'
             'tests/test_local_user_scope_byok.py'
+            'tests/test_p132_user_scope_migration.py'
           )|Sort-Object
           if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
             throw 'Unexpected P132 source scope'
@@ -96,7 +97,7 @@ jobs:
           if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'GitHub source readback dirty'}
           Write-Output 'P114_ORIGINAL_P49_HASHES=11_PASS'
           Write-Output 'P114_CANDIDATE_AND_DRIVER_PINNED_HASHES=17_PASS'
-          Write-Output 'P132_ONLY_FIVE_ADDED_USER_SCOPE_PATHS=TRUE'
+          Write-Output 'P132_ONLY_SIX_ADDED_USER_SCOPE_PATHS=TRUE'
           Write-Output 'P114_ORIGINAL_P96_NEGATIVE_COMPARATOR_IMMUTABLE=TRUE'
 
       - name: Unprivileged test admission and actual no-effect source guard
@@ -515,13 +516,22 @@ jobs:
             Write-Output 'P132_PYTHON_COMPILEALL=PASS'
             # New tests use ONLY in-memory fake Advapi32; the one OS test
             # uses a genuine session mutex with fake credential backend.
-            python -m unittest -v tests.test_local_user_scope_byok
-            if($LASTEXITCODE -ne 0){throw 'P132 synthetic+real Tk test suite failed'}
+            python -m unittest -v tests.test_local_user_scope_byok tests.test_p132_user_scope_migration
+            if($LASTEXITCODE -ne 0){throw 'P132 synthetic Tk or explicit new scope migration failed'}
             Write-Output 'P132_REAL_WINDOWS_TK_AND_FAKE_WINCRED=PASS'
             # Preserve earlier Windows credential adapter, human UI and
             # bounded lifecycle regressions unchanged.
-            python -m unittest -v tests.test_windows_credential_backend tests.test_first_run_credential_management_window tests.test_credential_operation_host tests.test_bound_credential_lifecycle
-            if($LASTEXITCODE -ne 0){throw 'P132 historical user-credential regression failed'}
+            # Legacy full-module ScopeGuards are intentionally pinned to
+            # a distinct historical one-commit P76 branch and reject ANY
+            # newly approved secret consumer. They remain UNMODIFIED and
+            # must never be called "passing" against P132. Instead, the
+            # new explicit P132 migration guard proves exact six-path scope,
+            # immutable historical guards, and approved source boundaries.
+            # Run every historical functional test class unchanged.
+            python -m unittest -v tests.test_windows_credential_backend.BackendTests tests.test_windows_credential_backend.NativeAdapterTests tests.test_first_run_credential_management_window tests.test_credential_operation_host tests.test_bound_credential_lifecycle.LifecycleTests
+            if($LASTEXITCODE -ne 0){throw 'P132 functional historical credential regression failed'}
+            Write-Output 'P132_HISTORICAL_BRANCH_PINNED_SCOPE_GUARDS=UNCHANGED_NOT_RUN_ON_P132'
+            Write-Output 'P132_NEW_SCOPE_MIGRATION_GUARD=REQUIRED_PASS'
             Write-Output 'P132_EXISTING_CREDENTIAL_AND_ONBOARDING_REGRESSIONS=PASS'
             Write-Output 'P132_PROVIDER_NETWORK_CALLS=NONE'
             Write-Output 'P132_REAL_CREDENTIALS_AND_NATIVE_WINCRED_WRITES=NONE'
