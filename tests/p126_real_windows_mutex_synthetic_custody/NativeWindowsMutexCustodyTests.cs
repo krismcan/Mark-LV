@@ -21,7 +21,7 @@ internal static class P126NativeWindowsMutexTests
     private static void Run(string label,Action action)
     {
         try{action();passed++;Console.WriteLine("PASS "+label);}
-        catch(Exception ex){failed++;Console.WriteLine("FAIL "+label+" "+ex.GetType().Name);}
+        catch(Exception ex){failed++;Console.WriteLine("FAIL "+label+" "+ex.GetType().Name+" "+ex.Message);}
     }
     private static void NoAuthority(WindowsG2SyntheticMutexCustody c)
     {
