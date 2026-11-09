@@ -92,7 +92,11 @@ internal static class P126NativeWindowsMutexTests
                     Environment.Exit(0);
                     return 0;
                 }
-                if(Console.ReadLine()!="GO")return 23;
+                using(var signal=new EventWaitHandle(false,EventResetMode.ManualReset,
+                    name+"-release"))
+                {
+                    if(!signal.WaitOne(5000))return 23;
+                }
                 mutex.ReleaseMutex();
                 return 0;
             }
@@ -103,14 +107,16 @@ internal static class P126NativeWindowsMutexTests
     private sealed class External : IDisposable
     {
         internal readonly Process Process;
-        internal External(Process p){Process=p;}
+        private readonly EventWaitHandle releaseSignal;
+        internal External(Process p,EventWaitHandle signal)
+        {Process=p;releaseSignal=signal;}
         public void Release()
         {
             if(Process.HasExited)return;
-            Process.StandardInput.WriteLine("GO");
-            Process.StandardInput.Flush();
+            Need(releaseSignal.Set(),
+                "native Windows release event signalled");
             Need(Process.WaitForExit(5000),
-                "external native owner did not exit after release");
+                "external native owner did not exit after release event");
             Need(Process.ExitCode==0,
                 "external native owner exit code="+Process.ExitCode);
         }
@@ -118,23 +124,27 @@ internal static class P126NativeWindowsMutexTests
         {
             if(!Process.HasExited)Process.Kill();
             Process.Dispose();
+            releaseSignal.Dispose();
         }
     }
     private static External StartOwner(string mode,string name)
     {
+        // Use a real named Windows event instead of redirected stdin,
+        // since console input is not reliable for the child under CI.
+        var releaseSignal=new EventWaitHandle(false,
+            EventResetMode.ManualReset,name+"-release");
         var info=new ProcessStartInfo(Exe(),
             "--p126-child "+mode+" "+name);
         info.UseShellExecute=false;
         info.CreateNoWindow=true;
         info.RedirectStandardOutput=true;
-        info.RedirectStandardInput=true;
         var process=Process.Start(info);
         Need(process!=null&&process.Id>0,"real OS child process launched");
         using(var me=Process.GetCurrentProcess())
             Need(me.Id!=process.Id,"different Windows OS PID");
         string ready=process.StandardOutput.ReadLine();
         Need(ready=="P126_MUTEX_HELD","child owns OS mutex");
-        return new External(process);
+        return new External(process,releaseSignal);
     }
     private static string Probe(string name)
     {
