@@ -55,7 +55,9 @@ namespace Nayeon.ByokC1
     {
         private const int NonceBytes=32;
         private const int DigestBytes=32;
-        private const int ReadTimeoutMs=3000;
+        // One monotonic deadline for the ENTIRE 32-byte response frame.
+        // This remains review-only, not a production service policy.
+        private const int ReviewAbsoluteReplyDeadlineMs=850;
 
         private static bool Observed(
             NamedPipeServerStream pipe,
@@ -156,7 +158,10 @@ namespace Nayeon.ByokC1
                 // A single 32-byte echoed nonce means the client could
                 // read the pipe. It is not a protected signature or click.
                 byte[] echoed=new byte[NonceBytes];
-                if(!ReadExactBounded(alreadyConnectedPipe,echoed))
+                OsPipeDeadlineReadObservation read =
+                    WindowsReviewOnlyAbsolutePipeDeadline.ReadExactFrame(
+                        alreadyConnectedPipe,echoed,ReviewAbsoluteReplyDeadlineMs);
+                if(!read.ExactReviewFrameObserved)
                 {
                     challenge.FailClosedFault();
                     return new OsReviewOnlyExchangeObservation(
@@ -192,29 +197,10 @@ namespace Nayeon.ByokC1
             }
         }
 
-        private static bool ReadExactBounded(NamedPipeServerStream pipe,
-            byte[] destination)
-        {
-            int offset=0;
-            while(offset<destination.Length)
-            {
-                IAsyncResult pending=null;
-                try
-                {
-                    pending=pipe.BeginRead(destination,offset,
-                        destination.Length-offset,null,null);
-                    if(!pending.AsyncWaitHandle.WaitOne(ReadTimeoutMs))
-                        return false;
-                    int count=pipe.EndRead(pending);
-                    if(count<=0)return false;
-                    offset+=count;
-                }
-                finally
-                {
-                    if(pending!=null)pending.AsyncWaitHandle.Close();
-                }
-            }
-            return true;
-        }
+        // P123: the prior resettable BeginRead/EndRead helper is fully
+        // removed. P122 owns the ONLY asynchronous response-frame read
+        // here, with a bounded overall deadline and explicit cancel/drain.
+        // A terminal failure cannot be retried on the same pipe.
+
     }
 }
