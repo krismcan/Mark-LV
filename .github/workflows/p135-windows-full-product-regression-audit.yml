@@ -1,0 +1,100 @@
+name: P135 Unfiltered Triple Full-Product Windows Regression Audit — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p135-full-product-windows-regression-audit-20261109
+
+permissions:
+  contents: read
+
+jobs:
+  full-windows-product-triad:
+    name: Three actual full unittest discovery attempts and historical seal evidence
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Install pinned Python 3.12 for product regression audit
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact source readback and immutable production branch scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push'){
+            throw 'P135 audit must run only in isolated GitHub-hosted Windows push context'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p135-full-product-windows-regression-audit-20261109 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'GitHub clean source readback clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          $head = (git -C reviewed rev-parse HEAD).Trim()
+          if($head -ne $env:GITHUB_SHA){throw 'Exact GitHub Actions HEAD mismatch'}
+          $parent = '52995d74764ea998f4732ce552c9dc301dfab334'
+          if((git -C reviewed merge-base HEAD $parent).Trim() -ne $parent){
+            throw 'P135 original P134 baseline not ancestor'
+          }
+          $changed=@(git -C reviewed diff --name-only $parent HEAD |Sort-Object)
+          $expected=@(
+            '.github/workflows/p135-windows-full-product-regression-audit.yml'
+            'docs/byok-c1-p135-triple-full-windows-regression-audit.md'
+            'scripts/p135_full_windows_regression_audit.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P135 expected exactly THREE audit-only files; product or tests modified'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P135 exact Git diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P135 GitHub clone not pristine'
+          }
+          Write-Output ('P135_EXACT_SOURCE_HEAD='+$head)
+          Write-Output 'P135_ORIGINAL_P134_PRODUCT_SOURCES=FROZEN_UNMODIFIED'
+          Write-Output 'P135_HISTORICAL_P49_P96_TESTS=FROZEN_UNMODIFIED'
+          Write-Output 'P135_CHANGED_SCOPE=THREE_REVIEW_AND_CI_FILES_ONLY'
+      - name: Compile entire Nayeon product and all Python tests on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -m compileall -q nayeon tests scripts/p135_full_windows_regression_audit.py
+            if($LASTEXITCODE -ne 0){throw 'Entire product Python compileall failed'}
+            Write-Output 'P135_COMPLETE_PRODUCT_AND_TESTS_COMPILEALL=PASS'
+          } finally {
+            Pop-Location
+          }
+      - name: Three full unfiltered Windows product regression attempts
+        shell: pwsh
+        env:
+          P134_NATIVE_WINCRED_EPHEMERAL_AUTH: EPHEMERAL_GITHUB_WINDOWS_ONLY
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:P134_NATIVE_WINCRED_EPHEMERAL_AUTH -ne 'EPHEMERAL_GITHUB_WINDOWS_ONLY'){
+            throw 'Refuse unverified environment'
+          }
+          Push-Location reviewed
+          try {
+            python -B scripts/p135_full_windows_regression_audit.py
+            if($LASTEXITCODE -ne 0){
+              throw 'P135 full-product triple-regression HOLD; preserve actual failing original tests and logs'
+            }
+            Write-Output 'P135_THREE_FULL_UNFILTERED_PRODUCT_REGRESSIONS=PASS'
+            Write-Output 'P135_SIGNED_PACKAGE_AND_INDEPENDENT_REVIEW=STILL_REQUIRED'
+            Write-Output 'P135_USER_SCOPE_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Retain complete exact native regression discovery logs even on HOLD
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p135-windows-triple-full-discovery-raw-logs
+          path: ${{ runner.temp }}/nayeon-p135-full-suite-audit/*.log
+          if-no-files-found: warn
+          retention-days: 14
