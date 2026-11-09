@@ -181,8 +181,7 @@ class ConnectionPageTkLaunchTests(unittest.TestCase):
         self.assertIsNone(self.app._local_byok_launcher)
         self.assertFalse(self.app._local_byok_opening)
         self.assertIsNone(self.app._connection)
-        self.assertIs(self.page.local_byok_button.cget("state"), "normal") if False else self.assertEqual(
-            str(self.page.local_byok_button.cget("state")), "normal")
+        self.assertEqual(str(self.page.local_byok_button.cget("state")), "normal")
         self.assertIn("offline", self.page.local_byok_button.cget("text"))
         self.assertIn("Not observed", self.page.status_label.cget("text"))
 
