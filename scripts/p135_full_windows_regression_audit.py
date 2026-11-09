@@ -68,7 +68,7 @@ def main() -> int:
             with path.open("wb") as sink:
                 result = subprocess.run(
                     command, cwd=root, stdout=sink, stderr=subprocess.STDOUT,
-                    timeout=1000, check=False,
+                    timeout=600, check=False,
                 )
             exit_code = result.returncode
         except subprocess.TimeoutExpired:
