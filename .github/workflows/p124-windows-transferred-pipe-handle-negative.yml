@@ -1,0 +1,368 @@
+name: P124 Real Windows Transferred Pipe Client Handle Writer Negative — G1 HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p124-transferred-pipe-writer-negative-20261109
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-oneuse-and-legacy-negative:
+    name: P124 transferred-handle negative 12 + earlier P123/.../P96 313 = 325 native tests
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Exact GitHub source ancestry, changed scope and frozen native SHA pins
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows'){
+            throw 'Isolated hosted Windows runner required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p124-transferred-pipe-writer-negative-20261109 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'Exact HEAD mismatch'}
+          $base='e90ba1f9dfe43726d88672ee8ed821b43c77288e'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P113 exact baseline not ancestor'
+          }
+          $changed=@(git -C reviewed diff --name-only $base HEAD |Sort-Object)
+          $expected=@(
+            '.github/workflows/p124-windows-transferred-pipe-handle-negative.yml'
+            'docs/byok-c1-p124-transferred-pipe-writer-native-negative.md'
+            'tests/p124_real_transferred_pipe_writer/NativeTransferredPipeWriterNegativeTests.cs'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'Unexpected P124 source scope'
+          }
+          $pins=@{
+            'CustodyJournalFile.cs'='483CB220068FE34E28C7D1C58DBC4B6546E9226FC1899B62FAFEE912B6EBF939'
+            'CustodyLedger.cs'='93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+            'CustodyRegistryAnchor.cs'='AB17A58C9558F0AC05AE7602093FA8338CEDCC91A85DB736A871FDEBF17F7C71'
+            'CustodyService.cs'='49217E9018AB2437D3F2B4B2907C08946432352618EDEE065F734D88B93EC093'
+            'PendingCustodyTransaction.cs'='D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+            'PendingServiceState.cs'='B194EE6809BEB84502D9CF509D44237E1A2C24D3905F3764DC4DCA425BAB793E'
+            'PendingWinCredStore.cs'='4051A48F3062A737D0D9CE212DB9B302C2C22D5ECA2893CE27B35C740A72B93C'
+            'ProtectedAcl.cs'='7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+            'RecoveryReader.cs'='AF2A0BA2F680DAE0A2ACAA4EF626838A20C23001F76799372D9444EE4D50A650'
+            'ServiceCustodyMutex.cs'='2C1BD0DFA679D7C97CF124A0F6612E0DA8EE533EADCF29515E233C5EA214F7BE'
+            'ServiceGate.cs'='F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+          }
+          $originalDir='reviewed/tests/p99_original_native_c1_denial'
+          foreach($entry in $pins.GetEnumerator()){
+            $file=Join-Path $originalDir $entry.Key
+            if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('Frozen original P49 source hash drift '+$entry.Key)
+            }
+          }
+          $candidatePins=@{
+            'native_c1_candidate/CustodyService.cs'='876E3006BA26966BE93BA033C97779B6FBB41E8656869A462535B1CF4B12D95E'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'='1FA108C18F228F83FE4BBDE0F682025BD23E864B23DDC24EA4D4F70F27382DD5'
+            'native_c1_candidate/ServiceBoundRequestIdentity.cs'='D426D888998D748371FF65AC4AF690046498BCB422373A1B30ABBF00F85F3D62'
+            'native_c1_candidate/CandidateCredentialEffectHold.cs'='0A368D6B06AEE10A17E0B035D962019B219EFDF251BA109815F4B1A71294447B'
+            'native_c1_candidate/IsolatedCandidateContracts.cs'='77D510AD90D8112E9865CD77441112BF66DAEDF8919598C09C8BD4FC9E7DFB16'
+            'tests/p111_effect_capability_isolation/IsolatedAssemblyCapabilityAuditTests.cs'='8B001DE064BD707A344BFD8D73941EEEE2014EEF9A73192962A7778BC66C248E'
+            'native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs'='0578037F88A36D6C12DBD2CC3AC82AD40A36AA4ABA3AE9BA32C9901BCAFE9D60'
+            'native_c1_candidate/CandidateProtectedReadOnlySnapshot.cs'='49185D6F39A450EFEDA29DBFF7DD72CC04A4FF08F0D2E50FC97AB4D9F2ECD961'
+            'tests/p112_readonly_native_assembly/ReadOnlyCandidateAssemblyAuditTests.cs'='AAB58F91F0E26A4EF8431D104519B4AC1AC2213A7BA84A02754E1872B23C5174'
+            'native_c1_g1_peer_review/WindowsPipePeerObservation.cs'='C2AEEF3FFB3E7A27FCB60762933BC5E50A322DD93F994E8F51123B017AAB1913'
+            'tests/p113_real_windows_pipe_peer/NativePipePeerIdentityTests.cs'='B2B3F929C520C7440AFB6BD53B496C52C05E09AA8B2A4A91A9AAFC42A2776CE5'
+            'native_c1_g1_peer_review/WindowsPipeClientProcessProvenance.cs'='19E9838283949AA851BEEB2E4FC82BB36BED8D4797893828316935DBE3C94F61'
+            'tests/p114_real_windows_client_process/NativeProcessProvenanceTests.cs'='2A5D3D31CC149B6E09D0E7C80B055D548E70446072F939E1594F7514F63C8CD5'
+            'tests/p110_fixed_pending_effect/NativeFixedEffectAtomicityTests.cs'='6BEE7C9D8C677B45D4C2832FEF6E16208EAECB67AE111BF54BD5D6D909ADEF6F'
+            'tests/p109_native_oneuse_linearization/NativeOneUseLinearizationTests.cs'='4311FC8788F81354C6079D6EA297ABF8D03953ACC374ACDDF66475E3CF73ACB9'
+            'tests/p110_fixed_pending_effect/OrdinaryEffectSurfaceAuditTests.cs'='D5D11507259947D5B5D98A6866EE4B32A2E6B84D599E13DE25C63A0E0D2D1AAD'
+            'tests/p109_native_oneuse_linearization/OrdinaryAssemblyAuditTests.cs'='8CF2D1147101BD0C6EC268AB304FFAC682692DE3A0D06C3B1C607F7BC3AED533'
+          }
+          foreach($entry in $candidatePins.GetEnumerator()){
+            if((Get-FileHash -LiteralPath (Join-Path 'reviewed' $entry.Key) -Algorithm SHA256).Hash -ne $entry.Value){
+              throw ('P109 source hash drift '+$entry.Key)
+            }
+          }
+          if((Get-FileHash -LiteralPath 'reviewed/tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' -Algorithm SHA256).Hash -ne $pins['PendingCustodyTransaction.cs']){
+            throw 'Original P96 vulnerability comparator replaced or weakened'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Bad diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'GitHub source readback dirty'}
+          Write-Output 'P114_ORIGINAL_P49_HASHES=11_PASS'
+          Write-Output 'P114_CANDIDATE_AND_DRIVER_PINNED_HASHES=17_PASS'
+          Write-Output 'P124_ONLY_THREE_ADDED_NEGATIVE_REVIEW_PATHS=TRUE'
+          Write-Output 'P114_ORIGINAL_P96_NEGATIVE_COMPARATOR_IMMUTABLE=TRUE'
+
+      - name: Unprivileged test admission and actual no-effect source guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ident=[Security.Principal.WindowsIdentity]::GetCurrent()
+          if($null -eq $ident -or $null -eq $ident.User -or
+            $ident.User.IsWellKnown([Security.Principal.WellKnownSidType]::LocalSystemSid)){
+            throw 'LocalSystem execution forbidden for synthetic proof'
+          }
+          $hostSource=Get-Content 'reviewed/native_c1_candidate/CustodyService.cs' -Raw
+          $actorSource=Get-Content 'reviewed/native_c1_candidate/ServiceOwnedAdmissionBoundary.cs' -Raw
+          if($hostSource -match 'ServiceBase.Run\s*\(' -or
+             $hostSource -match '(?m)^\s*(?:internal|public|private)\s+static\s+void\s+Main\s*\(' -or
+             $actorSource -notmatch '#if C1_SYNTHETIC_TEST' -or
+             $actorSource -notmatch 'CommitSyntheticDecisionOnly\(' -or
+             $actorSource -notmatch 'lock \(gate\)' -or
+             $actorSource -notmatch 'terminalDecision = TerminalDecisionPhase.SyntheticCommitted' -or
+             $actorSource -notmatch 'return false;'){
+            throw 'Candidate admission lock or test macro drift'
+          }
+          foreach($src in @($hostSource,$actorSource)){
+            if($src -match '(?m)^\s*#\s*define\s+C1_SYNTHETIC_TEST' -or
+               $src -match '\b(?:CredReadW|CredWriteW|CredDeleteW)\s*\(' -or
+               $src -match '\bDllImport\b' -or
+               $src -match '\.SaveOrReplace\s*\(' -or
+               $src -match '\.DeletePending\s*\('){
+              throw 'Direct native effect/test enable found in actor'
+            }
+          }
+          Write-Output 'P114_RUNNER_ISOLATED_UNPRIVILEGED=TRUE'
+          Write-Output 'P114_CANDIDATE_HAS_NO_PRODUCTION_NATIVE_EFFECT_OR_RELEASE=TRUE'
+          Write-Output 'P114_HISTORICAL_SYNTHETIC_EFFECT_IS_ONLY_INTEGER=TRUE'
+
+      - name: Real native x64 synthetic and ordinary CSharp test execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=(Resolve-Path 'reviewed').Path
+          $csc='C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $p49Dir=Join-Path $root 'tests/p99_original_native_c1_denial'
+          $all=@(Get-ChildItem -LiteralPath $p49Dir -Filter '*.cs' -File|
+            Where-Object {$_.Name -ne 'FullOriginalNativeDenialTests.cs'}|
+            ForEach-Object {$_.FullName})
+          $ten=@($all|Where-Object{[IO.Path]::GetFileName($_) -ne 'CustodyService.cs'})
+          if($all.Count -ne 11 -or $ten.Count -ne 10){throw 'Frozen original source inventory changed'}
+          $candDir=Join-Path $root 'native_c1_candidate'
+          $cand=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+            'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs',
+            'CandidateCredentialEffectHold.cs','CandidateProtectedReadOnlySnapshot.cs')|
+            ForEach-Object{Join-Path $candDir $_}
+          function Run-ExactSyntheticNative([string]$label,[string]$main,
+            [string[]]$src,[int]$count,[string]$required,[bool]$testFlag,
+            [bool]$forceReviewDefine=$false){
+            $exe=Join-Path $env:RUNNER_TEMP ($label+'_C1_Isolated_x64.exe')
+            $args=@('/nologo','/target:exe','/platform:x64','/r:System.ServiceProcess.dll','/r:System.Core.dll')
+            if($testFlag){$args+=('/define:C1_SYNTHETIC_TEST')}
+            if($forceReviewDefine){$args+=('/define:C1_REVIEW_ISOLATED_ASSEMBLY')}
+            $args+=("/main:$main")
+            $args+=("/out:$exe")
+            $args+=$src
+            $compile=(& $csc @args 2>&1|Out-String)
+            if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($compile)){
+              Write-Output ('COMPILE_DIAGNOSTICS '+$label+' '+$compile)
+              throw ('P109 compile failed '+$label)
+            }
+            try{$output=(& $exe 2>&1|Out-String);$exit=$LASTEXITCODE}
+            catch{throw ('P109 native executable failed to start '+$label)}
+            Write-Output $output
+            $actual=([regex]::Matches($output,'(?m)^PASS\s+')).Count
+            if($exit -ne 0 -or $actual -ne $count -or
+              $output -notmatch [regex]::Escape($required)){
+              throw ('P109 actual native case failure '+$label+' native exit='+$exit+' count='+$actual)
+            }
+            Write-Output ('P109_'+$label+'_NATIVE_EXIT=0')
+            Write-Output ('P109_'+$label+'_ACTUAL_PASS_COUNT='+$actual)
+          }
+          # P112 strict assembly excludes original writable file and HKLM
+          # adapters, as well as the old credential transaction and vault.
+          $originalReview=@('ServiceGate.cs','ProtectedAcl.cs','CustodyLedger.cs')|
+            ForEach-Object{Join-Path $p49Dir $_}
+          $candidateReview=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+            'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs',
+            'CandidateCredentialEffectHold.cs','IsolatedCandidateContracts.cs',
+            'CandidateProtectedReadOnlySnapshot.cs')|
+            ForEach-Object{Join-Path $candDir $_}
+          $excluded=@('PendingCustodyTransaction.cs','PendingWinCredStore.cs',
+            'PendingServiceState.cs','ServiceCustodyMutex.cs',
+            'CustodyJournalFile.cs','CustodyRegistryAnchor.cs')
+          foreach($src in @($originalReview+$candidateReview)){
+            if($excluded -contains [IO.Path]::GetFileName($src)){
+              throw ('Writable/effect source in strict review assembly '+$src)
+            }
+          }
+          $safeReader=Get-Content (Join-Path $candDir 'CandidateProtectedReadOnlySnapshot.cs') -Raw
+          $writePatterns=@(
+            'FileAccess\.Write','FileAccess\.ReadWrite','FileMode\.Create',
+            'FileMode\.Append','\.SetValue\s*\(','\.DeleteValue\s*\(',
+            '\.CreateSubKey\s*\(','\.DeleteSubKey\s*\(',
+            '\bDllImport\b','\bRegFlushKey\b',
+            '\bCred(?:Write|Delete|Read)\w*\s*\('
+          )
+          foreach($pattern in $writePatterns){
+            # Strip C# comments before banning write-capable code snippets;
+            # this is an additional guard, NOT a replacement for IL audits.
+            $stripped=[regex]::Replace($safeReader,'(?s)/\*.*?\*/','')
+            $stripped=[regex]::Replace($stripped,'(?m)//.*$','')
+            if([regex]::IsMatch($stripped,$pattern)){
+              throw ('P112 read-only source mutation guard failed: '+$pattern)
+            }
+          }
+          $audit=Join-Path $root 'tests/p112_readonly_native_assembly/ReadOnlyCandidateAssemblyAuditTests.cs'
+          $auditSrc=@($originalReview+$candidateReview+@($audit))
+          $isolatedReviewDll=Join-Path $env:RUNNER_TEMP 'P112_NoStorageWriteCapabilities_Review_x64.dll'
+          $args=@('/nologo','/target:library','/platform:x64',
+                  '/define:C1_REVIEW_ISOLATED_ASSEMBLY','/r:System.ServiceProcess.dll',
+                  "/out:$isolatedReviewDll")
+          $out=(& $csc @($args+$originalReview+$candidateReview) 2>&1|Out-String)
+          if($LASTEXITCODE -ne 0 -or -not [string]::IsNullOrWhiteSpace($out)){
+            Write-Output $out
+            throw 'P112 strictly read-only candidate DLL failed compilation'
+          }
+          Write-Output 'P112_EXPLICIT_ALLOWLIST_P49_SOURCE_COUNT=3'
+          Write-Output 'P112_EXPLICIT_ALLOWLIST_CANDIDATE_SOURCE_COUNT=7'
+          Write-Output 'P112_OLD_JOURNAL_AND_REGISTRY_WRITE_ADAPTERS_IN_ALLOWLIST=FALSE'
+          Write-Output 'P112_READ_ONLY_STORAGE_SOURCE_WRITE_GUARD=PASS'
+          # P113 executes REAL unprivileged Windows named-pipe OS token
+          # impersonation, without signed UI approval, WinCred, keys or
+          # an installed privileged service. This source is separate from
+          # the P112 strictly read-only production-shaped candidate DLL.
+          $peerSource=Join-Path $root 'native_c1_g1_peer_review/WindowsPipePeerObservation.cs'
+          $peerDriver=Join-Path $root 'tests/p113_real_windows_pipe_peer/NativePipePeerIdentityTests.cs'
+          # P114: genuine separate process Windows OS pipe-client PID and
+          # image read, process-token SID and creation-time while holding
+          # query-only process HANDLE. No signed image acceptance, click,
+          # consent, real WinCred effect or elevated listener.
+          $p114Source=Join-Path $root 'native_c1_g1_peer_review/WindowsPipeClientProcessProvenance.cs'
+          $p114Driver=Join-Path $root 'tests/p114_real_windows_client_process/NativeProcessProvenanceTests.cs'
+          # P115: OS pipe session and process TOKEN session/integrity identity.
+          # No signed installed UI, interactive desktop proof or approval.
+          $p115Source=Join-Path $root 'native_c1_g1_peer_review/WindowsPipeClientSessionIntegrity.cs'
+          $p115Driver=Join-Path $root 'tests/p115_real_windows_session_integrity/NativeSessionIntegrityTests.cs'
+          # P116 tests REAL WinVerifyTrust native Authenticode rejection
+          # for unsigned runner-only test binary and forged unsigned content.
+          # No consent publisher pin, signed production UI or actual authority.
+          $p116Source=Join-Path $root 'native_c1_g1_peer_review/WindowsWintrustFilePolicyReview.cs'
+          $p116Driver=Join-Path $root 'tests/p116_wintrust_policy_negative/NativeWintrustNegativeTests.cs'
+          # P117: Windows FileIdInfo 128-bit ID and opened file handle
+          # native OS evidence. This is NOT live image-section authentication.
+          $p117Source=Join-Path $root 'native_c1_g1_peer_review/WindowsPipeClientFileIdentityReview.cs'
+          $p117Driver=Join-Path $root 'tests/p117_os_file_identity/NativeFileIdentityTests.cs'
+          # P118 same read-only Windows file HANDLE passed to native WinTrust
+          # and read twice for genuine 128-bit FileIdInfo, under held process.
+          # No approved publisher, live mapped-image trust or real consent.
+          $p118Source=Join-Path $root 'native_c1_g1_peer_review/WindowsSameHandleFilePolicyReview.cs'
+          $p118Driver=Join-Path $root 'tests/p118_native_same_handle_review/NativeSameHandleReviewTests.cs'
+          # P120: test-assembly-only CSPRNG one-use canonical operation echo.
+          # Explicit NON-AUTHORITATIVE synthetic peer and clock, no human click,
+          # protected approval, installed Windows service or native effect.
+          $p120Source=Join-Path $root 'native_c1_g1_peer_review/ReviewOnlyOperationChallenge.cs'
+          $p120Driver=Join-Path $root 'tests/p120_review_only_operation_challenge/NativeOperationChallengeTests.cs'
+          # P121: actual Windows pipe, unprivileged OS peer/session
+          # observation + P120 review-only one-use challenge transport.
+          # No signed installed UI, real human consent, protected grant.
+          $p121Source=Join-Path $root 'native_c1_g1_peer_review/WindowsReviewOnlyPipeChallengeExchange.cs'
+          $p121Driver=Join-Path $root 'tests/p121_real_windows_pipe_challenge/NativePipeChallengeTests.cs'
+          # P122: real Windows slowloris/stall/partial native pipe read
+          # absolute deadline, CancelIoEx request and EndRead completion.
+          # Independent review primitive, NOT installed in P121 exchange.
+          $p122Source=Join-Path $root 'native_c1_g1_peer_review/WindowsReviewOnlyAbsolutePipeDeadline.cs'
+          $p122Driver=Join-Path $root 'tests/p122_absolute_pipe_read_deadline/NativePipeDeadlineTests.cs'
+          # P123: ACTUAL P121 review-only exchange now integrates P122
+          # one absolute read deadline, native cancel and completed EndRead.
+          # Historical P121 commit is intact but code in P123 is modified.
+          $p123Driver=Join-Path $root 'tests/p123_integrated_absolute_pipe_timeout/NativeIntegratedPipeTimeoutTests.cs'
+          # P124: actual Win32 DuplicateHandle/WriteFile from a different
+          # unprivileged Windows child process to the SAME named pipe.
+          # Negative proof: OS GetNamedPipeClientProcessId reports original
+          # opener while message writer differs. NO consent approval.
+          $p124Driver=Join-Path $root 'tests/p124_real_transferred_pipe_writer/NativeTransferredPipeWriterNegativeTests.cs'
+          Run-ExactSyntheticNative 'P124_TRANSFERRED_HANDLE_REDTEAM' 'P124ActualTransferredPipeWriterTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p120Source,$p121Source,$p122Source,$p124Driver)) 12 'P124_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P123_INTEGRATED_NATIVE_PIPE_TIMEOUT' 'P123IntegratedPipeDeadlineTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p120Source,$p121Source,$p122Source,$p123Driver)) 16 'P123_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P122_WINDOWS_DEADLINE_CANCEL' 'P122AbsolutePipeDeadlineTests' ($originalReview+$candidateReview+@($p122Source,$p122Driver)) 16 'P122_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P121_REAL_WINDOWS_PIPE_CHALLENGE' 'P121NativePipeChallengeTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p120Source,$p121Source,$p122Source,$p121Driver)) 14 'P121_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P120_REVIEW_ONLY_CHALLENGE' 'P120NativeOperationChallengeTests' ($originalReview+$candidateReview+@($p120Source,$p120Driver)) 27 'P120_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P118_REAL_WINDOWS_SAME_HANDLE' 'P118NativeSameHandleReviewTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p116Source,$p117Source,$p118Source,$p118Driver)) 14 'P118_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P117_REAL_WINDOWS_FILE_ID' 'P117NativeFileIdentityReviewTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p116Source,$p117Source,$p117Driver)) 14 'P117_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P116_NATIVE_WINTRUST_NEGATIVE' 'P116WintrustNativeNegativeTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p116Source,$p116Driver)) 14 'P116_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P115_OS_PIPE_SESSION_INTEGRITY' 'P115NativePipeSessionIntegrityTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p115Source,$p115Driver)) 14 'P115_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P114_CROSS_PROCESS_OS_PROVENANCE' 'P114NativeProcessProvenanceTests' ($originalReview+$candidateReview+@($peerSource,$p114Source,$p114Driver)) 14 'P114_C1_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P113_REAL_WINDOWS_OS_PIPE_PEER' 'P113RealWindowsPeerIdentityTests' ($originalReview+$candidateReview+@($peerSource,$peerDriver)) 14 'P113_G1_PRODUCTION_TRUST=HOLD' $false -forceReviewDefine $true
+          Run-ExactSyntheticNative 'P112_READONLY_STORAGE_ASSEMBLY' 'P112ReadOnlyCandidateAssemblyAudit' $auditSrc 27 'P112_PRODUCTION_RELEASE=HOLD' $false -forceReviewDefine $true
+          $p110Dir=Join-Path $root 'tests/p110_fixed_pending_effect'
+          Run-ExactSyntheticNative 'P110_FIXED_EFFECT_SYNTHETIC' 'P110FixedPendingEffectTests' ($ten+$cand+@((Join-Path $p110Dir 'NativeFixedEffectAtomicityTests.cs'))) 19 'P110_REAL_PENDING_WINCRED_EFFECTS=ZERO' $true
+          Run-ExactSyntheticNative 'P110_ORDINARY_EFFECT_SURFACE' 'P110OrdinaryEffectSurfaceAuditTests' ($ten+$cand+@((Join-Path $p110Dir 'OrdinaryEffectSurfaceAuditTests.cs'))) 8 'P110_RELEASE_INTENDED_ASSEMBLY_TEST_ONLY_EFFECTS_ABSENT=TRUE' $false
+          $p109Dir=Join-Path $root 'tests/p109_native_oneuse_linearization'
+          Run-ExactSyntheticNative 'P109_ONEUSE_SYNTHETIC' 'P109NativeOneUseLinearizationTests' ($ten+$cand+@((Join-Path $p109Dir 'NativeOneUseLinearizationTests.cs'))) 21 'P109_ORIGINAL_P96_RACE_STILL_OPEN=TRUE' $true
+          Run-ExactSyntheticNative 'P109_ORDINARY_NO_TEST_SWITCH' 'P109OrdinaryAssemblyAuditTests' ($ten+$cand+@((Join-Path $p109Dir 'OrdinaryAssemblyAuditTests.cs'))) 8 'P109_ORDINARY_SYNTHETIC_POSITIVE_METHODS_PRESENT=FALSE' $false
+          Run-ExactSyntheticNative 'P108_TERMINAL_DENIAL' 'P108NativeTerminalDenialTests' ($ten+$cand+@((Join-Path $root 'tests/p108_native_terminal_denial/NativeTerminalDenialTests.cs'))) 15 'P108_LEGACY_P96_RACE_FIX=NOT_IMPLEMENTED' $false
+          Run-ExactSyntheticNative 'P106_ORIGINAL_NATIVE_PREVIEW' 'P106NativeJ2HostPreflightTests' ($ten+$cand+@((Join-Path $root 'tests/p106_native_j2_host_preflight/NativeJ2HostPreflightTests.cs'))) 23 'P106_PRODUCTION_RELEASE=HOLD' $false
+          Run-ExactSyntheticNative 'P99_ORIGINAL_DENIAL' 'P99FullOriginalNativeDenialTests' ($all+@((Join-Path $p49Dir 'FullOriginalNativeDenialTests.cs'))) 20 'P99_C1_PRODUCTION_RELEASE=HOLD' $false
+          $negative=Join-Path $root 'tests/p96_native_transaction_negative'
+          Run-ExactSyntheticNative 'P96_ORIGINAL_RACE_NEGATIVE' 'Nayeon.ByokC1.P96NegativeProof' (@((Join-Path $negative 'PendingCustodyTransaction.cs'),(Join-Path $negative 'NativeTransactionRaceProof.cs'),(Join-Path $p49Dir 'CustodyLedger.cs'))) 15 'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY' $false
+          Write-Output 'P114_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=184_PASS'
+          Write-Output 'P114_P96_ACTUAL_LEGACY_CONSENT_EFFECT_RACE=STILL_REPRODUCED_NOT_FIXED'
+          Write-Output 'P114_PRODUCTION_BUILD_POSITIVE_SYNTHETIC_METHODS=ABSENT'
+          Write-Output 'P114_NO_WINCRED_OR_ACTUAL_CUSTODY_EFFECTS=TRUE'
+          Write-Output 'P114_NATIVE_SERVICE_NOT_DEPLOYED=TRUE'
+          Write-Output 'P114_KRISTIAN_SMART_APP_CONTROL=UNCHANGED'
+          Write-Output 'P114_NO_QUALIFIED_INDEPENDENT_REVIEW=TRUE'
+          Write-Output 'P114_C1_PRODUCTION_RELEASE=HOLD'
+          Write-Output 'P115_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=198_PASS'
+          Write-Output 'P115_G1_SIGNED_CONSENT_AND_ONEUSE_GRANT=NOT_IMPLEMENTED'
+          Write-Output 'P115_P96_ORIGINAL_RACE=STILL_OPEN'
+          Write-Output 'P115_NO_NATIVE_CREDENTIAL_EFFECTS=TRUE'
+          Write-Output 'P115_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P116_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=212_PASS'
+          Write-Output 'P116_G1_SIGNED_INSTALLED_APPROVED_CONSENT=NOT_IMPLEMENTED'
+          Write-Output 'P116_P96_LEGACY_REVOCATION_EFFECT_RACE=OPEN'
+          Write-Output 'P116_NO_REAL_WINCRED_EFFECTS=TRUE'
+          Write-Output 'P116_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P117_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=226_PASS'
+          Write-Output 'P117_ACTUAL_MAPPED_IMAGE_SECTION_SIGNER_TRUST=NOT_PROVEN'
+          Write-Output 'P117_HUMAN_CONSENT_ONEUSE=NOT_IMPLEMENTED'
+          Write-Output 'P117_P96_LEGACY_RACE=STILL_OPEN'
+          Write-Output 'P117_NO_REAL_NATIVE_WINCRED_EFFECT=TRUE'
+          Write-Output 'P117_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P118_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=240_PASS'
+          Write-Output 'P118_G1_LOADED_IMAGE_BINDING_SIGNED_CONSENT=NOT_IMPLEMENTED'
+          Write-Output 'P118_NATIVE_WINCRED_MUTATION=NONE'
+          Write-Output 'P118_ORIGINAL_P96_REVOCATION_TO_EFFECT_RACE=OPEN'
+          Write-Output 'P118_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P120_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=267_PASS'
+          Write-Output 'P120_CHALLENGE_MATCH=NOT_HUMAN_CONSENT'
+          Write-Output 'P120_SERVICE_OWNED_TRUSTED_SIGNED_BROKER=ABSENT'
+          Write-Output 'P120_PROTECTED_GRANT_OR_WINCRED_NATIVE_EFFECT=ZERO'
+          Write-Output 'P120_P96_OLD_EFFECT_RACE=STILL_OPEN'
+          Write-Output 'P120_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P121_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=281_PASS'
+          Write-Output 'P121_REAL_WINDOWS_PIPE_PEER_SESSION=OBSERVED'
+          Write-Output 'P121_SIGNED_CONSENT_UI_HUMAN_CLICK=NOT_PROVEN'
+          Write-Output 'P121_NATIVE_WINCRED_AND_DURABLE_GRANT=NONE'
+          Write-Output 'P121_ORIGINAL_P96_EFFECT_RACE=OPEN'
+          Write-Output 'P121_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P122_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=297_PASS'
+          Write-Output 'P122_NATIVE_WINDOWS_CANCEL_COMPLETION=PROVEN_IN_HOSTED_TESTS_ONLY'
+          Write-Output 'P122_ORIGINAL_P121_COMMIT_IMMUTABLE_IN_HISTORY=TRUE'
+          Write-Output 'P122_G1_ACTUAL_HUMAN_SIGNED_CONSENT=ABSENT'
+          Write-Output 'P122_WINCRED_NATIVE_EFFECT=NONE'
+          Write-Output 'P122_ORIGINAL_P96_REVOCATION_EFFECT_RACE=OPEN'
+          Write-Output 'P122_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P123_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=313_PASS'
+          Write-Output 'P123_P121_REVIEW_EXCHANGE_ABSOLUTE_READ_INTEGRATED=TRUE'
+          Write-Output 'P123_P121_HISTORICAL_COMMIT_PRESERVED=TRUE'
+          Write-Output 'P123_TIMEOUT_LATE_REPLY_NO_APPROVAL=TESTED'
+          Write-Output 'P123_REAL_SIGNED_HUMAN_CONSENT=ABSENT'
+          Write-Output 'P123_WINCRED_AND_DURABLE_GRANT=NONE'
+          Write-Output 'P123_ORIGINAL_P96_REVOCATION_EFFECT_RACE=OPEN'
+          Write-Output 'P123_C1_PRODUCTION_RELEASE=HOLD'
+
+          Write-Output 'P124_ALL_ISOLATED_WINDOWS_NATIVE_FOCUSED_CASES=325_PASS'
+          Write-Output 'P124_WIN32_DUPLICATEHANDLE_REPLY_AUTHOR_GAP=REPRODUCED'
+          Write-Output 'P124_OS_PIPE_OPENER_PID_NOT_AUTHOR_AUTHENTICATION=TRUE'
+          Write-Output 'P124_NO_POSITIVE_SIGNED_BROKER_HUMAN_CONSENT=TRUE'
+          Write-Output 'P124_NO_NATIVE_WINCRED_EFFECT=TRUE'
+          Write-Output 'P124_ORIGINAL_P96_RACE=OPEN'
+          Write-Output 'P124_C1_PRODUCTION_RELEASE=HOLD'
