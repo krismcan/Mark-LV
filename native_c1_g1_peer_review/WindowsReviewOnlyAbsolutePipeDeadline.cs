@@ -96,7 +96,6 @@ namespace Nayeon.ByokC1
             int offset=0;
             bool allReadsEnded=true;
             bool attemptedCancel=false;
-            bool forcedClose=false;
             bool deadlineReached=false;
             var clock=Stopwatch.StartNew();
 
@@ -137,7 +136,6 @@ namespace Nayeon.ByokC1
                         if(!pending.AsyncWaitHandle.WaitOne(
                             CancellationDrainGraceMs))
                         {
-                            forcedClose=true;
                             try{ownedExclusivePipe.Dispose();}
                             catch(Exception){}
                         }
