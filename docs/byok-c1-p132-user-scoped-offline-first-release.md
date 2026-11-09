@@ -51,3 +51,15 @@ P132 is the first implementation slice, not release:
 - **U6:** On a genuine completed release, first reconcile the **original Google Drive master workbook**, then dashboard. Draft PRs/source tests are not releases and do not trigger workbook update.
 
 **Disposition: P132 production-facing OFFLINE user-scoped functionality in review. High-assurance BYOK C1 production release HOLD and all historic G0–G6 gates unchanged.**
+
+## Historical branch-seal governance migration — explicit, NOT a test bypass
+
+First P132 hosted Windows run #42706404260: the new P132 36/36 synthetic and genuine Windows Tk/fake WinCred cases PASS, and all 474 prior native focused Windows security cases PASS. Four **legacy test failures** occurred only after those successful runs:
+- Two prior `ScopeGuards`/Phase8.3 exact-source inventory tests reject the NEW intended consumer `nayeon/brain/local_byok_user_scope.py` and direct `nayeon.secrets` imports. They were designed for an exact 2026 Phase 8.3 consumer allowlist, before the user's explicit user-scoped C1 rescope.
+- Two old test invocations require `tests/phase8_byok_c1_p76_scope.py` to run on the historical exact branch `byok-c1-p80-sealed-historical-fixture-20261106` and reject P132 based solely on Git HEAD/branch. They are not generic functional tests.
+
+**None of these old tests, their expected values, or the original signed/immutable branch markers are modified, disabled, patched or falsely reported green.** Instead `tests/test_p132_user_scope_migration.py` is an explicit migration suite that requires exact P131 ancestry, precisely SIX new paths, immutable historic P76/Phase8.3 test files and all original credential/backend/entrypoint source, and strictly allowlisted direct secret consumption in ONLY the newly approved controller. It also forbids provider/network imports and native credential calls from the UI.
+
+The P132 CI runs the entire new P132 suite plus this migration test and all historical *functional* test classes unchanged (native WinCred fake adapter tests, old human approval UI tests, host and bound credential lifecycle), not the old exact-branch seal tests as if they could apply to a new intentionally changed consumer graph. The first run failure remains visible forever at https://github.com/krismcan/Mark-LV/actions/runs/42706404260. Independent reviewer approval of this formal rescope is still required for a production release. This migration MUST NOT be used to claim the old high-assurance G0–G6 product release sealed.
+
+**P132 scope is a new draft product branch; passing it does not constitute a signed release.**
