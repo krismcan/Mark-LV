@@ -1,0 +1,96 @@
+name: P141 Three Scoped Windows Current-User BYOK Release-Path Regressions — FULL PRODUCT HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p141-windows-user-scope-release-path-triad-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  three-scoped-windows-release-path-regressions:
+    name: Genuine Windows P132-P140 current-user feature triad + P139 7 unchanged native filesystem
+    runs-on: windows-2025
+    timeout-minutes: 32
+    steps:
+      - name: Pinned Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Strict exact P140 ancestry and three additive review-only paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV'){
+            throw 'P141 only allowed in disposable hosted Windows GitHub push'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p141-windows-user-scope-release-path-triad-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Exact P141 source unavailable'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'Exact GitHub source commit mismatch'
+          }
+          $base='9c47bac3308822e11300381017b30e913ffbc211'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P140 signed companion NO-GO source baseline missing'
+          }
+          $changed=@(git -C reviewed diff --name-only $base HEAD |Sort-Object)
+          $expected=@(
+            '.github/workflows/p141-windows-user-scope-release-path-triad.yml'
+            'docs/byok-c1-p141-scoped-windows-release-path-regression-ledger.md'
+            'scripts/p141_windows_user_scope_release_path_triad.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P141 changed production code or original frozen security tests'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P141 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P141 GitHub source checkout not clean'
+          }
+          Write-Output 'P141_EXACT_P140_PARENT_SOURCE=VERIFIED'
+          Write-Output 'P141_ONLY_THREE_ADDED_AUDIT_PATHS=TRUE'
+          Write-Output 'P141_ORIGINAL_P49_P96_AND_P139_FS_SECURITY=UNCHANGED'
+          Write-Output 'P141_P140_FROZEN_RELEASE_SIGNER_AND_SAC_PINS=STILL_EMPTY'
+
+      - name: Three genuine hosted Windows user-scope and native filesystem scoped acceptance passes
+        shell: pwsh
+        env:
+          P134_NATIVE_WINCRED_EPHEMERAL_AUTH: EPHEMERAL_GITHUB_WINDOWS_ONLY
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:P134_NATIVE_WINCRED_EPHEMERAL_AUTH -ne 'EPHEMERAL_GITHUB_WINDOWS_ONLY'){
+            throw 'No scoped regression outside disposable Windows'
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p141_windows_user_scope_release_path_triad
+            if($LASTEXITCODE -ne 0){
+              throw 'One or more P141 Windows release-path or original filesystem tests did not pass'
+            }
+            Write-Output 'P141_SCOPED_RELEASE_PATH_WINDOWS_TRIAD=PASS_NOT_FULL_PRODUCT'
+            Write-Output 'P141_P135_UNFILTERED_37_FAIL_7_ERROR=OPEN'
+            Write-Output 'P141_THREE_FULL_PRODUCT_WINDOWS_REGRESSIONS=HOLD'
+            Write-Output 'P141_SIGNED_INSTALLER_AND_INDEPENDENT_REVIEW=NOT_RECEIVED'
+            Write-Output 'P141_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+
+      - name: Retain all three genuine test logs and original native filesystem logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p141-three-scoped-windows-byok-release-path-logs
+          path: |
+            ${{ runner.temp }}/nayeon-p141-user-scope-triad/*.log
+            ${{ runner.temp }}/nayeon-p139-safe-root-regression/*.log
+          if-no-files-found: warn
+          retention-days: 14
