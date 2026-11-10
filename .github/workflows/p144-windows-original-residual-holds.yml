@@ -1,0 +1,83 @@
+name: P144 Original Windows Residual-Hold Audit Under Verified Local Root — DIAGNOSTIC ONLY
+
+on:
+  push:
+    branches:
+      - byok-c1-p144-original-windows-residual-holds-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-residual-module-audit:
+    name: Collect authentic unchanged Windows module outcomes; preserve all holds
+    runs-on: windows-2025
+    timeout-minutes: 21
+    steps:
+      - name: Fixed hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P143 baseline and ONLY three additive audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P144 is hosted Windows diagnostic only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p144-original-windows-residual-holds-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P144 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P144 exact HEAD mismatch'
+          }
+          $base='3e4075afa119b7cecf14dc349ac620661cb36403'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P143 original verified source ancestor missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p144-windows-original-residual-holds.yml'
+            'docs/byok-c1-p144-original-residual-windows-audit.md'
+            'scripts/p144_windows_original_residual_module_triage.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Original product, historical tests or unexpected paths modified'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P144 source diff invalid'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P144 source readback dirty'
+          }
+          Write-Output 'P144_EXACT_P143_BASE_WITH_THREE_ADDITIVE_AUDIT_PATHS=TRUE'
+          Write-Output 'P144_P132_P133_P140_SIGNED_GATE_AND_P139_HANDLE_SECURITY=UNCHANGED'
+          Write-Output 'P144_ORIGINAL_ALL_WINDOWS_TEST_ASSERTIONS=UNCHANGED'
+      - name: Collect bounded native Windows results for 15 previously failing full modules
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -m py_compile scripts/p144_windows_original_residual_module_triage.py
+            if($LASTEXITCODE -ne 0){throw 'P144 diagnostic source compile failure'}
+            python -B -m scripts.p144_windows_original_residual_module_triage
+            if($LASTEXITCODE -ne 0){throw 'P144 failed to collect all 15 original module rows'}
+            Write-Output 'P144_ORIGINAL_RESIDUAL_MODULE_COLLECTION=COMPLETE'
+            Write-Output 'P144_P135_FULL_PRODUCT_THREE_REGRESSIONS=STILL_HOLD'
+            Write-Output 'P144_QUALIFIED_REVIEW_AND_SIGNED_RELEASE=NOT_APPROVED'
+            Write-Output 'P144_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Retain authentic per-module stdout/stderr and JSON manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p144-original-15-windows-residual-module-raw-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p144-original-residual-evidence/*.log
+            ${{ runner.temp }}/nayeon-p144-original-residual-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
