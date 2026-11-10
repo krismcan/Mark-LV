@@ -1,0 +1,72 @@
+name: P136 Bounded Historical BYOK B Full-Regression Stall Diagnosis — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p136-isolated-windows-hang-diagnostic-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  isolate-unchanged-historical-test:
+    name: Native Windows bounded faulthandler exact stalled historical test
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone exact unchanged historical test and assert three-file review delta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV'){
+            throw 'Hosted Windows exact GitHub synthetic audit only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p136-isolated-windows-hang-diagnostic-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Exact review source unavailable'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'HEAD not exactly approved P136 audit source'
+          }
+          $base='57f9485315479e22887ccb62d9f76e06d064d7ae'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P135 failing original regression baseline not ancestor'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p136-windows-bounded-historical-hang-diagnosis.yml'
+            'docs/byok-c1-p136-historical-test-hang-triage.md'
+            'scripts/p136_windows_historical_seal_hang_probe.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P136 attempted modification of frozen production or historic test'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Whitespace or source drift'}
+          Write-Output 'P136_EXACT_THREE_AUDIT_ONLY_NEW_PATHS=TRUE'
+          Write-Output 'P136_ORIGINAL_HISTORICAL_TESTS_IMMUTABLE=TRUE'
+      - name: Bounded genuine Windows single-test faulthandler diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B scripts/p136_windows_historical_seal_hang_probe.py
+            if($LASTEXITCODE -ne 0){throw 'P136 diagnostic evidence collection failed'}
+            Write-Output 'P136_SINGLE_HISTORICAL_TEST_DIAGNOSTIC=CAPTURED'
+            Write-Output 'P136_FULL_PRODUCT_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P136_SIGNED_PACKAGE_AND_INDEPENDENT_REVIEW=NOT_COMPLETE'
+            Write-Output 'P136_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Preserve exact single-test stack trace whether pass or timeout
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p136-exact-windows-historical-stall-stack-evidence
+          path: ${{ runner.temp }}/nayeon-p136-hang-diagnostic/*.log
+          if-no-files-found: warn
+          retention-days: 14
