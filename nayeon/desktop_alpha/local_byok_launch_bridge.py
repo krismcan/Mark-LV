@@ -57,12 +57,13 @@ class LocalByokLaunchBridge:
         if not self._gate.acquire(blocking=False):
             return LocalByokLaunchResult.BUSY
         try:
-            # A packaged/frozen build must supply a separately reviewed
-            # signed native launcher rather than attempting Python -m.
-            if (sys.platform != "win32" or getattr(sys, "frozen", False)
-                    or not sys.executable or
+            # Source mode still launches the fixed Python module exactly as
+            # P133. Frozen mode has a different, independently signed native
+            # companion admission gate; P140 has NO approved release pins.
+            if (sys.platform != "win32" or not sys.executable or
                     not Path(sys.executable).is_absolute()):
                 return LocalByokLaunchResult.UNAVAILABLE
+            frozen = getattr(sys, "frozen", False) is True
 
             if self._child is not None:
                 try:
@@ -73,15 +74,30 @@ class LocalByokLaunchBridge:
                     return LocalByokLaunchResult.UNAVAILABLE
                 self._child = None
 
-            source_root = Path(__file__).resolve().parents[2]
-            if not (source_root / "nayeon" / "desktop_alpha"
-                    / "local_byok_window.py").is_file():
-                return LocalByokLaunchResult.UNAVAILABLE
+            if frozen:
+                # No fallback to Python -m, PATH lookup, unsigned helper or
+                # unpinned adjacent executable. The gate currently ALWAYS
+                # refuses (no signer/pins/Code Integrity policy owner GO).
+                from nayeon.desktop_alpha.frozen_signed_byok_companion import (
+                    approved_frozen_local_byok_companion,
+                )
+                approved = approved_frozen_local_byok_companion()
+                if approved is None:
+                    return LocalByokLaunchResult.UNAVAILABLE
+                command = [str(approved)]
+                working_dir = approved.parent
+            else:
+                source_root = Path(__file__).resolve().parents[2]
+                if not (source_root / "nayeon" / "desktop_alpha"
+                        / "local_byok_window.py").is_file():
+                    return LocalByokLaunchResult.UNAVAILABLE
+                command = [sys.executable, "-B", "-m", _CHILD_MODULE]
+                working_dir = source_root
 
             try:
                 child = subprocess.Popen(
-                    [sys.executable, "-B", "-m", _CHILD_MODULE],
-                    cwd=str(source_root),
+                    command,
+                    cwd=str(working_dir),
                     env=_child_windows_environment(),
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
