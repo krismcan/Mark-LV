@@ -1,0 +1,76 @@
+name: P148 Genuine Windows Original A04 Recovery Full-Module Cost Gate — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p148-original-windows-a04-full-module-recovery-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-a04-module:
+    name: Entire historical Windows A04 two-process module, source unchanged
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Windows Python 3.12 disposable original test host
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve P147 exact source and three additive diagnostic-only paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P148 requires ephemeral hosted Windows only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p148-original-windows-a04-full-module-recovery-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P148 exact branch clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P148 exact HEAD changed'}
+          $base='f0e34bbbccec995e5d5d5e277e582702be8b9428'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'Missing P147 exact ancestor'}
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p148-windows-original-a04-full-module.yml'
+            'docs/byok-c1-p148-original-windows-a04-two-process-review.md'
+            'scripts/p148_windows_original_a04_full_module_recovery.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'A04 historical test or current product/security source modified'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Source integrity diff --check refusal'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source checkout dirty'}
+          Write-Output 'P148_P147_EXACT_PARENT_THREE_ONLY_AUDIT_PATHS=PASS'
+          Write-Output 'P148_ORIGINAL_A04_TEST_AND_WIN32_HANDLE_GUARD=UNCHANGED'
+      - name: Run complete original Windows A04 module under verified local handle-root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p148_windows_original_a04_full_module_recovery
+            if($LASTEXITCODE -ne 0){
+              throw 'Cannot collect complete bounded original A04 test result'
+            }
+            Write-Output 'P148_A04_FULL_MODULE_DIAGNOSTIC_COLLECTION=COMPLETE'
+            Write-Output 'P148_A04_TEST_PASS_ONLY_IF_NATIVE_EXIT_ZERO_AND_OK=TRUE'
+            Write-Output 'P148_WHOLE_PRODUCT_THREE_FULL_WINDOWS_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P148_USER_SCOPE_C1_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve complete original native log and JSON SHA-256 receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p148-original-A04-Windows-full-module-raw-log
+          path: |
+            ${{ runner.temp }}/nayeon-p148-a04-original-module/*.log
+            ${{ runner.temp }}/nayeon-p148-a04-original-module/*.json
+          if-no-files-found: warn
+          retention-days: 14
