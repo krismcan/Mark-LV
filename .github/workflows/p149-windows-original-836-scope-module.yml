@@ -1,0 +1,74 @@
+name: P149 Original Windows Phase8.36 Scope Integrity Bounded Full Module — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p149-windows-original-836-scope-module-recovery-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-phase836-history:
+    name: Entire original Windows Phase8.36 scope module with genuine native verdict
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Disposable Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P148 predecessor and no change to frozen historic tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P149 requires disposable GitHub Windows runner only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p149-windows-original-836-scope-module-recovery-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P149 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P149 HEAD differs from event SHA'}
+          $base='a08bcb2b459da5edab673333f0e45be52a24230c'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'Original P148 baseline missing'}
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p149-windows-original-836-scope-module.yml'
+            'docs/byok-c1-p149-original-windows-836-scope-recovery.md'
+            'scripts/p149_windows_original_phase836_scope_recovery.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Unexpected historic test/product/security source change'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Source diff --check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source clone dirty'}
+          Write-Output 'P149_EXACT_P148_PARENT_THREE_AUDIT_PATHS=PASS'
+          Write-Output 'P149_ORIGINAL_HISTORIC_SOURCE_AND_P139_P140_GUARDS=UNCHANGED'
+      - name: Run full original Phase8.36 Windows module, no test method filtering
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p149_windows_original_phase836_scope_recovery
+            if($LASTEXITCODE -ne 0){throw 'P149 original test outcome evidence not captured'}
+            Write-Output 'P149_ORIGINAL_FULL_MODULE_DIAGNOSTIC_COLLECTION=COMPLETE'
+            Write-Output 'P149_NATIVE_EXIT_AND_COMPLETE_UNITTEST_FOOTER_AUTHORITATIVE=TRUE'
+            Write-Output 'P149_THREE_FULL_PRODUCT_WINDOWS_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P149_USER_SCOPE_BYOK_C1_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Retain native full test log and genuine SHA256 receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p149-original-phase836-Windows-unfiltered-module-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p149-original-836-scope/*.log
+            ${{ runner.temp }}/nayeon-p149-original-836-scope/*.json
+          if-no-files-found: warn
+          retention-days: 14
