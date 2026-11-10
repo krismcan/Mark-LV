@@ -1,0 +1,77 @@
+name: P139 Actual Windows Seven Native FS Regression Tests Under Verified Safe Local Temp — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p139-verified-windows-temp-root-native-filesystem-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  unchanged-native-fs-with-verified-owned-temp:
+    name: Validate strict opened-handle Windows local temp, run seven original tests
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Set Python 3.12 exact hosted Windows
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact source scope and original strict filesystem unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P139 actual native filesystem test only on disposable Windows runner'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p139-verified-windows-temp-root-native-filesystem-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'Exact HEAD mismatch'
+          }
+          $base='956d1347992cabe6af1c67f9f937f6386208ccec'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'Exact P138 reproduced unsafe-path source parent missing'
+          }
+          $changed=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p139-windows-owned-safe-temp-native-fs.yml'
+            'docs/byok-c1-p139-verified-native-windows-temporary-root-review.md'
+            'scripts/p139_native_fs_verified_local_temp_root.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P139 modified historical security guard, FS product or test source'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Source diff invalid'}
+          Write-Output 'P139_EXACT_THREE_ADDITIVE_DIAGNOSTIC_PATHS=TRUE'
+          Write-Output 'P139_ORIGINAL_FILESYSTEM_AND_TEST_SOURCE_UNCHANGED=TRUE'
+      - name: Test seven unchanged real Win32 filesystem cases against verified local owned temp
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p139_native_fs_verified_local_temp_root
+            if($LASTEXITCODE -ne 0){
+              throw 'P139 unchanged native Windows filesystem tests or strict safe temp guard failed; HOLD'
+            }
+            Write-Output 'P139_ORIGINAL_SEVEN_NATIVE_WINDOWS_FILE_TESTS=PASS_WITH_VERIFIED_LOCAL_FIXTURE'
+            Write-Output 'P139_NO_ORIGINAL_SECURITY_GUARD_OR_EXPECTATION_WEAKENED=TRUE'
+            Write-Output 'P139_GITHUB_DEFAULT_TEMP_UNSAFE_REFUSAL=RETAINED'
+            Write-Output 'P139_THREE_FULL_WINDOWS_PRODUCT_REGRESSIONS=STILL_HOLD'
+            Write-Output 'P139_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain actual original native Windows seven test logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p139-verified-local-root-seven-native-original-tests
+          path: ${{ runner.temp }}/nayeon-p139-safe-root-regression/*.log
+          if-no-files-found: warn
+          retention-days: 14
