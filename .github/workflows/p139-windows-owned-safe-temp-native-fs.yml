@@ -57,7 +57,7 @@ jobs:
           $ErrorActionPreference='Stop'
           Push-Location reviewed
           try {
-            python -B scripts/p139_native_fs_verified_local_temp_root.py
+            python -B -m scripts.p139_native_fs_verified_local_temp_root
             if($LASTEXITCODE -ne 0){
               throw 'P139 unchanged native Windows filesystem tests or strict safe temp guard failed; HOLD'
             }
