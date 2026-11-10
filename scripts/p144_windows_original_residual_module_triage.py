@@ -44,7 +44,7 @@ ORIGINAL_P142_HOLDS_NOT_IN_P143 = (
 EXPECTED_MODULES = 15
 MAX_MODULE_SECONDS = 80
 WORKERS = 3
-COUNT = re.compile(r"Ran (\\d+) tests? in [\\d.]+s")
+COUNT = re.compile(r"Ran (\d+) tests? in [\d.]+s")
 SECRET_ENV = {
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
     "GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN",
