@@ -1,0 +1,81 @@
+name: P147 Windows Source Custody and Independent Security Review Packet — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p147-user-scope-regression-governance-packet-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-source-and-governance-custody:
+    name: Windows SHA-256 proof historical tests and frozen signed-launch NO-GO unchanged
+    runs-on: windows-2025
+    timeout-minutes: 11
+    steps:
+      - name: Fixed disposable Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone exact GitHub HEAD and require only three audit files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P147 requires disposable Windows Actions only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p147-user-scope-regression-governance-packet-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P147 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P147 GitHub source HEAD mismatch'
+          }
+          $base='a215b4b23063092ed6087dd4581d50b2b53cde1a'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P146 ancestor not found'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p147-windows-governance-source-custody.yml'
+            'docs/byok-c1-p147-user-scope-independent-security-review.md'
+            'scripts/p147_windows_review_packet_custody.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Historical test, original source or unapproved path changed'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P147 source diff invalid'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P147 source readback dirty'
+          }
+          Write-Output 'P147_EXACT_P146_GIT_PARENT_AND_THREE_NEW_AUDIT_FILES=PASS'
+          Write-Output 'P147_ORIGINAL_HISTORICAL_SECURITY_TESTS_PRESERVED=TRUE'
+      - name: Prove protected source byte custody and fail-closed signed frozen gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p147_windows_review_packet_custody
+            if($LASTEXITCODE -ne 0){
+              throw 'P147 provenance or release NO-GO source custody refusal'
+            }
+            Write-Output 'P147_SHA256_SOURCE_AND_HISTORICAL_TEST_CUSTODY=PASS'
+            Write-Output 'P147_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P147_THREE_FULL_WINDOWS_PRODUCT_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P147_SIGNER_CODE_INTEGRITY_RELEASE=NOT_AUTHORISED'
+            Write-Output 'P147_USER_SCOPE_C1_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Preserve reviewer manifest and immutable source SHA-256 inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p147-windows-user-scope-governance-source-sha256
+          path: ${{ runner.temp }}/nayeon-p147-review-custody/*.json
+          if-no-files-found: warn
+          retention-days: 14
