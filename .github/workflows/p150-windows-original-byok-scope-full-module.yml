@@ -1,0 +1,74 @@
+name: P150 Original Windows BYOK Scope-Integrity Full Module — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p150-windows-original-byok-scope-recovery-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-byok-scope-integrity:
+    name: Genuine hosted Windows unfiltered historical BYOK source guards
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Disposable Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact GitHub P149 ancestor and ONLY three new diagnostic source paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P150 requires ephemeral hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p150-windows-original-byok-scope-recovery-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P150 exact branch clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P150 HEAD drift'}
+          $base='11e3f0963c9ff37469d6b4c75b2ddb5407cc9706'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'P149 baseline missing'}
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p150-windows-original-byok-scope-full-module.yml'
+            'docs/byok-c1-p150-original-windows-byok-scope-recovery.md'
+            'scripts/p150_windows_original_byok_scope_recovery.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P150 unexpected test, security or product source change'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P150 invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'P150 source dirty'}
+          Write-Output 'P150_P149_EXACT_PARENT_AND_THREE_AUDIT_PATHS=PASS'
+          Write-Output 'P150_HISTORICAL_BYOK_TEST_AND_P139_P140_SOURCE=UNMODIFIED'
+      - name: Run ALL original Windows BYOK scope methods, capture true native result
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p150_windows_original_byok_scope_recovery
+            if($LASTEXITCODE -ne 0){throw 'P150 native original test outcome not recorded'}
+            Write-Output 'P150_ORIGINAL_UNFILTERED_MODULE_DIAGNOSTIC_COLLECTION=COMPLETE'
+            Write-Output 'P150_ORIGINAL_TEST_PASSES_ONLY_WITH_ZERO_NATIVE_EXIT_AND_OK=TRUE'
+            Write-Output 'P150_THREE_WHOLE_PRODUCT_WINDOWS_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P150_C1_USER_SCOPE_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Preserve original native Windows full test log and SHA-256 receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p150-original-BYOK-scope-Windows-module-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p150-original-byok-scope/*.log
+            ${{ runner.temp }}/nayeon-p150-original-byok-scope/*.json
+          if-no-files-found: warn
+          retention-days: 14
