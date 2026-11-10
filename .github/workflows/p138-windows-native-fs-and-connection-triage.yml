@@ -1,0 +1,75 @@
+name: P138 Isolated Actual Windows Native FS and Connection Regression Triage — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p138-windows-regression-failure-triage-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  triage-current-regression-errors:
+    name: Preserve ten exact historical ERROR/FAIL tests on disposable Windows
+    runs-on: windows-2025
+    timeout-minutes: 14
+    steps:
+      - name: Python 3.12 hosted Windows triage
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone exact P138 source and original byte-identical failing tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P138 requires hosted disposable Windows source and fixture context'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p138-windows-regression-failure-triage-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P138 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'Exact source SHA drift'
+          }
+          $base='ad67c51aac72baaec41725693b267b415c3373e7'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P137 exact product baseline not ancestor'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p138-windows-native-fs-and-connection-triage.yml'
+            'docs/byok-c1-p138-native-filesystem-and-connection-regression-triage.md'
+            'scripts/p138_targeted_windows_regression_error_triage.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P138 changed frozen original product or tests'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P138 source formatting failure'}
+          Write-Output 'P138_EXACT_THREE_ADDITIVE_DIAGNOSTIC_PATHS=TRUE'
+          Write-Output 'P138_SEVEN_NATIVE_FILE_ERROR_CASES_FROZEN=TRUE'
+          Write-Output 'P138_P86_P87_OLDER_CONNECTION_TESTS_FROZEN=TRUE'
+      - name: Ten bounded genuine hosted Windows failing tests, isolated processes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B scripts/p138_targeted_windows_regression_error_triage.py
+            if($LASTEXITCODE -ne 0){throw 'P138 raw evidence collection error'}
+            Write-Output 'P138_GENUINE_WINDOWS_ERROR_CLASSIFICATION=RECORDED'
+            Write-Output 'P138_ORIGINAL_HISTORICAL_TESTS=UNCHANGED'
+            Write-Output 'P138_THREE_FULL_PRODUCT_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P138_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Preserve all original individual failure/error logs even if test fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p138-real-windows-fs-and-ui-error-original-logs
+          path: ${{ runner.temp }}/nayeon-p138-regression-triage/*.log
+          if-no-files-found: warn
+          retention-days: 14
