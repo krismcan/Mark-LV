@@ -1,0 +1,148 @@
+name: P137 Disposable Windows Frozen Local BYOK App + Fake Smoke — UNSIGNED HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p137-disposable-windows-package-preflight-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-isolated-packaging:
+    name: Genuine Windows freeze two offline UI bundles; run fake-only smoke
+    runs-on: windows-2025
+    timeout-minutes: 19
+    steps:
+      - name: Fixed Windows Python 3.12 packaging host
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin exact GitHub source and three-path packaging-only change
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'Disposable GitHub Windows build only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p137-disposable-windows-package-preflight-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Exact source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'Source SHA mismatch'
+          }
+          $base='e9d7a0087700c8d05d8fe4687e2754cf8e0143c3'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P136 review baseline not ancestor'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p137-windows-disposable-byok-freeze.yml'
+            'docs/byok-c1-p137-disposable-windows-frozen-packaging.md'
+            'scripts/p137_frozen_byok_fake_tk_smoke.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Unexpected P137 production or historical test modification'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Git source drift'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'Source readback not clean'
+          }
+          Write-Output 'P137_EXACT_THREE_ADDITIVE_PACKAGING_PATHS=TRUE'
+          Write-Output 'P137_P132_P133_KEY_SETUP_AND_OLD_SEALS=UNCHANGED'
+      - name: Pin packaging tool and freeze REAL user BYOK standalone app (never run)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -m pip install --disable-pip-version-check --no-input pyinstaller==6.22.3
+            if($LASTEXITCODE -ne 0){throw 'Pinned packaging dependency unavailable'}
+            python -m PyInstaller --version
+            if($LASTEXITCODE -ne 0){throw 'PyInstaller version query failed'}
+            python -m PyInstaller --noconfirm --clean --onedir --windowed --name NayeonLocalByokOfflineUnsigned --paths . nayeon/desktop_alpha/local_byok_window.py
+            if($LASTEXITCODE -ne 0){throw 'Real app package freeze failed'}
+            $app=Join-Path (Get-Location) 'dist\NayeonLocalByokOfflineUnsigned\NayeonLocalByokOfflineUnsigned.exe'
+            if(-not(Test-Path -LiteralPath $app)){throw 'Real frozen app EXE absent'}
+            $sig=(Get-AuthenticodeSignature -LiteralPath $app).Status.ToString()
+            if($sig -ne 'NotSigned'){
+              throw ('Unexpected production signature disposition '+$sig)
+            }
+            $bytes=[IO.File]::ReadAllBytes($app)
+            if($bytes.Length -lt 1024 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90){
+              throw 'Frozen real app is not a Windows PE'
+            }
+            Write-Output ('P137_REAL_STANDALONE_WINDOWS_PE_SHA256='+(Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash)
+            Write-Output 'P137_REAL_STANDALONE_APP=FROZEN_STRUCTURAL_PASS_NEVER_EXECUTED'
+            Write-Output 'P137_REAL_STANDALONE_EXECUTABLE_AUTHENTICODE=NOT_SIGNED'
+          } finally {Pop-Location}
+      - name: Freeze and actually execute FAKE-ONLY Windows Tk smoke
+        shell: pwsh
+        env:
+          P137_EPHEMERAL_PACKAGE_SMOKE: FAKE_STORE_ONLY
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:P137_EPHEMERAL_PACKAGE_SMOKE -ne 'FAKE_STORE_ONLY'){
+            throw 'Fake-store packaged Windows smoke restricted to disposable GitHub host'
+          }
+          Push-Location reviewed
+          try {
+            python -m PyInstaller --noconfirm --clean --onedir --console --name NayeonByokFrozenFakeSmoke --paths . scripts/p137_frozen_byok_fake_tk_smoke.py
+            if($LASTEXITCODE -ne 0){throw 'Fake-only frozen Windows smoke build failed'}
+            $exe=Join-Path (Get-Location) 'dist\NayeonByokFrozenFakeSmoke\NayeonByokFrozenFakeSmoke.exe'
+            if(-not(Test-Path -LiteralPath $exe)){throw 'Fake frozen smoke missing'}
+            $sig=(Get-AuthenticodeSignature -LiteralPath $exe).Status.ToString()
+            if($sig -ne 'NotSigned'){
+              throw ('Unexpected fake package signature '+$sig)
+            }
+            $head=[IO.File]::ReadAllBytes($exe)
+            if($head.Length -lt 1024 -or $head[0] -ne 77 -or $head[1] -ne 90){
+              throw 'Fake packaged test is not PE'
+            }
+            Write-Output ('P137_FAKE_UI_WINDOWS_PE_SHA256='+(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash)
+            $output=& $exe 2>&1
+            $native=$LASTEXITCODE
+            $text=($output -join [Environment]::NewLine)
+            if($native -ne 0 -or
+               -not $text.Contains('P137_ACTUAL_FROZEN_WINDOWS_TK_UI=SMOKE_PASS') -or
+               -not $text.Contains('P137_ACTUAL_WINCRED_OR_PROVIDER_EFFECT=NONE')){
+              throw ('Frozen fake Tk smoke refused; native exit '+$native)
+            }
+            Write-Output 'P137_GENUINE_FROZEN_WINDOWS_TK_FAKE_STORE=PASS'
+            Write-Output 'P137_REAL_WINCRED_OR_PROVIDER_CALLS=ZERO'
+            Write-Output 'P137_REAL_APP_UNSIGNED_BINARY=NOT_EXECUTED'
+            Write-Output 'P137_KRISTIAN_BINARY_EXECUTION=NONE'
+            Write-Output 'P137_P133_FROZEN_MAIN_APP_LAUNCH_BRIDGE=NOT_IMPLEMENTED'
+            Write-Output 'P137_SIGNED_RELEASE_AND_SMART_APP_CONTROL=NOT_APPROVED'
+            Write-Output 'P137_THREE_FULL_PRODUCT_WINDOWS_REGRESSIONS=HOLD'
+            Write-Output 'P137_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Emit non-executable packaging evidence only
+        if: always()
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:RUNNER_TEMP 'p137-package-evidence.txt'
+          @(
+            'P137_DRAFT_UNSIGNED_NO_DISTRIBUTION'
+            ('P137_SOURCE_HEAD='+$env:GITHUB_SHA)
+            'P137_UNSIGNED_EXE_ARCHIVE=NOT_RETAINED'
+            'P137_REAL_API_KEY=NONE'
+            'P137_SMART_APP_CONTROL=NOT_VERIFIED'
+            'P137_USER_SCOPE_RELEASE=HOLD'
+          )|Set-Content -LiteralPath $out -Encoding utf8
+      - name: Archive text receipt ONLY no unsigned Windows executables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p137-unsigned-package-text-evidence-only
+          path: ${{ runner.temp }}/p137-package-evidence.txt
+          if-no-files-found: warn
+          retention-days: 14
