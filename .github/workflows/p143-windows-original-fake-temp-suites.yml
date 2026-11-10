@@ -1,0 +1,84 @@
+name: P143 Original Windows Fake-Fixture Suites Under P139 Verified Root — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p143-verified-windows-fake-temp-fixtures-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  unchanged-five-original-windows-modules:
+    name: Genuine Windows exact original fake/onboarding/native text tests with verified C drive root
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Windows Python 3.12 for unchanged original tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P142 ancestry and three newly added test/audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P143 requires ephemeral hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p143-verified-windows-fake-temp-fixtures-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P143 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P143 GitHub source HEAD drift'
+          }
+          $base='0a645a5935e42bb345da30b6af96e045604d193f'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P142 original 83 module audit baseline missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p143-windows-original-fake-temp-suites.yml'
+            'docs/byok-c1-p143-safe-fake-temp-windows-audit.md'
+            'scripts/p143_windows_original_fake_temp_recovery.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P143 original test or production source altered'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P143 source whitespace/check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P143 source readback not pristine'
+          }
+          Write-Output 'P143_VERIFIED_P142_DIRECT_PARENT_AND_THREE_TEST_ONLY_PATHS=TRUE'
+          Write-Output 'P143_ORIGINAL_P139_WIN32_HANDLE_POLICY_UNCHANGED=TRUE'
+          Write-Output 'P143_ORIGINAL_FAKE_ONBOARDING_AND_NATIVE_TEXT_TESTS=UNCHANGED'
+      - name: Run five complete original Windows modules in verified local disposable test root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -m py_compile scripts/p143_windows_original_fake_temp_recovery.py
+            if($LASTEXITCODE -ne 0){throw 'P143 diagnostic cannot compile'}
+            python -B -m scripts.p143_windows_original_fake_temp_recovery
+            if($LASTEXITCODE -ne 0){
+              throw 'P143 original unchanged Windows test modules still failed in verified safe fixture'
+            }
+            Write-Output 'P143_FIVE_UNMODIFIED_WINDOWS_TEST_MODULES=PASS'
+            Write-Output 'P143_ORIGINAL_UNMODIFIED_TEST_CASES=187_PASS'
+            Write-Output 'P143_P135_UNFILTERED_WHOLE_PRODUCT_WINDOWS_REGRESSIONS=HOLD'
+            Write-Output 'P143_SIGNED_HELPER_SAC_AND_INDEPENDENT_REVIEW=NOT_COMPLETE'
+            Write-Output 'P143_USER_SCOPE_BYOK_C1_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain raw native Windows logs regardless of PASS/HOLD
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p143-unchanged-five-original-windows-module-raw-evidence
+          path: ${{ runner.temp }}/nayeon-p143-safe-fake-temp-evidence/*.log
+          if-no-files-found: warn
+          retention-days: 14
