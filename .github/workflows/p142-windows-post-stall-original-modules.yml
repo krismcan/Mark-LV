@@ -1,0 +1,83 @@
+name: P142 Real Windows Post-P135-Stall Original Module Inventory — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p142-post-stall-windows-inventory-audit-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  real-windows-late-module-audit:
+    name: Bounded native Windows 83 original modules unreached by P135
+    runs-on: windows-2025
+    timeout-minutes: 22
+    steps:
+      - name: Install pinned Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P141 baseline and three additive diagnostic paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P142 only on disposable hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p142-post-stall-windows-inventory-audit-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Exact source unavailable'}
+          git -C reviewed config --local core.autocrlf false
+          $head=(git -C reviewed rev-parse HEAD).Trim()
+          if($head -ne $env:GITHUB_SHA){throw 'Exact GitHub source HEAD mismatch'}
+          $base='bd2c0b7f5d74b2987c82b5802ea66a732d79faa4'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'Exact P141 scoped triad baseline absent'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p142-windows-post-stall-original-modules.yml'
+            'docs/byok-c1-p142-post-stall-windows-inventory-review.md'
+            'scripts/p142_windows_post_stall_module_inventory.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P142 original test or product source modified'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P142 source diff failure'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P142 GitHub source readback not pristine'
+          }
+          Write-Output 'P142_EXACT_P141_BASELINE=VERIFIED'
+          Write-Output 'P142_ONLY_THREE_NEW_DIAGNOSTIC_PATHS=TRUE'
+          Write-Output 'P142_ALL_ORIGINAL_PRODUCT_AND_HISTORIC_TEST_SOURCE=UNCHANGED'
+      - name: Execute 83 previously unreached original Windows unittest MODULES with bounds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -m py_compile scripts/p142_windows_post_stall_module_inventory.py
+            if($LASTEXITCODE -ne 0){throw 'P142 test inventory driver cannot compile'}
+            python -B -m scripts.p142_windows_post_stall_module_inventory
+            if($LASTEXITCODE -ne 0){
+              throw 'P142 complete original 83-module evidence inventory missing'
+            }
+            Write-Output 'P142_ORIGINAL_POST_STALL_MODULE_DIAGNOSTIC_INVENTORY=COMPLETE'
+            Write-Output 'P142_EXISTING_PRODUCT_TEST_FAILURES_AND_TIME_OUT=NOT_WAIVED'
+            Write-Output 'P142_THREE_FULL_PRODUCT_REGRESSIONS=HOLD'
+            Write-Output 'P142_INDEPENDENT_TEST_GOVERNANCE_AND_SAC=NOT_APPROVED'
+            Write-Output 'P142_BYOK_C1_USER_SCOPE_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive original per-module native evidence and exact failure manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p142-genuine-windows-post-stall-83-original-modules
+          path: ${{ runner.temp }}/nayeon-p142-post-stall-original-tests/*
+          if-no-files-found: warn
+          retention-days: 14
