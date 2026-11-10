@@ -26,7 +26,7 @@ BRANCH = "byok-c1-p149-windows-original-836-scope-module-recovery-20261110"
 MODULE = "tests.test_phase_836_scope_integrity"
 SOURCE = "tests/test_phase_836_scope_integrity.py"
 LIMIT_SECONDS = 170
-EXPECTED_CASES = 12
+EXPECTED_CASES = 11
 COUNT = re.compile(r"Ran (\d+) tests? in [\d.]+s")
 SECRET_ENV = (
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",

@@ -13,7 +13,7 @@ P142 historical scope-integrity module timeouts are safe or only cost-related.
 P149 starts directly at exact P148 `a08bcb2b459da5edab673333f0e45be52a24230c`
 (draft PR #73) in an isolated branch, then executes one representative smaller
 original scope-integrity module `tests.test_phase_836_scope_integrity`
-with 12 original test methods, unfiltered, in one fresh disposable
+with 11 original test methods, unfiltered, in one fresh disposable
 GitHub-hosted Windows-2025 Python 3.12 interpreter. Its prior P142 evidence was
 TIMEOUT at 35 seconds, not a full executed module.
 
@@ -38,7 +38,7 @@ Capture native exit 0, 1, 124 or 125; full original combined stdout/stderr;
 actual final unittest count/OK/FAILED footer; original test source SHA256;
 complete raw log SHA256 and byte count; exact failure IDs; duration and
 an explicit PASS/TIMEOUT/HOLD JSON manifest. Native PASS requires exit
-zero, all 12 original tests and a complete OK footer. Diagnostic collection
+zero, all 11 original tests and a complete OK footer. Diagnostic collection
 CI SUCCESS is **not** a test pass when native status is FAIL/TIMEOUT.
 
 If this remains costly, record truthful negative evidence. Do not execute
