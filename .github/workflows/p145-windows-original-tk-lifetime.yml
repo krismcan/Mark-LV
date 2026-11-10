@@ -1,0 +1,76 @@
+name: P145 Windows Original Phase8.31 Tk Lifetime Isolation — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p145-isolated-windows-tk-root-lifetime-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-tk-method-lifetime:
+    name: Isolate 19 unchanged original Windows Tk methods and retain all native outcomes
+    runs-on: windows-2025
+    timeout-minutes: 19
+    steps:
+      - name: Use genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P144 ancestor, source diff, and unchanged tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P145 must run only on disposable GitHub Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p145-isolated-windows-tk-root-lifetime-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'Source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'Exact HEAD mismatch'}
+          $base='4c4c8ef05f831e957023ef98d67661818f5e5eac'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'P144 ancestor mismatch'}
+          $changed=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p145-windows-original-tk-lifetime.yml'
+            'docs/byok-c1-p145-windows-tk-root-isolation.md'
+            'scripts/p145_windows_original_tk_root_isolation.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'Unexpected historic test or product file modification'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'Invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source checkout dirty'}
+          Write-Output 'P145_EXACT_P144_PARENT_THREE_NEW_AUDIT_PATHS=TRUE'
+          Write-Output 'P145_HISTORICAL_PHASE831_AND_SECURITY_SOURCE=UNCHANGED'
+      - name: Run all 19 original Phase8.31 tests in independent Windows interpreters
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -m py_compile scripts/p145_windows_original_tk_root_isolation.py
+            if($LASTEXITCODE -ne 0){throw 'P145 diagnostic syntax invalid'}
+            python -B -m scripts.p145_windows_original_tk_root_isolation
+            if($LASTEXITCODE -ne 0){throw 'P145 failed to collect original method dispositions'}
+            Write-Output 'P145_19_CASE_DIAGNOSTIC_COLLECTION=COMPLETE_NOT_RELEASE_PASS'
+            Write-Output 'P145_ORIGINAL_P135_WHOLE_PRODUCT_WINDOWS_TRIAD=UNPASSED'
+            Write-Output 'P145_QUALIFIED_SECURITY_AND_SIGNED_COMPANION=HOLD'
+            Write-Output 'P145_USER_SCOPE_BYOK_C1_RELEASE=HOLD'
+          }finally{ Pop-Location }
+      - name: Retain original per-method unittest logs and SHA-256 manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p145-original-19-windows-tk-lifetime-logs
+          path: |
+            ${{ runner.temp }}/nayeon-p145-original-tk-root/*.log
+            ${{ runner.temp }}/nayeon-p145-original-tk-root/*.json
+          retention-days: 14
+          if-no-files-found: warn
