@@ -1,0 +1,76 @@
+name: P146 Original Windows unittest SubTest Tk Root Ownership — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p146-windows-unittest-subtest-root-ownership-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  original-unittest-root-ownership:
+    name: Genuine Windows original failure and read-only unittest lifetime probe
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Fixed hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P145 parent and no modified original product or test files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P146 requires disposable GitHub-hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p146-windows-unittest-subtest-root-ownership-20261110 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P146 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P146 source HEAD drift'}
+          $base='7dc6e5377b2e9c4c2533c4a7dc99a262267d02aa'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'Exact P145 ancestor missing'}
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p146-windows-unittest-root-owner.yml'
+            'docs/byok-c1-p146-unittest-root-owner-diagnostic.md'
+            'scripts/p146_windows_unittest_subtest_root_owner.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Historical test or original production security source altered'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P146 whitespace/source diff failure'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'P146 source checkout not clean'}
+          Write-Output 'P146_EXACT_P145_BASE_AND_THREE_AUDIT_ONLY_PATHS=TRUE'
+          Write-Output 'P146_ORIGINAL_PHASE831_TK_TEST_ASSERTION=UNCHANGED'
+          Write-Output 'P146_P139_WIN32_NATIVE_GUARD_AND_P140_SIGNED_LAUNCH=UNCHANGED'
+      - name: Execute unchanged original failing test and read-only unittest result-ownership probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -m py_compile scripts/p146_windows_unittest_subtest_root_owner.py
+            if($LASTEXITCODE -ne 0){throw 'P146 diagnostic syntax invalid'}
+            python -B -m scripts.p146_windows_unittest_subtest_root_owner
+            if($LASTEXITCODE -ne 0){throw 'P146 historical baseline or probe cannot be collected'}
+            Write-Output 'P146_ORIGINAL_TEST_STILL_FAILS=TRUE'
+            Write-Output 'P146_DIAGNOSTIC_COLLECTION_SUCCESS_IS_NOT_ORIGINAL_TEST_PASS=TRUE'
+            Write-Output 'P146_USER_SCOPE_C1_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Retain original native Windows logs and SHA256 manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p146-original-windows-unittest-root-lifetime-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p146-unittest-root-owner/*.log
+            ${{ runner.temp }}/nayeon-p146-unittest-root-owner/*.json
+          if-no-files-found: warn
+          retention-days: 14
