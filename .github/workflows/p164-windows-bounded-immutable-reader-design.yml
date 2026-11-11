@@ -1,0 +1,80 @@
+name: P164 Bounded Git Immutable Object Reader Design — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p164-bounded-immutable-object-reader-design-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-reader-design:
+    name: P164 native Windows 19 originals, pre-IPC negative, poisoned pipe and timeout lifecycle
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P163 source custody and strictly additive P164 paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p164-bounded-immutable-object-reader-design-20261111'){
+            throw 'P164 exact-hosted Windows branch/event required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p164-bounded-immutable-object-reader-design-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P164 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P164 exact event SHA / source mismatch'
+          }
+          $base='51ecaa8eaf2e3f092d1006cf2ffba4f402c1de87'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P164 exact P163 parent ancestry mismatch'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p164-windows-bounded-immutable-reader-design.yml'
+            'docs/byok-c1-p164-bounded-immutable-reader-architecture-review.md'
+            'scripts/p164_windows_bounded_immutable_reader_design.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P164 original product/test/security changes detected or evidence file missing'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P164 invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P164 source clone dirty'
+          }
+          Write-Output 'P164_P163_EXACT_PARENT_AND_THREE_ADDITIVE_EVIDENCE_PATHS=PASS'
+      - name: Run real Windows bound fixed-object and native pipe fault-injection proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p164_windows_bounded_immutable_reader_design
+            if($LASTEXITCODE -ne 0){
+              throw 'P164 exact Git byte/identity or native Windows lifecycle security diagnostic failed'
+            }
+            Write-Output 'P164_CANDIDATE_IS_NONINTEGRATED_DIAGNOSTIC_NOT_PRODUCTION_READER'
+            Write-Output 'P164_QUALIFIED_INDEPENDENT_SECURITY_GO=NOT_OBTAINED'
+            Write-Output 'P164_ACCEPTED_FULL_PRODUCT_WINDOWS_TRIAD=0/3'
+            Write-Output 'P164_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain actual Windows protocol, source-custody and lifecycle ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p164-genuine-Windows-bounded-immutable-reader-negative-lifecycle-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p164-bounded-git-protocol-review/*.json
+          if-no-files-found: warn
+          retention-days: 14
