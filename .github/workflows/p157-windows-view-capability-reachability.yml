@@ -1,0 +1,81 @@
+name: P157 View Capability Reachability — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p157-view-capability-reachability-audit-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  view-capability:
+    name: P157 real Windows typed Tk adverse view-service effects and original P84/P86-P88
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Python 3.12 on genuine hosted Windows
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove P156 parent exactness, fresh clean branch and only additive evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p157-view-capability-reachability-audit-20261111' -or
+             $env:GITHUB_EVENT_NAME -ne 'push'){
+             throw 'P157 exact native hosted Windows branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p157-view-capability-reachability-audit-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P157 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P157 event SHA diverges from source'
+          }
+          $base='fb54dfcd6dafb9a5ec474e7c3b32df7dac849a98'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+             throw 'P157 exact P156 parent ancestry invalid'
+          }
+          $changed=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+             '.github/workflows/p157-windows-view-capability-reachability.yml'
+             'docs/byok-c1-p157-view-service-persistence-reachability-review.md'
+             'scripts/p157_windows_view_capability_reachability.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+             throw 'P157 historical product/test/security changes forbidden'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P157 whitespace gate failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P157 cloned checkout is dirty'
+          }
+          Write-Output 'P157_EXACT_P156_ANCESTRY_AND_THREE_ADDITIVE_EVIDENCE_FILES=PASS'
+      - name: Execute actual Windows view call denial and original P84/P86/P87/P88 unit tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p157_windows_view_capability_reachability
+             if($LASTEXITCODE -ne 0){
+                throw 'P157 real Windows view adverse proof or an original test failed'
+             }
+             Write-Output 'P157_FOCUSED_NATIVE_RESULT_NOT_FULL_PRODUCT_REGRESSION'
+             Write-Output 'P157_ORIGINAL_PHASE831_AND_P76_P85_HELD'
+             Write-Output 'P157_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+             Write-Output 'P157_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive all five genuine native Windows child logs and integrity ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p157-actual-Windows-view-capability-reachability-and-original-test-logs
+          path: |
+            ${{ runner.temp }}/nayeon-p157-view-capability-evidence/*.log
+            ${{ runner.temp }}/nayeon-p157-view-capability-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
