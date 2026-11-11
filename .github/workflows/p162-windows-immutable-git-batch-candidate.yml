@@ -1,0 +1,79 @@
+name: P162 Immutable-Only Git Object Batch Candidate — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p162-immutable-git-batch-read-candidate-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  immutable-read-experiment:
+    name: P162 actual Windows 95 original shows versus 95 pinned immutable batch blobs
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce exact P161 parent and strictly additive P162 paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p162-immutable-git-batch-read-candidate-20261111'){
+            throw 'P162 actual hosted Windows isolated branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p162-immutable-git-batch-read-candidate-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P162 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P162 exact event SHA mismatch'
+          }
+          $base='fe26dc1aeda0422c9aaadee63edae4f2b583fa81'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P162 exact P161 source ancestry missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p162-windows-immutable-git-batch-candidate.yml'
+            'docs/byok-c1-p162-immutable-git-batch-candidate-review.md'
+            'scripts/p162_windows_immutable_git_batch_candidate.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P162 changed original product/security/tests or missed an expected additive path'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P162 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P162 source clone not clean'
+          }
+          Write-Output 'P162_EXACT_P161_ANCESTRY_THREE_ADDITIVE_ONLY_PATHS=PASS'
+      - name: Real Windows original-versus-candidate fixed-object byte and negative comparison
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p162_windows_immutable_git_batch_candidate
+            if($LASTEXITCODE -ne 0){throw 'P162 immutable original-vs-candidate comparison rejected'}
+            Write-Output 'P162_IMMUTABLE_BATCH_IS_NONINTEGRATED_EVALUATION_ONLY'
+            Write-Output 'P162_HISTORICAL_SECURITY_TESTS_UNCHANGED'
+            Write-Output 'P162_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P162_FULL_WINDOWS_PRODUCT_TRIAD=0/3'
+            Write-Output 'P162_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive actual immutable-object timing and byte-equivalence receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p162-genuine-Windows-immutable-Git-batch-candidate-raw-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p162-frozen-immutable-git-batch-candidate/*.json
+          if-no-files-found: warn
+          retention-days: 14
