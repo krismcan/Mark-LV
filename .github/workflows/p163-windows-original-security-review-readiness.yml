@@ -1,0 +1,80 @@
+name: P163 Original Windows Security Review Readiness — EXTERNAL GO NOT OBTAINED
+
+on:
+  push:
+    branches:
+      - byok-c1-p163-immutable-git-security-review-readiness-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  original-security-and-candidate-boundaries:
+    name: P163 25 genuine original Windows security tests and 16 candidate negative probes
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify P162 SHA, additive-only security review and original source custody
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p163-immutable-git-security-review-readiness-20261111'){
+            throw 'P163 requires exact hosted Windows branch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p163-immutable-git-security-review-readiness-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P163 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P163 GitHub event/source HEAD mismatch'
+          }
+          $base='9c2422eb920d8b478520fca7de4bf974bf7c92c6'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P163 exact P162 source parent not found'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p163-windows-original-security-review-readiness.yml'
+            'docs/byok-c1-p163-independent-security-review-readiness.md'
+            'scripts/p163_windows_security_review_readiness.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P163 changed original product/security/test source or omitted one additive path'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P163 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P163 checked out source is dirty'
+          }
+          Write-Output 'P163_EXACT_P162_ANCESTRY_THREE_ADDITIVE_EVIDENCE_PATHS=PASS'
+      - name: Run 25 actual unchanged Windows security methods and 16 candidate corrupt-response negatives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p163_windows_security_review_readiness
+            if($LASTEXITCODE -ne 0){throw 'P163 source custody, safety boundary or evidence probe failed'}
+            Write-Output 'P163_EVIDENCE_COLLECTOR_GREEN_IS_NOT_INDEPENDENT_SECURITY_SIGNOFF'
+            Write-Output 'P163_ORIGINAL_HISTORICAL_SECURITY_REFUSALS_UNWAIVED'
+            Write-Output 'P163_P162_READER_PRODUCTION_INTEGRATION=NO_GO'
+            Write-Output 'P163_ACCEPTED_FULL_PRODUCT_WINDOWS_TRIAD=0/3'
+            Write-Output 'P163_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain genuine Windows native test logs, source hashes and review ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p163-genuine-Windows-original-25-security-controls-and-review-boundary-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p163-security-review-readiness/*.log
+            ${{ runner.temp }}/nayeon-p163-security-review-readiness/*.json
+          if-no-files-found: warn
+          retention-days: 14
