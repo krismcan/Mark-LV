@@ -1,0 +1,83 @@
+name: P158 Immutable Historical UI Contract and Post-P133 Windows Successor — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p158-historical-connection-ui-contract-governance-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  historical-ui-governance:
+    name: P158 real Windows historical FAIL/HOLD and versioned successor custody
+    runs-on: windows-2025
+    timeout-minutes: 14
+    steps:
+      - name: Python 3.12 on genuine Windows-2025
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P157 parent, immutable original source and additive-only P158 paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p158-historical-connection-ui-contract-governance-20261111' -or
+             $env:GITHUB_EVENT_NAME -ne 'push'){
+             throw 'P158 exact hosted source identity required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p158-historical-connection-ui-contract-governance-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P158 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P158 event/source SHA mismatch'
+          }
+          $base='061888b3515a2923dc44eb2f17eb46e768266761'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+             throw 'P158 exact P157 historical parent not present'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+             '.github/workflows/p158-windows-immutable-ui-contract-governance.yml'
+             'docs/byok-c1-p158-historical-ui-contract-governance.md'
+             'scripts/p158_windows_historical_ui_governance_ledger.py'
+             'tests/test_p158_versioned_connection_ui_contract.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P158 attempted modification of original source/security or unexpected files'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P158 diff integrity failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P158 cloned source dirty'
+          }
+          Write-Output 'P158_EXACT_P157_PARENT_AND_FOUR_ADDITIVE_ONLY_FILES=PASS'
+      - name: Execute native P158 successor and ALL original negative and positive source contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p158_windows_historical_ui_governance_ledger
+             if($LASTEXITCODE -ne 0){
+                throw 'P158 genuine native Windows evidence does not match exact original PASS/HOLD'
+             }
+             Write-Output 'P158_SUCCESSOR_PASS_DOES_NOT_RECLASSIFY_ORIGINAL_FAIL'
+             Write-Output 'P158_HISTORICAL_P86_P87_AND_PHASE831_STILL_FAIL_HOLD'
+             Write-Output 'P158_QUALIFIED_INDEPENDENT_REVIEW=NOT_OBTAINED'
+             Write-Output 'P158_THREE_FULL_PRODUCT_REGRESSIONS=0/3'
+             Write-Output 'P158_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive exact Windows native stdout logs and source-bound ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p158-exact-original-Windows-HOLDs-and-new-UI-versioned-successor
+          path: |
+            ${{ runner.temp }}/nayeon-p158-ui-governance-evidence/*.json
+            ${{ runner.temp }}/nayeon-p158-ui-governance-evidence/*.log
+          if-no-files-found: warn
+          retention-days: 14
