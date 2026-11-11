@@ -43,3 +43,40 @@ The original Phase8.31 source import-closure and teardown are not fixed. P76/P85
 Production signed/pinned main, helper and installer are not approved; Smart App Control/WDAC owner GO remains false; privileged C1 G0–G6, including P96 and P124, remain open. No real credentials, production WinCred activity, network provider validation, HKLM/TPM mutation, unsigned Kristian executable, merge, release or Drive MASTER release update.
 
 **Accepted full-product unfiltered Windows regressions = 0/3. Status: RELEASE HOLD.**
+
+
+## Genuine Windows execution and source-bound evidence — 11 November 2026
+
+The first real GitHub hosted Windows-2025 / Python 3.12 evidence collection run is https://github.com/krismcan/Mark-LV/actions/runs/43060868599 at tested exact source SHA 2e34ee05119cbda4922e8e44dbecd64ac2300637. Source verification passed for exact P157 parent, four additive P158 paths, and all 17 original security/test/product Git blob objects unchanged. Unchanged original P139 Win32 opened native handle policy accepted the owned disposable test TEMP root.
+
+Real Windows job 130662755884 completed SUCCESS as a **negative-plus-positive evidence collector**. Artifact ID 13874121076 contains eight native child combined stdout/stderr logs and a JSON ledger. Archive SHA256 3819E30D49D8902810DF5151C9E2730AC8B1EA6627D2A97998AE1FAC390C6749; artifact expiry 25 November 2026.
+
+| Genuine Windows child | Native exit | Actual tests | Original disposition | Combined raw log SHA-256 |
+| --- | ---: | ---: | --- | --- |
+| New P158 versioned post-P133 UI successor | 0 | 9 | 9 PASS | 01793A34EAC143BE1FE658084C104BDE806C47736CCC6330CEFD206D77AECD44 |
+| Original P133 explicit manual launch | 0 | 25 | 25 PASS | A24FB3A24E8EAC5CF34AF17D8A1D96E309F67A99840481F57201F67B9640F0F4 |
+| Original P132 fake WinCred/Tk | 0 | 36 | 36 PASS | F2028C68501DB3437051AE3B46683DA333DB072AE333B8860B67AE899B8BBEB0 |
+| Original P84 bounded pending view | 0 | 6 | 6 PASS | 792C90AB6F23A7129780DE95A18731650EA569327C61016F3231E7F4B59738F9 |
+| Original pre-P133 P86 | 1 | 7 | 5 PASS / exactly 2 original FAIL/HOLD | 956E936425FD63B9E1C8E82D8E9630AE948F52F42FCFDBA83DD8558FB82A6B6B |
+| Original pre-P133 P87 | 1 | 18 | 17 PASS / exactly 1 original FAIL/HOLD | F8A4B6C7326D7F2C42C891E02043A0878CA6E667EB83F6B520B768704B9199F2 |
+| Original P88 synthetic lease | 0 | 10 | 10 PASS | 38DB50CDA20C72B90A5A4D0C7307A496A2C4DF680E2A7D1CA8EB2E9BA70329BB |
+| Original Phase8.31 static import closure | 1 | 1 | 1 original FAIL/HOLD + 1 teardown ERROR/HOLD | F248D042A57597EE8872F0E491273EFA9AE8998D472E7902AC8EE07055E83D17 |
+
+Exact unchanged original failed method identities are:
+- P86 test_live_connection_page_default_is_explicitly_unobserved
+- P86 test_no_credential_action_and_no_implicit_refresh
+- P87 test_production_default_remains_not_observed_without_any_session
+- Phase8.31 test_static_production_import_closure_forbids_test_and_effect_routes
+- Phase8.31 original tearDownModule error remains separately recorded.
+
+**Totals: 112 actual unittest methods, 108 PASS, 4 unchanged original FAIL/HOLD and one extra original teardown ERROR/HOLD.** A green workflow is not a regression pass: all four historical negative results are required to remain red for this versioned evidence collector to succeed, and a change in their identity or counts makes the collector fail.
+
+## Pending qualified reviewer decision; no release
+
+Independent qualified reviewer must specifically answer:
+1. Does the new P133 third manually launched button preserve the original P86/P87 non-authoritative custody, no-implicit-effect and creator-thread security expectations under its narrowed current-user threat model?
+2. Is the versioned successor a legitimate, branch-aware new test while pre-P133 exact two-button assertions remain a frozen historical anchor? How will later release regressions report both instead of quietly excluding negatives?
+3. Is the Phase8.31 import-closure migration permitted, and must the transitive P157 13-module view-to-service/persistence dependency be refactored into a pure type-only boundary?
+4. What independent signed/pinned production main/helper/installer and SAC/WDAC Code Integrity owner evidence, Native WinCred synthetic separate-profile validation, and three accepted full-product Windows regressions remain required?
+
+No qualified independent reviewer has approved the answers. No historical test was changed or suppressed; no security exception has been authorised. This PR remains draft/unmerged, and production release remains HOLD with original privileged G0–G6 separately OPEN.
