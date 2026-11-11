@@ -148,7 +148,7 @@ def run_case(repo, temp, output, target, index):
     except OSError:
         native = 125
     raw = path.read_bytes() if path.exists() else b""
-    decoded = raw.decode("utf8", "replace")
+    decoded = raw.decode("utf8", "replace").replace("\r\n", "\n")
     counts = COUNT.findall(decoded)
     complete = len(counts) == 1 and int(counts[0]) == 1 and native in (0, 1)
     status = "PASS" if complete and native == 0 and re.search(r"^OK\s*$", decoded, re.M) else "HOLD" if complete else "INCOMPLETE"
