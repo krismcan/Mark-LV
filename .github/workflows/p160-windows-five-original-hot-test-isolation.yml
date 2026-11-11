@@ -1,0 +1,82 @@
+name: P160 Five Original Phase 8 Windows Hot-Test Causal Isolation — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p160-windows-five-hot-test-causal-isolation-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  isolate-hot-tests:
+    name: P160 Windows five unchanged originals with bounded periodic stack traces
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Setup genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P159 parent source and strictly additive P160 scope
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p160-windows-five-hot-test-causal-isolation-20261111'){
+             throw 'P160 requires exact isolated Windows evidence branch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p160-windows-five-hot-test-causal-isolation-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P160 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P160 event SHA/source mismatch'
+          }
+          $base='a8b317e6ab6cf2ad20514c60bbfaa0babbd5a492'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+             throw 'P160 exact P159 parent ancestry missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+             '.github/workflows/p160-windows-five-original-hot-test-isolation.yml'
+             'docs/byok-c1-p160-five-original-hot-test-causal-isolation.md'
+             'scripts/p160_windows_five_original_hot_test_isolation.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P160 unexpectedly changed historical product/test/security source'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P160 exact scoped diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P160 cloned source dirty'
+          }
+          Write-Output 'P160_EXACT_P159_PARENT_THREE_ADDITIVE_EVIDENCE_PATHS=PASS'
+      - name: Execute real Windows historical five original cases and periodic stack capture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p160_windows_five_original_hot_test_isolation
+             if($LASTEXITCODE -ne 0){
+                throw 'P160 authentic Windows original case/trace evidence incomplete'
+             }
+             Write-Output 'P160_COLLECTOR_SUCCESS_IS_NOT_ORIGINAL_TEST_PASS'
+             Write-Output 'P160_HISTORICAL_P76_P85_EXACT_REF_AND_SECURITY_HOLDS=UNWAIVED'
+             Write-Output 'P160_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+             Write-Output 'P160_FULL_PRODUCT_WINDOWS_REGRESSION_TRIAD=0/3'
+             Write-Output 'P160_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive actual five native Windows case traces and full ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p160-five-original-Windows-hot-case-causal-stack-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p160-isolated-five-hot-tests/*.log
+            ${{ runner.temp }}/nayeon-p160-isolated-five-hot-tests/*.json
+          if-no-files-found: warn
+          retention-days: 14
