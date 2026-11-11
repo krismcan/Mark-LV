@@ -31,6 +31,17 @@ FOCUS = (
     ("original_p87_synthetic_observation", "tests.test_p87_readonly_custody_observation"),
     ("original_p88_lease_and_lifecycle", "tests.test_p88_pending_observation_lifecycle"),
 )
+# ORIGINAL unchanged P86/P87 exact expected failures after P133 deliberate extra
+# offline setup button. These stay native FAIL/HOLD, never recast as test PASS.
+HISTORICAL_UI_LAYOUT_HOLDS = {
+    "original_p86_live_advisory_window": frozenset({
+        "test_live_connection_page_default_is_explicitly_unobserved",
+        "test_no_credential_action_and_no_implicit_refresh",
+    }),
+    "original_p87_synthetic_observation": frozenset({
+        "test_production_default_remains_not_observed_without_any_session",
+    }),
+}
 SENSITIVE = (
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
     "GITHUB_TOKEN", "GH_TOKEN", "ACTIONS_RUNTIME_TOKEN",
@@ -143,6 +154,7 @@ import subprocess
 import tempfile
 import threading
 import tkinter as tk
+from tkinter import ttk
 from unittest import mock
 
 from nayeon.brain import connection_bootstrap as bootstrap
@@ -175,6 +187,17 @@ try:
         root, on_destroy=lambda _e=None: None,
         on_conversation=lambda:None,
     )
+    actual_buttons = [x for x in page.winfo_children() if isinstance(x, ttk.Button)]
+    titles = sorted(str(x.cget("text")) for x in actual_buttons)
+    expected_titles = sorted((
+        "Back to Conversation",
+        "Manage provider (offline preview)",
+        "Open local key setup (offline, not connected)",
+    ))
+    assert titles == expected_titles, (titles, expected_titles)
+    assert page.local_byok_button.cget("state") == "disabled"
+    print("P157_POST_P133_EXACT_THREE_BUTTONS=PASS", flush=True)
+    print("P157_NO_AUTOMATIC_OFFLINE_KEY_SETUP=PASS", flush=True)
     with ExitStack() as blocked:
         forbidden = (
             (ProviderConnectionFileStore, "load"),
@@ -298,11 +321,26 @@ def _run(label, argv, temp: Path, output: Path) -> dict:
     raw = path.read_bytes() if path.exists() else b""
     content = raw.decode("utf8", "replace").replace("\r\n","\n")
     count = COUNT.findall(content)
+    original_hold = label in HISTORICAL_UI_LAYOUT_HOLDS
     if label == "new_real_tk_adverse_view_reachability":
         success = (native_exit == 0 and
-                   "P157_ADVERSE_DYNAMIC_VIEW_EFFECT_DENIAL=PASS" in content)
+                   "P157_ADVERSE_DYNAMIC_VIEW_EFFECT_DENIAL=PASS" in content and
+                   "P157_POST_P133_EXACT_THREE_BUTTONS=PASS" in content)
     else:
         success = native_exit == 0 and re.search(r"^OK\s*$", content, re.M) is not None
+    observed_failure_names = frozenset(re.findall(
+        r"^FAIL: (test_\w+) \(", content, re.M
+    ))
+    observed_error_names = frozenset(re.findall(
+        r"^ERROR: (test_\w+) \(", content, re.M
+    ))
+    expected_hold = bool(
+        original_hold and native_exit == 1 and not success and
+        not observed_error_names and
+        observed_failure_names == HISTORICAL_UI_LAYOUT_HOLDS[label] and
+        re.search(r"^FAILED \(failures="+str(len(observed_failure_names))+r"\)\s*$", content, re.M)
+    )
+    expected_disposition_met = bool(expected_hold if original_hold else success)
     result = {
         "label":label, "native_exit":native_exit,
         "unittest_count": int(count[-1]) if count else None,
@@ -311,6 +349,10 @@ def _run(label, argv, temp: Path, output: Path) -> dict:
         "seconds":round(time.monotonic()-started,2),
         "original_unmodified":label!="new_real_tk_adverse_view_reachability",
         "passed":bool(success),
+        "historical_UI_layout_hold_preserved":bool(expected_hold),
+        "expected_disposition_met":expected_disposition_met,
+        "classification":("ORIGINAL_TEST_FAIL_HOLD" if expected_hold else
+                          ("PASS" if success else "UNEXPECTED_FAIL")),
         "original_failure_ids":[
             line for line in content.splitlines() if line.startswith(("FAIL: ","ERROR: "))
         ],
@@ -318,7 +360,8 @@ def _run(label, argv, temp: Path, output: Path) -> dict:
     }
     print("P157_CASE="+label+"|NATIVE_EXIT="+str(native_exit)+
           "|ORIGINAL_TESTS="+str(result["unittest_count"])+
-          "|PASS="+str(success)+"|SHA256="+result["sha256"],flush=True)
+          "|PASS="+str(success)+"|EXPECTED_DISPOSITION_MET="+str(expected_disposition_met)+
+          "|SHA256="+result["sha256"],flush=True)
     return result
 
 
@@ -378,7 +421,9 @@ def main():
     print("P157_FROZEN_ORIGINAL_SECURITY_TESTS_UNCHANGED=TRUE",flush=True)
     print("P157_ACCEPTED_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3",flush=True)
     print("P157_PRODUCTION_RELEASE=HOLD",flush=True)
-    return 0 if len(rows)==5 and all(x["passed"] for x in rows) else 1
+    print("P157_OLD_P86_P87_EXACT_THREE_UI_COUNT_FAILURES=UNMODIFIED_FAIL_HOLD",flush=True)
+    print("P157_DIAGNOSTIC_COLLECTION_NOT_ORIGINAL_TEST_RECOVERY=TRUE",flush=True)
+    return 0 if len(rows)==5 and all(x["expected_disposition_met"] for x in rows) else 1
 
 if __name__=="__main__":
     raise SystemExit(main())
