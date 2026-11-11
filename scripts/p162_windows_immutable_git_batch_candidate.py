@@ -163,7 +163,18 @@ def read_batch(proc, path, oid, expected, pins, legacy_digest):
     size = int(match[2])
     if size > MAX_SOURCE_BYTES:
         raise RuntimeError("P162 Git batch object exceeds safety budget")
-    data = proc.stdout.read(size)
+    # Raw Windows pipe reads can return fewer bytes than requested even if the
+    # Git object is intact. Accumulate exactly the advertised bounded length;
+    # NEVER accept a short stream or relax the original blob validation.
+    pieces = []
+    remaining = size
+    while remaining:
+        part = proc.stdout.read(remaining)
+        if not part:
+            raise RuntimeError("P162 truncated Windows Git batch pipe response")
+        pieces.append(part)
+        remaining -= len(part)
+    data = b"".join(pieces)
     delim = proc.stdout.read(1)
     return verify_blob(path, oid, hdr, data, delim, expected, pins, legacy_digest)
 
