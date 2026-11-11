@@ -1,0 +1,82 @@
+name: P165 Genuine Windows Versioned Security Acceptance Evidence — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p165-versioned-regression-security-review-submission-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  versioned-security-acceptance:
+    name: P165 original full P76 Windows H versus 25 original reduced C; retain all historical failures
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fail closed unless exact P164 ancestry and three additive evidence files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p165-versioned-regression-security-review-submission-20261111'){
+            throw 'P165 requires exact hosted Windows branch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p165-versioned-regression-security-review-submission-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P165 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P165 actual GitHub event SHA mismatch'
+          }
+          $base='4c669d68b832f885331f7e63e3d9e18af9d3a7ff'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P165 exact verified P164 base not retained'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p165-windows-versioned-security-review-submission.yml'
+            'docs/byok-c1-p165-external-review-submission-versioned-acceptance.md'
+            'scripts/p165_windows_versioned_security_review_submission.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P165 original security/product/test code changed or evidence path missing'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P165 source diff whitespace guard failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P165 original Git checkout dirty before test'
+          }
+          Write-Output 'P165_EXACT_P164_PARENT_AND_THREE_ADDITIVE_SOURCE_PATHS=PASS'
+      - name: Run BOTH genuine original H/C Windows test inventories and write authentic HOLD ledger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p165_windows_versioned_security_review_submission
+            if($LASTEXITCODE -ne 0){
+              throw 'P165 original Windows source custody, test execution or review matrix failed'
+            }
+            Write-Output 'P165_COLLECTOR_GREEN_NEVER_CONVERTS_ORIGINAL_HISTORICAL_FAIL_TO_PASS'
+            Write-Output 'P165_INDEPENDENT_EXTERNAL_SECURITY_REVIEW=NOT_SUBMITTED_OR_APPROVED'
+            Write-Output 'P165_ORIGINAL_HISTORICAL_TESTS_UNCHANGED'
+            Write-Output 'P165_APPROVED_FULL_PRODUCT_WINDOWS_TRIAD=0/3'
+            Write-Output 'P165_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive native original Windows logs and review readiness acceptance ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p165-actual-Windows-historical-full-P76-vs-current-25-review-acceptance
+          path: |
+            ${{ runner.temp }}/nayeon-p165-original-versioned-security-review-submission/*.log
+            ${{ runner.temp }}/nayeon-p165-original-versioned-security-review-submission/*.json
+          if-no-files-found: warn
+          retention-days: 14
