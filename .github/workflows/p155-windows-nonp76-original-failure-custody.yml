@@ -1,0 +1,84 @@
+name: P155 Original Non-P76 Windows Failure Custody — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p155-non-p76-security-lifecycle-recovery-20261111
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-nonp76-windows:
+    name: Authenticated P144 raw logs plus original focused Windows test execution
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Real hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P154 parent and additive-only P155 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p155-non-p76-security-lifecycle-recovery-20261111'){
+             throw 'P155 requires genuine hosted Windows and exact isolated draft branch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p155-non-p76-security-lifecycle-recovery-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P155 GitHub clone failure'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P155 checkout differs from event SHA'
+          }
+          $base='2103ccc658f0cea474ec8f5bc945eacb664771cd'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+             throw 'P155 exact P154 base ancestry missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+             '.github/workflows/p155-windows-nonp76-original-failure-custody.yml'
+             'docs/byok-c1-p155-nonp76-security-lifecycle-recovery.md'
+             'scripts/p155_windows_nonp76_original_failure_custody.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P155 unexpected original source or security test mutation'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P155 source diff error'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P155 source clone dirty'
+          }
+          Write-Output 'P155_EXACT_P154_PARENT_AND_ONLY_THREE_AUDIT_ADDITIONS=PASS'
+          Write-Output 'P155_ORIGINAL_SECURITY_SOURCE_AND_TESTS_UNCHANGED=TRUE'
+      - name: Authenticate original P144 failures and run three focused real Windows original tests
+        shell: pwsh
+        env:
+          P155_EVIDENCE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p155_windows_nonp76_original_failure_custody
+            if($LASTEXITCODE -ne 0){
+               throw 'P155 authenticated custody or focused native Windows evidence incomplete'
+            }
+            Write-Output 'P155_COLLECTOR_SUCCESS_IS_NOT_ORIGINAL_REGRESSION_PASS'
+            Write-Output 'P155_THREE_COMPLETE_FULL_PRODUCT_REGRESSIONS=0'
+            Write-Output 'P155_QUALIFIED_EXTERNAL_REVIEW=NOT_APPROVED'
+            Write-Output 'P155_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain unmodified original P144 raw logs, actual P155 Windows logs and SHA256 ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p155-authenticated-original-nonp76-Windows-logs-and-cases
+          path: |
+            ${{ runner.temp }}/nayeon-p155-authenticated-nonp76/*.json
+            ${{ runner.temp }}/nayeon-p155-authenticated-nonp76/*.log
+          if-no-files-found: warn
+          retention-days: 14
