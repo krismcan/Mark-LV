@@ -195,7 +195,7 @@ try:
         "Open local key setup (offline, not connected)",
     ))
     assert titles == expected_titles, (titles, expected_titles)
-    assert page.local_byok_button.cget("state") == "disabled"
+    assert str(page.local_byok_button.cget("state")) == "disabled"
     print("P157_POST_P133_EXACT_THREE_BUTTONS=PASS", flush=True)
     print("P157_NO_AUTOMATIC_OFFLINE_KEY_SETUP=PASS", flush=True)
     with ExitStack() as blocked:
