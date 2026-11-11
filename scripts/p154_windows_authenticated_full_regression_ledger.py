@@ -22,6 +22,8 @@ import re
 import subprocess
 import sys
 import urllib.request
+import urllib.error
+import urllib.parse
 import zipfile
 
 BASE = "08eb591a6a414f0a9eddbf309327475c99a18752"
@@ -100,8 +102,42 @@ def _download_artifact(id: int, expected_sha: str, token: str) -> bytes:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(req, timeout=40) as stream:
-        data = stream.read(MAX_ARCHIVE_BYTES + 1)
+    # GitHub Actions uses an HTTPS 302 to an artifact blob host. Never
+    # allow urllib's default redirect to forward the bearer token.
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, url):
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=40) as stream:
+            if stream.status != 200:
+                raise RuntimeError("Unexpected GitHub artifact API response")
+            data = stream.read(MAX_ARCHIVE_BYTES + 1)
+    except urllib.error.HTTPError as response:
+        if response.code not in (302, 303, 307):
+            raise RuntimeError("GitHub Actions artifact retrieval not authorized") from None
+        location = response.headers.get("Location", "")
+        target = urllib.parse.urlparse(location)
+        host = (target.hostname or "").lower()
+        if (
+            target.scheme != "https"
+            or not host
+            or not (
+                host.endswith(".blob.core.windows.net")
+                or host.endswith(".actions.githubusercontent.com")
+                or host.endswith(".githubusercontent.com")
+            )
+        ):
+            raise RuntimeError("Untrusted GitHub artifact redirect destination")
+        # Artifact storage request has NO Authorization header.
+        safe = urllib.request.Request(
+            location, headers={"User-Agent": "Nayeon-P154-Artifact-SHA256-Audit"}
+        )
+        with opener.open(safe, timeout=40) as stream:
+            if stream.status != 200:
+                raise RuntimeError("Untrusted artifact storage response")
+            data = stream.read(MAX_ARCHIVE_BYTES + 1)
     if len(data) > MAX_ARCHIVE_BYTES or _sha(data) != expected_sha:
         raise RuntimeError("Historical GitHub Actions archived evidence SHA256 mismatch")
     return data
