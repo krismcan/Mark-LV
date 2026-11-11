@@ -1,0 +1,83 @@
+name: P153 Current Branch Supplemental Security Governance Candidate — PRODUCTION HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p153-current-branch-security-governance-candidate-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  supplemental-current-user-source-candidate:
+    name: Windows 25 original P76 negatives and P132/P133/P140 fail-closed tests
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Hosted disposable Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P152 ancestry and only 3 new audit-only paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P153 requires a disposable GitHub hosted Windows runner'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p153-current-branch-security-governance-candidate-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P153 exact GitHub branch clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P153 Git HEAD drift from exact CI SHA'
+          }
+          $base='0342125898215f194782809d1e9103d71b0c118a'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P153 exact P152 parent is absent'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p153-windows-current-branch-candidate.yml'
+            'docs/byok-c1-p153-current-branch-regression-governance-candidate.md'
+            'scripts/p153_windows_current_branch_security_candidate.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P153 unexpectedly modified an original test, security gate or product path'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P153 source diff invalid'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P153 clean checkout assertion failed'
+          }
+          Write-Output 'P153_EXACT_P152_PARENT_AND_THREE_AUDIT_ONLY_PATHS=PASS'
+          Write-Output 'P153_ORIGINAL_HISTORICAL_TEST_AND_SECURITY_SOURCE=UNCHANGED'
+      - name: Run 25 named original fail-closed tests, separately from old P76 full suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p153_windows_current_branch_security_candidate
+            if($LASTEXITCODE -ne 0){
+              throw 'P153 could not preserve genuine original security test results'
+            }
+            Write-Output 'P153_TEST_RESULT_AUTHORITATIVE_ONLY_IN_NATIVE_MANIFEST=TRUE'
+            Write-Output 'P153_ORIGINAL_P76_POSITIVE_FAILS=STILL_HOLD_NOT_WAIVED'
+            Write-Output 'P153_EXTERNAL_TEST_GOVERNANCE_AND_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P153_THREE_FULL_PRODUCT_WINDOWS_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P153_USER_SCOPE_C1_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Preserve genuine native Windows logs and source-custody SHA256 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p153-windows-current-branch-25-original-security-test-candidate
+          path: |
+            ${{ runner.temp }}/nayeon-p153-current-branch-review/*.log
+            ${{ runner.temp }}/nayeon-p153-current-branch-review/*.json
+          if-no-files-found: warn
+          retention-days: 14
