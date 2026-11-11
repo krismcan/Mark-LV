@@ -1,0 +1,82 @@
+name: P161 Genuine Windows Historical Phase837 Git-Latency Profile — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p161-windows-historical-git-call-latency-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  original-phase837-git-latency:
+    name: P161 original one-case native Windows Git subprocess profile (no security bypass)
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce exact P160 Git ancestor and three strictly additive P161 paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p161-windows-historical-git-call-latency-20261111'){
+            throw 'P161 real hosted Windows exact branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p161-windows-historical-git-call-latency-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P161 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P161 unexpected GitHub event/source SHA'
+          }
+          $base='725181149b7bb3f1002c9d36b7fc8e86c78020d7'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P161 verified exact P160 base missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p161-windows-historical-git-call-latency.yml'
+            'docs/byok-c1-p161-historical-git-call-latency-review.md'
+            'scripts/p161_windows_historical_git_call_profile.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P161 original product/test/security changed or evidence source missing'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P161 source diff whitespace drift'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P161 source checkout was not clean'
+          }
+          Write-Output 'P161_EXACT_P160_PARENT_THREE_ADDITIVE_PATHS=PASS'
+      - name: Native Windows original Phase8.37 test and authentic Git-call timing receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p161_windows_historical_git_call_profile
+            if($LASTEXITCODE -ne 0){
+              throw 'P161 original Windows Git latency instrument/provenance failed'
+            }
+            Write-Output 'P161_COLLECTOR_GREEN_NEVER_MEANS_ORIGINAL_UNFILTERED_MODULE_PASS'
+            Write-Output 'P161_QUALIFIED_INDEPENDENT_SECURITY_GOVERNANCE=NOT_OBTAINED'
+            Write-Output 'P161_FULL_PRODUCT_ACCEPTED_WINDOWS_TRIAD=0/3'
+            Write-Output 'P161_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Archive original native Windows stdout and per-Git command latency ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p161-actual-original-Windows-Phase837-git-call-latency-logs
+          path: |
+            ${{ runner.temp }}/nayeon-p161-actual-original-phase837-git-profile/*.log
+            ${{ runner.temp }}/nayeon-p161-actual-original-phase837-git-profile/*.json
+            ${{ runner.temp }}/nayeon-p161-actual-original-phase837-git-profile/*.jsonl
+          if-no-files-found: warn
+          retention-days: 14
