@@ -1,0 +1,76 @@
+name: P151 Original Windows BYOK Focused Native Stack Trace — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p151-windows-original-byok-topology-stack-diagnostic-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  original-byok-real-native-trace:
+    name: Three unchanged historic BYOK tests with bounded native Python stack snapshots
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Hosted disposable Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P150 ancestry and audit-only source changes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P151 only disposable GitHub-hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p151-windows-original-byok-topology-stack-diagnostic-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P151 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'Source HEAD mismatch'}
+          $base='46ca262d7ff7c21a2c6c2dead5d64537cceece1e'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){throw 'Original P150 parent missing'}
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p151-windows-original-byok-native-stack.yml'
+            'docs/byok-c1-p151-windows-original-byok-topology-stack-review.md'
+            'scripts/p151_windows_original_byok_topology_stacks.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'Original historical tests or product/security source changed'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P151 invalid source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){throw 'Source tree dirty'}
+          Write-Output 'P151_EXACT_P150_PARENT_AND_THREE_AUDIT_PATHS=PASS'
+          Write-Output 'P151_ORIGINAL_HISTORIC_TEST_AND_PRODUCT_SECURITY_SOURCE=UNCHANGED'
+      - name: Execute real Windows original focused tests and collect native Python stack snapshots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p151_windows_original_byok_topology_stacks
+            if($LASTEXITCODE -ne 0){
+              throw 'P151 failed to collect three original test outcome receipts'
+            }
+            Write-Output 'P151_COLLECTION_SUCCESS_NOT_HISTORICAL_TEST_PASS=TRUE'
+            Write-Output 'P151_P150_ORIGINAL_13_TEST_MODULE=STILL_HOLD'
+            Write-Output 'P151_THREE_COMPLETE_PRODUCT_WINDOWS_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P151_C1_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Retain native original test logs, stack snapshots and SHA256 JSON receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p151-windows-original-BYOK-focused-native-stack-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p151-original-byok-stacks/*.log
+            ${{ runner.temp }}/nayeon-p151-original-byok-stacks/*.json
+          if-no-files-found: warn
+          retention-days: 14
