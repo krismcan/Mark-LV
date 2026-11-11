@@ -1,0 +1,82 @@
+name: P159 Six Original Phase 8 Windows Timeout Recovery — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p159-windows-six-scope-timeout-recovery-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  original-timeout-recovery:
+    name: P159 real Windows original six 35s-timeout modules longer bounded recovery
+    runs-on: windows-2025
+    timeout-minutes: 11
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P158 source and three additive-only P159 paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p159-windows-six-scope-timeout-recovery-20261111'){
+             throw 'P159 real disposable Windows branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p159-windows-six-scope-timeout-recovery-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P159 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P159 event/source SHA mismatch'
+          }
+          $base='cb8c1980346ec7d36d7a5de6e764204cf9c2f30b'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+             throw 'P159 source lacks exact P158 parent'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+             '.github/workflows/p159-windows-six-original-scope-timeouts.yml'
+             'docs/byok-c1-p159-six-original-scope-timeout-recovery.md'
+             'scripts/p159_windows_six_original_scope_timeout_recovery.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P159 modified original product/tests/security or changed unexpected paths'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P159 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P159 source not clean'
+          }
+          Write-Output 'P159_EXACT_P158_ANCESTRY_THREE_ADDITIVE_FILES=PASS'
+      - name: Run all six original Phase 8 integrity modules with genuine native bounded Windows processes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p159_windows_six_original_scope_timeout_recovery
+             if($LASTEXITCODE -ne 0){
+                throw 'P159 native original module inventory/provenance/evidence failed'
+             }
+             Write-Output 'P159_COLLECTOR_SUCCESS_NEVER_MEANS_ORIGINAL_REGRESSION_PASS'
+             Write-Output 'P159_P135_AND_P150_HISTORICAL_TIMEOUTS_REMAIN_OPEN'
+             Write-Output 'P159_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+             Write-Output 'P159_FULL_PRODUCT_ACCEPTED_WINDOWS_TRIAD=0/3'
+             Write-Output 'P159_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain six genuine native Windows child logs, SHA256 and complete module ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p159-original-Phase8-Windows-longer-bounded-six-module-native-results
+          path: |
+            ${{ runner.temp }}/nayeon-p159-six-original-scope-timeout-recovery/*.json
+            ${{ runner.temp }}/nayeon-p159-six-original-scope-timeout-recovery/*.log
+          if-no-files-found: warn
+          retention-days: 14
