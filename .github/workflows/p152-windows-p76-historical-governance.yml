@@ -1,0 +1,80 @@
+name: P152 Genuine Windows P76 Original Exact Branch and Test Governance — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p152-p76-historical-branch-governance-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  original-p76-branch-contract:
+    name: Exact P151 source / real P76 denial / unfiltered original historical Windows tests
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Fixed hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P151 ancestry and three audit-only paths, original tests unchanged
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P152 requires disposable GitHub-hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p152-p76-historical-branch-governance-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P152 exact source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P152 source HEAD differs from event HEAD'
+          }
+          $base='6d393b78c349bc07d9110e15f222e26f1dbe05f7'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P151 exact parent ancestry missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p152-windows-p76-historical-governance.yml'
+            'docs/byok-c1-p152-p76-original-branch-governance.md'
+            'scripts/p152_windows_original_p76_branch_governance.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P152 original security/test/product sources changed'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P152 invalid source whitespace'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P152 source clone unexpectedly dirty'
+          }
+          Write-Output 'P152_EXACT_P151_PARENT_AND_THREE_AUDIT_ONLY_PATHS=PASS'
+          Write-Output 'P152_UNCHANGED_ORIGINAL_P76_TEST_AND_PRODUCT_SECURITY_SOURCE=TRUE'
+      - name: Actual P76 branch denial and all original Windows test cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p152_windows_original_p76_branch_governance
+            if($LASTEXITCODE -ne 0){throw 'P152 original P76 negative security admission or test collection failed'}
+            Write-Output 'P152_ACTUAL_CURRENT_BRANCH_GUARD_EXPECTED_DENIAL=EVIDENCED'
+            Write-Output 'P152_ORIGINAL_TEST_SUITE_RESULT_ONLY_IN_NATIVE_MANIFEST=TRUE'
+            Write-Output 'P152_INDEPENDENT_REVIEWER_AND_THREE_FULL_REGRESSIONS=NOT_OBTAINED'
+            Write-Output 'P152_USER_SCOPE_C1_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain genuine Windows original logs and SHA256 branch-governance manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p152-genuine-windows-original-P76-branch-governance
+          path: |
+            ${{ runner.temp }}/nayeon-p152-original-p76/*.log
+            ${{ runner.temp }}/nayeon-p152-original-p76/*.json
+          if-no-files-found: warn
+          retention-days: 14
