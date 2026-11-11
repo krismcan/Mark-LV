@@ -1,0 +1,80 @@
+name: P156 Current-User Import and WinCred Boundary — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p156-user-scope-import-credential-boundary-review-20261111
+
+permissions:
+  contents: read
+
+jobs:
+  user-scope-boundary:
+    name: P156 genuine Windows import effects and synthetic user-credential safety
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P155 parent and additive-only P156 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p156-user-scope-import-credential-boundary-review-20261111'){
+             throw 'P156 actual disposable Windows and exact source branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p156-user-scope-import-credential-boundary-review-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P156 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P156 event/source SHA mismatch'
+          }
+          $base='27e119825d7c83a891b7d80b208bf2b7709e10bc'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+             throw 'P156 source lacks exact P155 parent'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+             '.github/workflows/p156-windows-user-scope-import-boundary.yml'
+             'docs/byok-c1-p156-user-scope-import-credential-boundary-review.md'
+             'scripts/p156_windows_user_scope_boundary_review.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P156 changed original source/tests/security controls'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P156 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+             throw 'P156 cloned source is dirty'
+          }
+          Write-Output 'P156_EXACT_P155_PARENT_AND_ONLY_THREE_ADDITIVE_AUDIT_PATHS=PASS'
+      - name: Execute current-user import-denial and original fake-WinCred focused Windows tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p156_windows_user_scope_boundary_review
+             if($LASTEXITCODE -ne 0){
+                throw 'P156 genuine current-user boundary probe or original focused test mismatch'
+             }
+             Write-Output 'P156_HISTORICAL_PHASE831_ORIGINAL_FAILURE_REMAINS_HOLD'
+             Write-Output 'P156_FOCUSED_PASS_NOT_FULL_PRODUCT_REGRESSION'
+             Write-Output 'P156_QUALIFIED_INDEPENDENT_REVIEW=NOT_OBTAINED'
+             Write-Output 'P156_PRODUCTION_RELEASE=HOLD'
+          } finally {Pop-Location}
+      - name: Retain genuine focused Windows native logs and source-bound ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p156-windows-user-scope-security-boundary-original-and-synthetic-logs
+          path: |
+            ${{ runner.temp }}/nayeon-p156-scope-boundary-evidence/*.json
+            ${{ runner.temp }}/nayeon-p156-scope-boundary-evidence/*.log
+          if-no-files-found: warn
+          retention-days: 14
