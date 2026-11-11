@@ -1,0 +1,85 @@
+name: P154 Authenticate Original Windows Full Regression Evidence — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p154-authenticated-full-product-regression-ledger-20261111
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-authenticated-full-product-regression-inventory:
+    name: Original 169-module Git inventory and seven SHA256 pinned prior Windows archives
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Genuine ephemeral Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P153 parent, immutable original source and only 3 audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)){
+            throw 'P154 requires disposable hosted Windows'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p154-authenticated-full-product-regression-ledger-20261111 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P154 exact hosted Windows source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P154 event SHA differs from GitHub source HEAD'
+          }
+          $base='08eb591a6a414f0a9eddbf309327475c99a18752'
+          if((git -C reviewed merge-base HEAD $base).Trim() -ne $base){
+            throw 'P154 exact P153 ancestry missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD|Sort-Object)
+          $expected=@(
+            '.github/workflows/p154-windows-authenticated-full-regression-ledger.yml'
+            'docs/byok-c1-p154-authenticated-regression-evidence-and-independent-review.md'
+            'scripts/p154_windows_authenticated_full_regression_ledger.py'
+          )|Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P154 original protected historical test/product/security sources modified'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P154 source diff --check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P154 source clone dirty'
+          }
+          Write-Output 'P154_EXACT_P153_BASE_AND_THREE_AUDIT_ONLY_PATHS=PASS'
+          Write-Output 'P154_ORIGINAL_SOURCE_TEST_SECURITY_GUARDS_UNMODIFIED=TRUE'
+      - name: Cryptographically authenticate prior Windows runs and generate 169-module reviewer ledger
+        shell: pwsh
+        env:
+          P154_READ_ONLY_GITHUB_ARTIFACT_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p154_windows_authenticated_full_regression_ledger
+            if($LASTEXITCODE -ne 0){
+              throw 'P154 source-backed historic Windows artifacts are not fully verified'
+            }
+            Write-Output 'P154_AUTHENTICATED_REAL_PRIOR_WINDOWS_RECEIPTS=PASS'
+            Write-Output 'P154_CURRENT_RUN_ADDS_ZERO_TEST_EXECUTIONS=TRUE'
+            Write-Output 'P154_THREE_GENUINE_COMPLETE_FULL_PRODUCT_REGRESSIONS=NOT_PASSED'
+            Write-Output 'P154_EXTERNAL_REVIEW_AND_SIGNED_INSTALLER=NOT_OBTAINED'
+            Write-Output 'P154_USER_SCOPE_C1_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Retain true 169-module ledger with authenticated prior Windows evidence digests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p154-original-169-module-authenticated-Windows-regression-ledger
+          path: |
+            ${{ runner.temp }}/nayeon-p154-evidence-reconciliation/*.json
+          if-no-files-found: warn
+          retention-days: 14
