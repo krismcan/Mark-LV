@@ -57,3 +57,28 @@ If the exact expected original failures change, any new test fails, an effect is
 Retain the three original P86/P87 assertion FAIL/HOLD records and the original Phase8.31 branch/import-closure HOLD. An authorised qualified historical-governance reviewer should assess a separate branch-aware post-P133 widget-inventory successor assertion; original sealed historical sources/tests must not be rewritten or suppressed. Do not remove the requested explicit offline setup button simply to reproduce a two-button pre-P133 snapshot.
 
 The project still needs three complete accepted full-product Windows regressions, signed/pinned production package, owner Code Integrity approval and qualified independent security review before any real-key or production deployment decision.
+
+
+## P157 authenticated hosted Windows evidence reconciliation
+
+**First successful P157 evidence collector:** https://github.com/krismcan/Mark-LV/actions/runs/43059036413, genuine Windows-2025 Python 3.12, source SHA f499b32bff3a164f99e9268ddd469fd16168b27f. Actual GitHub artifact ID 13871699491, outer ZIP SHA-256 29175910E4988CE7BCECE8D93342817348962E4B6BE321439A169FC89204751D.
+
+**Meaning of SUCCESS:** all original security source files/tests remained unchanged; adverse real Windows view checks and 2 original test modules passed; EXACTLY the three known P86/P87 widget-count failures were also observed as actual native process failures with exit 1, and those source failures remain in a documented HOLD inventory. This is evidence collection SUCCESS, *not* a passing original P86/P87 regression or independent release approval.
+
+| Windows child | Native exit | Original tests | Unchanged original disposition | Complete log SHA256 |
+| --- | ---: | ---: | --- | --- |
+| P157 Tk adversarial 63 mapped states and 63 UI updates, three invalid/wrong-thread refusals, no forbidden effects | 0 | N/A | New defensive probe PASS; exactly 3 expected post-P133 widget labels and no automatic key setup | 79A49DF8A4F881BFCAB2EF1264EF6B9A1F7502845F2F2E3285A36499DDAF6898 |
+| Original P84 typed view | 0 | 6 | PASS 6 | C668DDA5A04B34026570DBF96EFEBDADC2921508C8CCAF35658B64D4A6162464 |
+| Original P86 Connection-page advisory | 1 | 7 | PASS 5, FAIL/HOLD 2 (unchanged exact two-button expectations) | 8511077B4CA96F2884E4FD9313BE9B695DE709045A96E6D38EB6AB95D1EB8897 |
+| Original P87 synthetic observation | 1 | 18 | PASS 17, FAIL/HOLD 1 (unchanged exact two-button expectation) | 82DB168AF3B14234657F8D5D9EFF4C70C4B5DEF5703EB8AE8A8EDACCB7C74CEC |
+| Original P88 lifecycle | 0 | 10 | PASS 10 | CDA9517FA7968D4BD996AD2273ED0007C9D476102DDB684C10289B0BAAF614F9 |
+
+Therefore original test methods: 41 run, 38 PASS, 3 FAIL/HOLD, zero timeout; no original modification, synthetic bypass, fake positive or baseline waiver. Historical original Phase8.31 remains FAIL/HOLD, original exact P76/P85 branch contract remains unchanged, user-scope signed admission unchanged.
+
+The initial failing P157 run and the later fact-finding runs are preserved in GitHub Actions; an intermediate diagnostic required only normalising a Tk Tcl state object to string when verifying the deliberately new third button. No product source, legacy original test or security control was changed.
+
+## Next architecture/release governance checkpoint
+
+**P158 candidate:** formal immutable historical UI/source-contract successor governance: use exact ancestor-pinned original tests with original negative exits preserved, define versioned post-P133 source/3-button inventory acceptance, get an actually qualified independent reviewer, and audit the remaining historical modules before any full-product triad. Do not overwrite P86/P87 originals, P76/P85 exact branch tests or Phase8.31 to make a green bar. The P157 graph risk remains an architectural coupling for a future reviewed minimal type-only dependency separation, not a demonstrated effect in the exercised view path.
+
+**Release remains HOLD — user-scoped C1 not installed or authorised to accept real API keys.**
