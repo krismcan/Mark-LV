@@ -1,0 +1,79 @@
+name: P182 Native Windows Fail-Closed Git Batch Transport Experiment — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p182-fail-closed-batch-transport-candidate-20261112
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p182-experimental-fail-closed-transport:
+    name: P182 Real Windows 32 Original and Bounded-Session Security Tests
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P181 source lineage and three additive P182 evidence paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p182-fail-closed-batch-transport-candidate-20261112'){
+            throw 'P182 authenticated Windows push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p182-fail-closed-batch-transport-candidate-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P182 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P182 triggering exact source SHA drift'
+          }
+          $parent='0e4cd7065eb2ebd0d3eb247813b52c0fcd75cb00'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P182 source P181 ancestry mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p182-windows-fail-closed-batch-transport.yml'
+            'docs/byok-c1-p182-fail-closed-git-batch-transport.md'
+            'scripts/p182_windows_fail_closed_batch_transport.py'
+          ) | Sort-Object
+          $changed=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P182 frozen security/test/product modification refused'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P182 malformed source diff'}
+          Write-Output 'P182_AUTHENTIC_SOURCE_THREE_ONLY_ADDITIVE_FILES=PASS'
+      - name: Authenticate original P181 Windows and execute 32 actual native security tests
+        shell: pwsh
+        env:
+          P182_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p182_windows_fail_closed_batch_transport
+            if($LASTEXITCODE -ne 0){throw 'P182 genuine native Windows fail-closed candidate incomplete; HOLD'}
+            Write-Output 'P182_OLD_ORIGINAL_SECURITY_TESTS_UNMODIFIED'
+            Write-Output 'P182_CANDIDATE_NOT_INTEGRATED_IN_PRODUCT'
+            Write-Output 'P182_QUALIFIED_EXTERNAL_SECURITY_GO=NOT_OBTAINED'
+            Write-Output 'P182_ACCEPTED_FULL_PRODUCT_WINDOWS_RUNS=0/3'
+            Write-Output 'P182_PRODUCTION_RELEASE=HOLD'
+          }finally{
+            Pop-Location
+          }
+      - name: Archive raw native Windows original and candidate results and H C R receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p182-genuine-Windows-fail-closed-transport-candidate-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p182-fail-closed-transport/*.log
+            ${{ runner.temp }}/nayeon-p182-fail-closed-transport/*.json
+          if-no-files-found: warn
+          retention-days: 14
