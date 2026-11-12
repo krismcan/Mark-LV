@@ -1,0 +1,82 @@
+name: P178 Authentic Windows Bounded Full Regression Stall Recovery — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p178-bounded-full-regression-stall-recovery-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p178-bounded-original-suite-stall:
+    name: P178 Original BYOK B Uncompleted Case with Bounded Native Windows Watchdog
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Native Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact isolated P177 source and only three additive P178 diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p178-bounded-full-regression-stall-recovery-20261112'){
+            throw 'P178 must be an authenticated GitHub Windows source push'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p178-bounded-full-regression-stall-recovery-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P178 isolated exact source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P178 source HEAD differs from triggering GitHub push'
+          }
+          $parent='96e5136a0f78fccde13971350a4afc1b0a26d481'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P178 exact P177 parent ancestry missing'
+          }
+          $expected=@(
+            '.github/workflows/p178-windows-bounded-regression-recovery.yml'
+            'docs/byok-c1-p178-authentic-full-regression-stall-recovery.md'
+            'scripts/p178_windows_bounded_regression_stall_recovery.py'
+          ) | Sort-Object
+          $changed=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+            throw 'P178 frozen source/test, unrelated file or original worktree mutation refused'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P178 source diff corruption'}
+          Write-Output 'P178_AUTHENTIC_P177_PARENT_AND_THREE_ADDITIONS=PASS'
+      - name: Genuine P135 P154 P177 archive custody and bounded untouched original Windows tests
+        shell: pwsh
+        env:
+          P178_EVIDENCE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p178_windows_bounded_regression_stall_recovery
+            if($LASTEXITCODE -ne 0){
+              throw 'P178 immutable archival custody or actual native recovery diagnostic incomplete'
+            }
+            Write-Output 'P178_GENUINE_BOUNDED_NATIVE_REPRODUCTION=CAPTURED_NOT_FULL_PRODUCT_REGRESSION'
+            Write-Output 'P178_THREE_COMPLETE_FULL_PRODUCT_NATIVE_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P178_SEVEN_QUALIFIED_INDEPENDENT_DECISIONS=OPEN'
+            Write-Output 'P178_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Preserve genuine unfiltered original native logs and H C R regression ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p178-bounded-native-Windows-original-suite-stall-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p178-bounded-regression/*.log
+            ${{ runner.temp }}/nayeon-p178-bounded-regression/*.json
+          if-no-files-found: warn
+          retention-days: 14
