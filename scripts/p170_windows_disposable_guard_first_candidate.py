@@ -299,10 +299,12 @@ def main() -> int:
         os.mkdir(safe_temp)
         made=True
         _verify_original_handle_policy(str(safe_temp))
-        p=subprocess.run(["git","clone","--quiet","--no-hardlinks","--single-branch",
+        p=subprocess.run(["git","-c","core.autocrlf=false","clone","--quiet",
+                          "--no-hardlinks","--single-branch",
                           "--branch",BRANCH,str(ROOT),str(scratch)],
                          stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,check=True,timeout=90)
+        git(scratch,"config","--local","core.autocrlf","false")
         if git(scratch,"rev-parse","HEAD").decode().strip()!=before["source_head"]:
             raise RuntimeError("P170 copied source clone wrong Git identity")
         original_files={name:digest((scratch/name).read_bytes()) for name in SCOPE}
