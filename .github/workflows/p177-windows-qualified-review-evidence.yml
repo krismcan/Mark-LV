@@ -1,0 +1,83 @@
+name: P177 Authentic Qualified Independent Review Intake — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p177-qualified-review-evidence-consolidation-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p177-qualified-review-packet:
+    name: P177 Reauthenticate P174-P176 Windows Evidence and Nine Review Contract Negatives
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P176 ancestor and only three additive P177 audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p177-qualified-review-evidence-consolidation-20261112'){
+            throw 'P177 hosted Windows source/event provenance refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p177-qualified-review-evidence-consolidation-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P177 authenticated source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P177 exact running GitHub commit SHA mismatch'
+          }
+          $parent='ea77c8115c68520a08d3f259f994354cfa1d0601'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P177 does not directly descend from verified P176'
+          }
+          $expected=@(
+            '.github/workflows/p177-windows-qualified-review-evidence.yml'
+            'docs/byok-c1-p177-qualified-independent-review-submission.md'
+            'scripts/p177_windows_qualified_review_evidence_packet.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P177 original security source/test or other file mutated'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P177 source diff whitespace integrity failed'}
+          Write-Output 'P177_EXACT_PARENT_AND_ONLY_THREE_ADDITIVE_REVIEW_PATHS=PASS'
+      - name: Reauthenticate three authentic Windows archives and collect native review contract
+        shell: pwsh
+        env:
+          P177_REVIEW_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p177_windows_qualified_review_evidence_packet
+            if($LASTEXITCODE -ne 0){
+              throw 'P177 original Windows chain/packet authenticity or negative contract incomplete — HOLD'
+            }
+            Write-Output 'P177_NATIVE_REVIEW_PACKET=PREPARED_NOT_EXTERNALLY_APPROVED'
+            Write-Output 'P177_7_QUALIFIED_DECISIONS=OPEN'
+            Write-Output 'P177_FROZEN_ORIGINAL_HISTORICAL_FAILURES=UNWAIVED'
+            Write-Output 'P177_GENUINE_COMPLETE_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P177_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive reviewer-ready source-bound packet, full real nine-case native log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p177-authentic-qualified-independent-review-submission
+          path: |
+            ${{ runner.temp }}/nayeon-p177-qualified-review-submission/*.log
+            ${{ runner.temp }}/nayeon-p177-qualified-review-submission/*.json
+          if-no-files-found: warn
+          retention-days: 14
