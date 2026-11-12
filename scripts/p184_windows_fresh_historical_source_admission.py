@@ -395,7 +395,7 @@ class P184FreshHistoricalSourceAdmissionTests(unittest.TestCase):
                          "PARENT_TAG_OBJECT","_disk","_raw_delta"):
             self.assertIn(required,source)
         # New contract intentionally does not invoke the full historical B gate.
-        self.assertNotIn("assert_byok_b_integrity(",FreshSourceAdmittedBatch.read.__code__.co_names)
+        self.assertNotIn("assert_byok_b_integrity",FreshSourceAdmittedBatch.read.__code__.co_names)
         self.assertEqual(set(REVIEWS),{"GOV-01","GOV-02","SEC-03","SEC-04",
                                       "REL-05","REL-06","REL-07"})
 
