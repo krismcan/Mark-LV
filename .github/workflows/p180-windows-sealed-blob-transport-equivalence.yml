@@ -1,0 +1,81 @@
+name: P180 Genuine Windows Sealed Blob Transport Equivalence — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p180-sealed-blob-transport-equivalence-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p180-original-git-show-versus-batch:
+    name: P180 Real Git Show vs Fresh Cat-File Batch Bytes and Protocol Refusals
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P179 source and only three additive P180 experiment paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p180-sealed-blob-transport-equivalence-20261112'){
+            throw 'P180 authenticated GitHub-hosted Windows source required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p180-sealed-blob-transport-equivalence-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P180 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P180 triggering SHA differs from current branch'
+          }
+          $parent='8e74b5c075c5bf110618c9cca6af7fdda39a56dd'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P180 authenticated P179 source ancestor missing'
+          }
+          $expected=@(
+            '.github/workflows/p180-windows-sealed-blob-transport-equivalence.yml'
+            'docs/byok-c1-p180-sealed-blob-transport-equivalence.md'
+            'scripts/p180_windows_sealed_blob_transport_equivalence.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P180 mutation to original sealed tests/product or unrelated path'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P180 source diff check failed'}
+          Write-Output 'P180_SOURCE_IMMUTABLE_3_ADDITIVE_ONLY=PASS'
+      - name: Authenticate P179 source and eight strict native protocol cases then compare real Git blob bytes
+        shell: pwsh
+        env:
+          P180_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p180_windows_sealed_blob_transport_equivalence
+            if($LASTEXITCODE -ne 0){throw 'P180 genuine native Git protocol or bytes diagnostic failed; HOLD'}
+            Write-Output 'P180_READONLY_BATCH_OBJECT_TRANSPORT=EXPERIMENT_ONLY'
+            Write-Output 'P180_ORIGINAL_FROZEN_SECURITY_TESTS_UNCHANGED=YES'
+            Write-Output 'P180_SEVEN_EXTERNAL_QUALIFIED_SECURITY_DECISIONS=OPEN'
+            Write-Output 'P180_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P180_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Retain raw genuine Windows negative tests and true response-byte benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p180-authentic-Windows-Git-blob-transport-prototype-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p180-sealed-blob-equivalence/*.log
+            ${{ runner.temp }}/nayeon-p180-sealed-blob-equivalence/*.json
+          if-no-files-found: warn
+          retention-days: 14
