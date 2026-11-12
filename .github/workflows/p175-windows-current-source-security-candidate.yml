@@ -1,0 +1,83 @@
+name: P175 Source-Bound Current UI Credential Candidate and Historical Negatives — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p175-current-source-security-admission-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p175-versioned-current-security-candidate:
+    name: P175 Current Native Windows Candidate + Authenticated P174/Historical Holds
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P174 parent and three additive P175-only audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p175-current-source-security-admission-20261112'){
+            throw 'P175 authenticated Windows GitHub branch provenance refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p175-current-source-security-admission-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P175 exact source clone refused'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P175 exact GitHub SHA mismatch'
+          }
+          $base='98437f4c4e8a09b507bc998a2829bafcc430f8a7'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P175 no exact P174 direct source ancestor'
+          }
+          $expected=@(
+            '.github/workflows/p175-windows-current-source-security-candidate.yml'
+            'docs/byok-c1-p175-versioned-current-candidate-security-review.md'
+            'scripts/p175_windows_current_source_security_candidate.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P175 original product / tests or old security source mutated'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P175 source additive whitespace diff refused'}
+          Write-Output 'P175_EXACT_PARENT_THREE_EVIDENCE_PATHS=PASS'
+      - name: Verify prior P174 ZIP and execute genuine original/current native Windows tests
+        shell: pwsh
+        env:
+          P175_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p175_windows_current_source_security_candidate
+            if($LASTEXITCODE -ne 0){
+              throw 'P175 versioned candidate or immutable original security evidence incomplete'
+            }
+            Write-Output 'P175_GENUINE_NATIVE_EVIDENCE_COLLECTED_NOT_A_RELEASE_ACCEPTANCE'
+            Write-Output 'P175_SEVEN_EXTERNAL_REVIEW_DECISIONS=OPEN'
+            Write-Output 'P175_SIGNED_LAUNCH_AUTHORITY=NOT_OBTAINED'
+            Write-Output 'P175_FULL_PRODUCT_NATIVE_WINDOWS_ACCEPTED=0/3'
+            Write-Output 'P175_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive unfiltered true native Windows logs, SHA-256 and source-governance ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p175-actual-windows-versioned-current-security-candidate
+          path: |
+            ${{ runner.temp }}/nayeon-p175-current-security-candidate/*.log
+            ${{ runner.temp }}/nayeon-p175-current-security-candidate/*.json
+          if-no-files-found: warn
+          retention-days: 14
