@@ -1,0 +1,83 @@
+name: P181 Windows Batch Transport Adversarial Security Review — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p181-batch-transport-security-adversarial-review-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p181-adversarial-security-evidence:
+    name: P181 Authenticate Original P180 + Twenty Windows Native Negative and Risk Discovery Cases
+    runs-on: windows-2025
+    timeout-minutes: 7
+    steps:
+      - name: Native hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify P180 exact original parent and three audit-only P181 additions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p181-batch-transport-security-adversarial-review-20261112'){
+            throw 'P181 authentic hosted Windows push/branch required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p181-batch-transport-security-adversarial-review-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P181 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P181 exact GitHub pushed source HEAD differs from cloned source'
+          }
+          $parent='20a3611cfcbc6c770b369120fd07c303cbb76eff'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P181 source P180 ancestry mismatch'
+          }
+          $allowed=@(
+            '.github/workflows/p181-windows-batch-transport-security-adversarial-review.yml'
+            'docs/byok-c1-p181-batch-transport-security-review.md'
+            'scripts/p181_windows_batch_transport_security_review.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $allowed -DifferenceObject $actual).Count -ne 0){
+            throw 'P181 attempted historical source, frozen test or unrelated path change'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P181 source diff check failed'}
+          Write-Output 'P181_EXACT_P180_PARENT_AND_ONLY_3_ADDITIVE_REVIEW_FILES=PASS'
+      - name: Authenticate P180 original evidence, run all 20 adversarial cases, retain OPEN risk register
+        shell: pwsh
+        env:
+          P181_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p181_windows_batch_transport_security_review
+            if($LASTEXITCODE -ne 0){
+              throw 'P181 genuine Windows review evidence incomplete; HOLD'
+            }
+            Write-Output 'P181_ORIGINAL_TESTS_AND_SOURCE_UNCHANGED=YES'
+            Write-Output 'P181_DISCOVERED_CANDIDATE_SECURITY_GAPS=OPEN'
+            Write-Output 'P181_INDEPENDENT_QUALIFIED_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P181_ACCEPTED_FULL_PRODUCT_NATIVE_WINDOWS_RUNS=0/3'
+            Write-Output 'P181_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Preserve real native 20-case log and machine-readable six OPEN findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p181-original-Windows-adversarial-transport-review-no-release
+          path: |
+            ${{ runner.temp }}/nayeon-p181-transport-review/*.log
+            ${{ runner.temp }}/nayeon-p181-transport-review/*.json
+          if-no-files-found: warn
+          retention-days: 14
