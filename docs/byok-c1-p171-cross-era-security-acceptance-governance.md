@@ -1,7 +1,7 @@
 # P171 — Historical H / current C / release R cross-era security-governance acceptance matrix
 
-**Date:** 12 November 2026  
-**Programme:** Nayeon v1 / BYOK C1 · OM v2.1  
+**Date:** 12 November 2026
+**Programme:** Nayeon v1 / BYOK C1 · OM v2.1
 **Status:** DRAFT / QUALIFIED INDEPENDENT REVIEW REQUIRED / PRODUCTION RELEASE HOLD
 
 ## Exact P170 source custody
