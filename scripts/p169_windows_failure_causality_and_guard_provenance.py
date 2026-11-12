@@ -170,15 +170,19 @@ def old_evidence(token: str) -> dict:
 def original_831_ids() -> list[str]:
     path = ROOT / "tests/test_phase_831_effect_isolation.py"
     tree = ast.parse(path.read_text(encoding="utf8"))
-    cls = [node for node in tree.body if isinstance(node, ast.ClassDef)
-           and node.name == "Phase831EffectIsolationTests"]
-    if len(cls) != 1:
-        raise RuntimeError("P169 original Tk module class identity changed")
-    methods = sorted(node.name for node in cls[0].body
-                     if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"))
-    if len(methods) != 19 or methods.count(STATIC831) != 1:
-        raise RuntimeError("P169 original Phase8.31 19-case class identity drift")
-    return [TEST831 + m for m in methods]
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)
+               and node.name in {"Phase831EffectIsolationTests",
+                                 "Phase831FreshImportTripwireTests"}]
+    if len(classes) != 2:
+        raise RuntimeError("P169 original two-class Tk module identity drift")
+    ids = sorted("tests.test_phase_831_effect_isolation." + cls.name + "." + method.name
+                 for cls in classes for method in cls.body
+                 if isinstance(method, ast.FunctionDef) and method.name.startswith("test_"))
+    if (len(ids) != 19 or ids.count(TEST831 + STATIC831) != 1
+            or sum(x.startswith(TEST831) for x in ids) != 18
+            or not any("Phase831FreshImportTripwireTests." in x for x in ids)):
+        raise RuntimeError("P169 original Phase8.31 18+1 method inventory drift")
+    return ids
 
 def run_original(label: str, ids: list[str], expected: int,
                  temp: Path, evidence: Path) -> dict:
