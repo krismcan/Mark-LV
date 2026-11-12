@@ -133,8 +133,8 @@ def verify_current_source(*, expected_branch: str, expected_head: str,
     if changes != P166_PATHS:
         deny("P166 non-additive or missing path inventory")
     for p in changes:
-        if git("cat-file", "-e", BASE + ":" + p) == b"":  # git exit status proves absence only if command succeeded
-            deny("P166 path unexpectedly present in P165 base")
+        if git("ls-tree", "--name-only", BASE, "--", p).strip():
+            deny("P166 additive path existed in P165 base")
     verify_historical_tag(expected_tag_oid)
     baseline_modules = [p for p in git("ls-tree", "-r", "--name-only", BASE, "--", "tests").decode().splitlines()
                         if re.fullmatch(r"tests/test_[^/]+\.py", p)]
