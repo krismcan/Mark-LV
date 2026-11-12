@@ -341,7 +341,7 @@ for key in expected:
     checks[key]+="|WORKER_WRONG_THREAD_PRE_EFFECT_PASS"
 if len(checks)!=5:raise RuntimeError("P171 expected five exact checked methods")
 print(json.dumps({"checkpoint":"P171","result":"PASS","five_original_exact_docs":checks},sort_keys=True))
-""" % repr(json.dumps(expected_map,sort_keys=True))
+""" % json.dumps(expected_map,sort_keys=True)
     p=evidence/"p171_real_windows_doc_metadata_and_5_worker_negatives.log"
     start=time.monotonic()
     with p.open("wb") as f:
