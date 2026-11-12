@@ -1,0 +1,81 @@
+name: P184 Genuine Windows Fresh Historical Source Admission — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p184-fresh-historical-source-admission-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p184-fresh-source-admission:
+    name: P184 Real Windows 57-Case Source Admission and Tamper-Refusal Scope
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P183 ancestor and three additive P184 audit files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p184-fresh-historical-source-admission-20261112'){
+            throw 'P184 exact authentic hosted Windows push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p184-fresh-historical-source-admission-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P184 isolated clone failure'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P184 triggering source differs from immutable checked-out commit'
+          }
+          $parent='c450307d414aae3fe87b7c027a151073e9de2a08'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P184 authenticated P183 source ancestry mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p184-windows-fresh-historical-source-admission.yml'
+            'docs/byok-c1-p184-fresh-historical-source-admission.md'
+            'scripts/p184_windows_fresh_historical_source_admission.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P184 historical frozen product/test or unrelated source changes refused'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P184 malformed source diff'}
+          Write-Output 'P184_EXACT_P183_PARENT_THREE_NEW_AUDIT_PATHS=PASS'
+      - name: Authenticate P183 originals and 57 genuine Windows negative/source-admission tests
+        shell: pwsh
+        env:
+          P184_EVIDENCE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p184_windows_fresh_historical_source_admission
+            if($LASTEXITCODE -ne 0){
+              throw 'P184 source-admission test or original evidence incomplete; HOLD'
+            }
+            Write-Output 'P184_EXPERIMENTAL_FRESH_SOURCE_ADMISSION=PROVED_ONLY_IN_ISOLATED_SCOPE'
+            Write-Output 'P184_ORIGINAL_PRODUCT_AND_FROZEN_TESTS=UNMODIFIED'
+            Write-Output 'P184_QUALIFIED_EXTERNAL_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P184_COMPLETE_NATIVE_FULL_PRODUCT_WINDOWS=0/3'
+            Write-Output 'P184_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Archive raw original 57-case Windows log and source-review H C R ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p184-windows-fresh-source-admission-narrow-contract-evidence-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p184-fresh-source-admission/*.log
+            ${{ runner.temp }}/nayeon-p184-fresh-source-admission/*.json
+          if-no-files-found: warn
+          retention-days: 14
