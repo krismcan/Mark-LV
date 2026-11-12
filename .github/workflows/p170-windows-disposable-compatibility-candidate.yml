@@ -1,0 +1,84 @@
+name: P170 Genuine Windows Disposable Guard-First Compatibility — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p170-disposable-windows-thread-guard-compatibility-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-preserving-disposable-compatibility:
+    name: P170 Original Windows Full P86/P87/Phase832 And Historical Fail-Negatives
+    runs-on: windows-2025
+    timeout-minutes: 13
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin immutable P169 parent and refuse original file mutations
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p170-disposable-windows-thread-guard-compatibility-20261112'){
+            throw 'P170 source event not authenticated Windows GitHub push'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p170-disposable-windows-thread-guard-compatibility-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P170 original branch clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P170 exact GitHub source HEAD mismatch'
+          }
+          $base='00f397f5d397a7b6fba14ab124b71ba1d3b7a99b'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P170 exact P169 original source ancestry mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p170-windows-disposable-compatibility-candidate.yml'
+            'docs/byok-c1-p170-disposable-compatibility-security-review.md'
+            'scripts/p170_windows_disposable_guard_first_candidate.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P170 historical test/security/product source changed'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P170 additive-only source diff invalid'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P170 original review checkout dirty'
+          }
+          Write-Output 'P170_EXACT_P169_ANCESTRY_3_ADDITIVE_PATHS=PASS'
+      - name: Execute source-immutable scratch clone candidate on authentic Windows
+        shell: pwsh
+        env:
+          P170_HISTORICAL_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p170_windows_disposable_guard_first_candidate
+            if($LASTEXITCODE -ne 0){throw 'P170 genuine disposable candidate or historical refusal HOLD'}
+            Write-Output 'P170_DISPOSABLE_CANDIDATE_NOT_PRODUCT_ACCEPTANCE'
+            Write-Output 'P170_ORIGINAL_FROZEN_PHASE831_WINCRED_AND_P76_HOLD_PRESERVED'
+            Write-Output 'P170_INDEPENDENT_H_C_R_SECURITY_AND_GOVERNANCE_GO=NOT_OBTAINED'
+            Write-Output 'P170_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Retain candidate exact source diff, native original logs and reviewer ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p170-genuine-windows-disposable-guard-first-review-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p170-disposable-candidate-evidence/*.patch
+            ${{ runner.temp }}/nayeon-p170-disposable-candidate-evidence/*.log
+            ${{ runner.temp }}/nayeon-p170-disposable-candidate-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
