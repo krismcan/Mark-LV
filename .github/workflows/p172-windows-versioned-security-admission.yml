@@ -1,0 +1,87 @@
+name: P172 Native Windows Current UI and WinCred Source-Bound Acceptance — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p172-versioned-current-ui-and-wincred-acceptance-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p172-windows-versioned-scoped-evidence:
+    name: P172 Real P133/Selected P86 P87/WinCred Native Negatives
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Install original native CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pinned P171 source, exact P172 three new evidence paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or
+              $env:RUNNER_OS -ne 'Windows' -or
+              $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+              $env:GITHUB_EVENT_NAME -ne 'push' -or
+              $env:GITHUB_REF_NAME -ne 'byok-c1-p172-versioned-current-ui-and-wincred-acceptance-20261112') {
+            throw 'P172 refuses unauthenticated/non-native source event'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p172-versioned-current-ui-and-wincred-acceptance-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) {throw 'P172 exact source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P172 actual GitHub event SHA drift'
+          }
+          $parent='10d0469ec5abb7201dfe5dd6da0e660630e82352'
+          if ((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent) {
+            throw 'P172 missing P171 verified exact parent'
+          }
+          $expected = @(
+            '.github/workflows/p172-windows-versioned-security-admission.yml'
+            'docs/byok-c1-p172-cross-era-versioned-security-admission.md'
+            'scripts/p172_windows_versioned_ui_wincred_admission.py'
+          ) | Sort-Object
+          $actual = @(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
+            throw 'P172 original product/test/security source changed'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if ($LASTEXITCODE -ne 0) {throw 'P172 additive evidence diff invalid'}
+          if (@(git -C reviewed status --porcelain=v1).Count -ne 0) {
+            throw 'P172 original checkout dirty'
+          }
+          Write-Output 'P172_EXACT_P171_ANCESTRY_AND_THREE_NEW_AUDIT_FILES=PASS'
+      - name: Authenticated P171 archive and genuine original native Windows test cases
+        shell: pwsh
+        env:
+          P172_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p172_windows_versioned_ui_wincred_admission
+            if ($LASTEXITCODE -ne 0) {
+              throw 'P172 genuine original Windows/versioned source admission diagnostic HOLD'
+            }
+            Write-Output 'P172_EVIDENCE_COLLECTOR_SUCCESS_NOT_WHOLE_PRODUCT_ACCEPTANCE'
+            Write-Output 'P172_ORIGINAL_PHASE831_P86_P87_WINCRED_HOLDS_UNWAIVED'
+            Write-Output 'P172_QUALIFIED_SECURITY_AND_TEST_GOVERNANCE_GO=NOT_OBTAINED'
+            Write-Output 'P172_FULL_PRODUCT_NATIVE_WINDOWS_ACCEPTED=0/3'
+            Write-Output 'P172_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Retain original full raw log bytes and versioned reviewer ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p172-native-windows-versioned-ui-wincred-admission-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p172-current-versioned-admission/*.log
+            ${{ runner.temp }}/nayeon-p172-current-versioned-admission/*.json
+          if-no-files-found: warn
+          retention-days: 14
