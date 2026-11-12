@@ -1,0 +1,82 @@
+name: P174 Sealed-Era P140 vs Current Windows Original Scope Governance — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p174-sealed-era-scope-governance-20261112
+
+permissions:
+  contents: read
+
+jobs:
+  p174-historical-source-era-windows-regression:
+    name: Exact P140 and P173 Original Security Windows Source-Era Comparison
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Install pinned Python 3.12 family
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P174 isolated GitHub source and unmodified product/test custody
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p174-sealed-era-scope-governance-20261112'){
+            throw 'P174 hosted Windows exact GitHub source provenance refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p174-sealed-era-scope-governance-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P174 authentic isolated clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P174 source revision does not equal actual triggering push'
+          }
+          $base='b04af8858dbaab6d164352832c6757db0ec1681c'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P174 does not descend from exact authenticated P173 HEAD'
+          }
+          $expected=@(
+            '.github/workflows/p174-windows-sealed-era-scope-governance.yml'
+            'docs/byok-c1-p174-sealed-era-scope-governance-decision-ledger.md'
+            'scripts/p174_windows_sealed_era_scope_governance.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P174 historical original product/tests changed'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P174 additive source diff whitespace check failed'}
+          Write-Output 'P174_AUTHENTIC_SOURCE_PARENT_AND_THREE_NEW_AUDIT_FILES=PASS'
+      - name: Run complete original P140 scope/signed tests at authentic historical P140 and descendant P173
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p174_windows_sealed_era_scope_governance
+            if($LASTEXITCODE -ne 0){
+              throw 'P174 original source authentication or complete native evidence failed CLOSED'
+            }
+            Write-Output 'P174_EVIDENCE_COLLECTION=COMPLETE_NOT_HISTORICAL_ACCEPTANCE'
+            Write-Output 'P174_UNCHANGED_ORIGINAL_TESTS=TRUE'
+            Write-Output 'P174_SEVEN_QUALIFIED_REVIEW_DECISIONS=OPEN'
+            Write-Output 'P174_PRODUCTION_RELEASE=HOLD'
+            Write-Output 'P174_ACCEPTED_FULL_WINDOWS_REGRESSION=0/3'
+          } finally {
+            Pop-Location
+          }
+      - name: Preserve full original native stdout stderr and source-bound H/C/R ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p174-sealed-era-p140-vs-p173-authentic-original-windows
+          path: |
+            ${{ runner.temp }}/nayeon-p174-sealed-era/*.stdout.log
+            ${{ runner.temp }}/nayeon-p174-sealed-era/*.stderr.log
+            ${{ runner.temp }}/nayeon-p174-sealed-era/*.combined.log
+            ${{ runner.temp }}/nayeon-p174-sealed-era/*.json
+          if-no-files-found: warn
+          retention-days: 14
