@@ -130,7 +130,8 @@ def native_case(path:Path,era:str,label:str,module:str,expected:int,out:Path,fix
     (out/(prefix+".stderr.log")).write_bytes(stderr)
     combined=stdout+b"\n--- ORIGINAL STDERR BELOW ---\n"+stderr
     (out/(prefix+".combined.log")).write_bytes(combined)
-    txt=combined.decode("utf8","replace")
+    # Normalise Windows CRLF only in the *parsing view*; archived bytes stay exact.
+    txt=combined.decode("utf8","replace").replace("\r\n","\n")
     counts=FOOTER.findall(txt)
     count=int(counts[-1]) if counts else None
     named=[{"kind":k,"name":n} for k,n in ISSUES.findall(txt)]
