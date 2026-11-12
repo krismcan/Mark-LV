@@ -160,7 +160,7 @@ def authenticate_p171(token: str) -> dict:
         names=z.namelist()
         if (len(names)!=9 or len(set(names))!=9
                 or P171_LEDGER not in names
-                or "p171_real_original_docstrings_and_wrong_thread_native.log" not in names):
+                or "p171_real_windows_doc_metadata_and_5_worker_negatives.log" not in names):
             raise RuntimeError("P171 prior original evidence inventory mismatch")
         data=json.loads(z.read(P171_LEDGER))
         if (data.get("checkpoint")!="P171" or data.get("production_R")!="HOLD"
@@ -168,7 +168,7 @@ def authenticate_p171(token: str) -> dict:
                 or data.get("all_other_genuine_original_source_era_HOLDS_unwaived") is not True
                 or data.get("actual_original_Phase832_14_PASS_IN_DISPOSABLE_ONLY") is not True):
             raise RuntimeError("P171 actual reviewer H/C/R results altered")
-        meta=z.read("p171_real_original_docstrings_and_wrong_thread_native.log")
+        meta=z.read("p171_real_windows_doc_metadata_and_5_worker_negatives.log")
         if sha(meta)!=P171_META_SHA:
             raise RuntimeError("P171 five exact docstring and wrong-thread native proofs changed")
         old=data["original_native_Windows_tests_on_disposable_candidate_only"]
@@ -178,7 +178,7 @@ def authenticate_p171(token: str) -> dict:
         if len(original_files)!=6:
             raise RuntimeError("P171 actual original native log count changed")
         for row in old.values():
-            rawlog=z.read(row["log_file"])
+            rawlog=z.read(row["raw_stdout_stderr_log"])
             if sha(rawlog)!=row["raw_log_sha256"]:
                 raise RuntimeError("P171 original native log receipt corrupted")
     return {"verified_original_artifact":P171_ARTIFACT,"archive_sha256":sha(raw),
