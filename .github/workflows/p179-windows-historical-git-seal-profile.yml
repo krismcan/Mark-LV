@@ -1,0 +1,84 @@
+name: P179 Authentic Windows Historical Git Seal Performance Isolation — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p179-historical-git-seal-performance-isolation-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p179-historical-seal-git-profile:
+    name: P179 Native Unmodified Historical Pin-Witness Git Subprocess Profile
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Install genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P178 parent and only three P179 additive audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p179-historical-git-seal-performance-isolation-20261112'){
+            throw 'P179 unauthenticated hosted Windows source/event refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p179-historical-git-seal-performance-isolation-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P179 authentic isolated clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P179 triggering exact Git source identity mismatch'
+          }
+          $parent='f114574ec24001103d9be0c421f6be8ff1ab04c9'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P179 source not directly descended from verified P178'
+          }
+          $expected=@(
+            '.github/workflows/p179-windows-historical-git-seal-profile.yml'
+            'docs/byok-c1-p179-historical-git-seal-performance-analysis.md'
+            'scripts/p179_windows_historical_git_seal_profile.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P179 any original source/test, unrelated or non-additive path refused'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P179 additive diff whitespace/source integrity failed'}
+          Write-Output 'P179_P178_PARENT_ONLY_THREE_SOURCE_PRESERVING_AUDIT_ADDITIONS=PASS'
+      - name: Authenticate P178 original native log and profile genuine Git seal subprocess calls
+        shell: pwsh
+        env:
+          P179_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p179_windows_historical_git_seal_profile
+            if($LASTEXITCODE -ne 0){
+              throw 'P179 original source/archive or genuine native diagnostic incomplete: HOLD'
+            }
+            Write-Output 'P179_HISTORICAL_GIT_PROFILE_EVIDENCE=COLLECTED_NOT_OPTIMIZED'
+            Write-Output 'P179_UNMODIFIED_ORIGINAL_TEST_ASSERTIONS=UNWAIVED'
+            Write-Output 'P179_QUALIFIED_EXTERNAL_SECURITY_DECISIONS=OPEN'
+            Write-Output 'P179_ACCEPTED_COMPLETE_NATIVE_FULL_PRODUCT_WINDOWS=0/3'
+            Write-Output 'P179_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive unfiltered genuine original native logs and aggregate Git process observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p179-authentic-windows-historical-git-seal-performance-observations
+          path: |
+            ${{ runner.temp }}/nayeon-p179-historical-git-seal-profile/*.log
+            ${{ runner.temp }}/nayeon-p179-historical-git-seal-profile/*.json
+            ${{ runner.temp }}/nayeon-p179-historical-git-seal-profile/*.jsonl
+          if-no-files-found: warn
+          retention-days: 14
