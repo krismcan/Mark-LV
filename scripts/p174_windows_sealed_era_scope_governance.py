@@ -83,9 +83,12 @@ def source_identity()->dict:
     original_test_hashes={}
     for test in ("tests/test_p140_scope_migration.py",
                  "tests/test_p140_frozen_signed_companion.py"):
-        historical=git("show",P140+":"+test).encode("utf8")
-        current=git("show",P173+":"+test).encode("utf8")
-        if historical!=current or current!=(ROOT/test).read_bytes():
+        # Compare Git's immutable original blob identities, not an
+        # accidentally stripped text rendering of git-show stdout.
+        historical_blob=git("rev-parse",P140+":"+test)
+        current_blob=git("rev-parse",P173+":"+test)
+        worktree_blob=git("hash-object",test)
+        if historical_blob!=current_blob or current_blob!=worktree_blob:
             raise RuntimeError("Original P140 test changed between eras: "+test)
         original_test_hashes[test]=sha((ROOT/test).read_bytes())
     return {"P139_authenticated_parent":P139,"P140_historical_source":P140,
