@@ -1,0 +1,86 @@
+name: P171 Cross-Era Security Governance and Original Windows Docstring Compatibility — HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p171-cross-era-security-governance-docstring-compat-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p171-genuine-windows-governance:
+    name: Exact original metadata, five real worker guards and old native security test holds
+    runs-on: windows-2025
+    timeout-minutes: 13
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact immutable P170 ancestry and 3 new evidence-only paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p171-cross-era-security-governance-docstring-compat-20261112'){
+            throw 'P171 authenticated hosted Windows exact source event required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p171-cross-era-security-governance-docstring-compat-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P171 immutable GitHub repo clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P171 exact CI source SHA mismatch'
+          }
+          $base='0b1eda4aa1296274df70cb7a4fb09592707bf178'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P171 exact source ancestry missing'
+          }
+          $expected=@(
+            '.github/workflows/p171-windows-cross-era-metadata-preservation.yml'
+            'docs/byok-c1-p171-cross-era-security-acceptance-governance.md'
+            'scripts/p171_windows_metadata_preserving_original_governance.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P171 original security or test/product source modification refused'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P171 invalid additive-only source diff'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P171 original clean checkout failed'
+          }
+          Write-Output 'P171_IMMUTABLE_P170_SOURCE_AND_3_ADDITIVE_FILES_ONLY=PASS'
+      - name: Reauthenticate prior source and run scratch Windows original invariant tests
+        shell: pwsh
+        env:
+          P171_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p171_windows_metadata_preserving_original_governance
+            if($LASTEXITCODE -ne 0){throw 'P171 source-bound genuine Windows evidence FAIL CLOSED'}
+            Write-Output 'P171_DISPOSABLE_SOURCE_METADATA_CANDIDATE_NOT_PRODUCTION_APPROVED'
+            Write-Output 'P171_OLD_P86_P87_PHASE831_WINCRED_FAILURES_REMAIN_HOLD'
+            Write-Output 'P171_QUALIFIED_INDEPENDENT_SECURITY_GOVERNANCE_GO=NOT_OBTAINED'
+            Write-Output 'P171_NO_REAL_KEYS_OR_PROVIDER_OPERATIONS'
+            Write-Output 'P171_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive original native Windows logs, exact scratch patch and reviewer ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p171-original-windows-cross-era-metadata-governance-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p171-cross-era-metadata-evidence/*.patch
+            ${{ runner.temp }}/nayeon-p171-cross-era-metadata-evidence/*.log
+            ${{ runner.temp }}/nayeon-p171-cross-era-metadata-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
