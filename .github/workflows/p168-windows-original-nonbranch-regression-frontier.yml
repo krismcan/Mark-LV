@@ -1,0 +1,86 @@
+name: P168 Original Windows Effect, Lifecycle and WinCred Regression Frontier — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p168-original-lifecycle-wincred-regression-triage-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p168-original-nonbranch-regressions:
+    name: Authenticated P144 original evidence and 3 entire unchanged Windows modules
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read exact original GitHub SHA and immutable P167 parent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or
+              $env:RUNNER_OS -ne 'Windows' -or
+              $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+              $env:GITHUB_EVENT_NAME -ne 'push' -or
+              $env:GITHUB_REF_NAME -ne 'byok-c1-p168-original-lifecycle-wincred-regression-triage-20261112') {
+            throw 'P168 requires authenticated hosted Windows push'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p168-original-lifecycle-wincred-regression-triage-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) { throw 'P168 exact source readback failed' }
+          git -C reviewed config --local core.autocrlf false
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P168 wrong untrusted event source'
+          }
+          $parent='90955080782cd7449561d21935918a2ac17b66c2'
+          if ((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent) {
+            throw 'P168 exact P167 parent not present'
+          }
+          $expected=@(
+            '.github/workflows/p168-windows-original-nonbranch-regression-frontier.yml'
+            'docs/byok-c1-p168-original-regression-frontier-review-packet.md'
+            'scripts/p168_windows_original_nonbranch_regression_frontier.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
+            throw 'P168 unexpected original test/security/product source modified'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P168 additive source diff invalid' }
+          if ((@(git -C reviewed status --porcelain=v1)).Count -ne 0) {
+            throw 'P168 source checkout dirty'
+          }
+          Write-Output 'P168_EXACT_P167_PARENT_AND_3_NEW_AUDIT_ONLY_FILES=PASS'
+      - name: Reauthenticate P144 genuine 15 hold modules and run three original whole modules
+        shell: pwsh
+        env:
+          P168_READ_ONLY_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p168_windows_original_nonbranch_regression_frontier
+            if ($LASTEXITCODE -ne 0) {
+              throw 'P168 original whole-module evidence incomplete; HOLD'
+            }
+            Write-Output 'P168_COLLECTOR_SUCCESS_IS_NOT_ORIGINAL_HISTORICAL_PASS'
+            Write-Output 'P168_HISTORICAL_ORIGINAL_FAILS_UNWAIVED'
+            Write-Output 'P168_INDEPENDENT_SECURITY_REVIEW_NOT_OBTAINED'
+            Write-Output 'P168_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Retain exact raw original Windows logs and authenticated reviewer ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p168-original-full-modules-windows-authenticated-frontier
+          path: |
+            ${{ runner.temp }}/nayeon-p168-original-regression-frontier/*.log
+            ${{ runner.temp }}/nayeon-p168-original-regression-frontier/*.json
+          if-no-files-found: warn
+          retention-days: 14
