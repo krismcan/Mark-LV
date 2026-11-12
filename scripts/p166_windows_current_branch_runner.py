@@ -37,7 +37,8 @@ def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest().upper()
 
 
-def run_actual(label: str, ids: list[str], temp: Path, evidence: Path) -> dict:
+def run_actual(label: str, ids: list[str], temp: Path, evidence: Path,
+               expected_count: int | None = None) -> dict:
     log = evidence / ("p166_native_" + label + ".log")
     env = os.environ.copy()
     for key in list(env):
@@ -71,18 +72,19 @@ def run_actual(label: str, ids: list[str], temp: Path, evidence: Path) -> dict:
     out = raw.decode("utf-8", "replace").replace("\r\n", "\n")
     ran = RAN.findall(out)
     observed = int(ran[-1]) if ran else None
+    expected = len(ids) if expected_count is None else expected_count
     issues = [{"kind": kind, "test_id": testid} for kind, testid in ISSUE.findall(out)]
     cases = [{"test_id": case_id, "outcome": outcome}
              for _, case_id, outcome in CASE.findall(out)]
-    passed = (exitcode == 0 and observed == len(ids)
+    passed = (exitcode == 0 and observed == expected
               and re.search(r"^OK\s*$", out, re.M) is not None and not issues)
     footer_failed = re.findall(r"^FAILED \(([^)]+)\)", out, re.M)
     result = {
         "label": label, "actual_native_exit_code": exitcode,
-        "expected_methods": len(ids), "unittest_observed": observed,
+        "expected_methods": expected, "unittest_observed": observed,
         "native_test_method_outcomes": cases, "native_failed_error_ids": issues,
         "native_failed_footer": footer_failed[-1] if footer_failed else None,
-        "genuine_complete_unittest_footer": (observed == len(ids) and
+        "genuine_complete_unittest_footer": (observed == expected and
             (passed or bool(footer_failed))), "actual_native_pass": passed,
         "timedout": timedout, "seconds": round(time.monotonic() - start, 3),
         "actual_raw_log_file": log.name, "actual_raw_log_sha256": digest(raw),
@@ -118,7 +120,7 @@ def main() -> int:
         # Scope order: focused novel positive/negative before the larger original subsets.
         candidate = run_actual("C_new_15", [
             "tests.test_p166_current_branch_acceptance.P166RealCurrentBranchAcceptanceTests"
-        ], temp, evidence)
+        ], temp, evidence, expected_count=15)
         historical = run_actual("H_original_P76_all_10", historical_ids, temp, evidence)
         reduced = run_actual("C_unchanged_original_25", original_c_ids, temp, evidence)
     finally:
