@@ -1,0 +1,84 @@
+name: P173 Authentic Windows P140 Signed Gate and Independent HCR Review Intake — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p173-independent-security-review-intake-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p173-source-bound-qualified-review-intake:
+    name: P173 Original P140 Windows Negatives, Authenticated P172 Chain and Mandatory Review HOLD
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact immutable P172 parent and exactly three new intake paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p173-independent-security-review-intake-20261112'){
+            throw 'P173 unauthenticated source or Windows event refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p173-independent-security-review-intake-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P173 exact source GitHub clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P173 source SHA not equal to actual GitHub push'
+          }
+          $base='5784e80e09fe5f6eb7d5f6fa8669eea33efa6958'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P173 exact independently verified P172 ancestor mismatch'
+          }
+          $expected=@(
+            '.github/workflows/p173-windows-independent-security-review-intake.yml'
+            'docs/byok-c1-p173-external-security-test-governance-decision-packet.md'
+            'scripts/p173_windows_source_bound_security_review_intake.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P173 original product, test or security source path modified'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P173 original source diff quality failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P173 authentic review checkout is not clean'
+          }
+          Write-Output 'P173_EXACT_PARENT_AND_THREE_NEW_EVIDENCE_PATHS=PASS'
+      - name: Reauthenticate P172 native chain and run original P140 signed-policy Windows regressions
+        shell: pwsh
+        env:
+          P173_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p173_windows_source_bound_security_review_intake
+            if($LASTEXITCODE -ne 0){throw 'P173 authentic original Windows P140 admission evidence fail-closed'}
+            Write-Output 'P173_AUTHENTIC_REVIEW_EVIDENCE_COLLECTOR_SUCCESS_NOT_QUALIFIED_REVIEW'
+            Write-Output 'P173_REAL_SIGNED_LAUNCH_APPROVAL=NOT_OBTAINED'
+            Write-Output 'P173_QUALIFIED_INDEPENDENT_SIGNOFF=NOT_OBTAINED'
+            Write-Output 'P173_ORIGINAL_H=HOLD_CURRENT_C=SCOPED_ONLY_RELEASE_R=HOLD'
+            Write-Output 'P173_FULL_PRODUCT_NATIVE_WINDOWS_ACCEPTED=0/3'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive genuine original signed-launch native logs and reviewer intake ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p173-source-authenticated-native-windows-independent-review-intake
+          path: |
+            ${{ runner.temp }}/nayeon-p173-independent-review-intake/*.log
+            ${{ runner.temp }}/nayeon-p173-independent-review-intake/*.json
+          if-no-files-found: warn
+          retention-days: 14
