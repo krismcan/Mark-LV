@@ -1,0 +1,83 @@
+name: P183 Historical Security Equivalence Negative and Review Packet — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p183-historical-security-equivalence-gate-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p183-security-equivalence-gap:
+    name: P183 Original Native Windows 45-Case Security Equivalence Scope Gap and Review Gate
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P182 parent and 3 additive security-equivalence review paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p183-historical-security-equivalence-gate-20261112'){
+            throw 'P183 authentic hosted Windows source push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p183-historical-security-equivalence-gate-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P183 isolated clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P183 checked-out exact source not the triggering commit'
+          }
+          $parent='653cae658e057878a1c010a8dba486cc7f00cb5b'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P183 source not descended from exact P182'
+          }
+          $expected=@(
+            '.github/workflows/p183-windows-historical-security-equivalence.yml'
+            'docs/byok-c1-p183-historical-security-equivalence-review.md'
+            'scripts/p183_windows_historical_security_equivalence.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P183 original product/test or unrelated source modifications refused'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P183 malformed audit-only source diff'}
+          Write-Output 'P183_EXACT_P182_PARENT_THREE_ADDITIVE_REVIEW_FILES=PASS'
+      - name: Authenticate P182 original native archive and run 45 genuine historical security-gap cases
+        shell: pwsh
+        env:
+          P183_EVIDENCE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p183_windows_historical_security_equivalence
+            if($LASTEXITCODE -ne 0){
+              throw 'P183 real native Windows review packet/gap-test not complete; HOLD'
+            }
+            Write-Output 'P183_SECURITY_EQUIVALENCE_REVIEW=GAP_PACKET_PREPARED_ONLY'
+            Write-Output 'P183_ORIGINAL_HISTORICAL_VERIFIER_AND_TESTS_UNCHANGED=YES'
+            Write-Output 'P183_EXTERNAL_QUALIFIED_REVIEW=NOT_REQUESTED_NOT_SIGNED'
+            Write-Output 'P183_ACCEPTED_FULL_PRODUCT_WINDOWS_REGRESSION=0/3'
+            Write-Output 'P183_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive authentic 45-case native Windows log and nine-row reviewer decision register
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p183-Windows-original-historical-security-equivalence-gap-review-only
+          path: |
+            ${{ runner.temp }}/nayeon-p183-historical-equivalence/*.log
+            ${{ runner.temp }}/nayeon-p183-historical-equivalence/*.json
+          if-no-files-found: warn
+          retention-days: 14
