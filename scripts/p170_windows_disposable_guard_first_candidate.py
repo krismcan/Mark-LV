@@ -268,7 +268,7 @@ def run_windows(label: str, ids: list[str], overlay: Path, safe_temp: Path,
     raw=(evidence/log).read_bytes()
     text=raw.decode("utf8","replace").replace("\r\n","\n")
     counts=FOOTER.findall(text)
-    actual=int(counts[-1][0]) if counts else None
+    actual=int(counts[-1]) if counts else None
     expected=(unittest_count(overlay,ids[0]) if len(ids)==1 and
               ids[0] in [g[1][0] for g in TEST_RUNS if
               g[0].startswith("candidate_full_")] else 1)
@@ -347,15 +347,34 @@ def main() -> int:
             shutil.rmtree(safe_temp)
     if custody()!=before:
         raise RuntimeError("P170 original authoritative GitHub source changed during overlay experiment")
-    good=all(result[x]["real_native_status"]=="PASS"
-             for x in ("candidate_full_original_phase832",
-                       "candidate_full_original_P86","candidate_full_original_P87",
-                       "old_original_P76_wrong_branch_negative"))
+    phase832_pass=(result["candidate_full_original_phase832"]["real_native_status"]=="PASS"
+                   and result["candidate_full_original_phase832"]["original_unittest_footer_count"]==14)
+    p76_negative_pass=(result["old_original_P76_wrong_branch_negative"]["real_native_status"]=="PASS")
+    p86=result["candidate_full_original_P86"]
+    p87=result["candidate_full_original_P87"]
+    p86_wrong_count_names={"test_live_connection_page_default_is_explicitly_unobserved",
+                           "test_no_credential_action_and_no_implicit_refresh"}
+    p87_wrong_count_names={"test_production_default_remains_not_observed_without_any_session"}
+    def exact_original_failed_methods(actual, expected):
+        names={row["original_test_id"].split(" (",1)[0] for row in
+               actual["genuine_original_failure_error_ids"]}
+        return names==expected and all(
+            row["kind"]=="FAIL" for row in actual["genuine_original_failure_error_ids"])
+    p86_p87_historical_holds=(
+        p86["real_native_status"]=="HOLD" and p86["original_unittest_footer_count"]==7
+        and exact_original_failed_methods(p86,p86_wrong_count_names)
+        and p87["real_native_status"]=="HOLD" and p87["original_unittest_footer_count"]==18
+        and exact_original_failed_methods(p87,p87_wrong_count_names))
     historical_failures=(
         result["old_original_phase831_static_import_refusal"]["real_native_status"]=="HOLD"
-        and result["old_original_WinCred_static_consumer_refusal"]["real_native_status"]=="HOLD")
-    verdict= "CANDIDATE_NEGATIVES_AND_SUITES_PASS_REVIEW_REQUIRED" if good and historical_failures \
-             else "CANDIDATE_HAS_ADDITIONAL_UNRESOLVED_ISSUES_REVIEW_REQUIRED"
+        and result["old_original_phase831_static_import_refusal"]["original_unittest_footer_count"]==1
+        and result["old_original_WinCred_static_consumer_refusal"]["real_native_status"]=="HOLD"
+        and result["old_original_WinCred_static_consumer_refusal"]["original_unittest_footer_count"]==1)
+    diagnostic_fully_characterized=(phase832_pass and p76_negative_pass
+                                    and p86_p87_historical_holds and historical_failures)
+    verdict=("GUARD_FIRST_14_PASS__P86_2_P87_1_GENUINE_HOLDS__REVIEW_REQUIRED"
+             if diagnostic_fully_characterized
+             else "UNEXPECTED_CANDIDATE_FAILURE_OR_INCOMPLETE_NATIVE_EVIDENCE_HOLD")
     ledger={
         "checkpoint":"P170","source_custody_identical_before_after":before,
         "source_p169_windows_authenticity":historical,
@@ -381,15 +400,22 @@ def main() -> int:
             "Original WinCred static consumer refusal is not waived by source relocation or allowlist expansion",
             "No signed binaries, no actual full product regressions and no qualified independent review",
         ],
+        "phase832_exact_original_14_full_suite_on_disposable_guard_first_PASS":phase832_pass,
+        "p86_p87_exact_original_button_count_old_contract_HOLD":p86_p87_historical_holds,
+        "old_P76_wrong_branch_negative_control_still_PASS":p76_negative_pass,
+        "old_Phase831_and_WinCred_original_negative_genuine_FAIL_unwaived":historical_failures,
+        "candidate_must_NOT_be_merged_or_treated_as_full_historical_suite_PASS":True,
         "diagnostic_verdict":verdict,
     }
     (evidence/"p170_actual_windows_disposable_compatibility_ledger.json").write_text(
         json.dumps(ledger,indent=2,sort_keys=True)+"\n",encoding="utf8")
-    print("P170_CANDIDATE_SUITES_P86_P87_PHASE832_AND_P76="+str(good),flush=True)
+    print("P170_GUARD_FIRST_ORIGINAL_PHASE832_FULL_14_PASS="+str(phase832_pass),flush=True)
+    print("P170_OLD_P86_AND_P87_BUTTON_COUNT_HISTORICAL_HOLDS="+str(p86_p87_historical_holds),flush=True)
     print("P170_FROZEN_831_AND_WINCRED_HISTORICAL_FAIL_REMAIN="+str(historical_failures),flush=True)
+    print("P170_ORIGINAL_P76_WRONG_BRANCH_REFUSAL_NEGATIVE_PASS="+str(p76_negative_pass),flush=True)
     print("P170_DISPOSABLE_GUARD_FIRST_DIAGNOSTIC_VERDICT="+verdict,flush=True)
     print("P170_PRODUCTION_RELEASE_HOLD=TRUE",flush=True)
-    return 0 if good and historical_failures else 1
+    return 0 if diagnostic_fully_characterized else 1
 
 if __name__=="__main__":
     raise SystemExit(main())
