@@ -1,0 +1,83 @@
+name: P169 Original Windows Tk Causality, UI Thread Guard & WinCred Provenance — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p169-native-failure-causality-and-thread-guard-provenance-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p169-native-negative-provenance:
+    name: P169 Genuine Original Windows Test Differential And Source Guard Evidence
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin source to exact P168 SHA, verify three additive paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p169-native-failure-causality-and-thread-guard-provenance-20261112'){
+            throw 'P169 authentic hosted Windows source event refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p169-native-failure-causality-and-thread-guard-provenance-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P169 exact GitHub source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P169 source event SHA mismatch'
+          }
+          $parent='0f7cd007f535db108f0306c8b11d3097f2cf774e'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P169 exact P168 parent missing'
+          }
+          $expected=@(
+            '.github/workflows/p169-windows-failure-causality-and-guard-provenance.yml'
+            'docs/byok-c1-p169-causal-regression-and-security-review.md'
+            'scripts/p169_windows_failure_causality_and_guard_provenance.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P169 old historical source/test/product touched'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P169 source diff check failed'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P169 GitHub checkout dirty'
+          }
+          Write-Output 'P169_IMMUTABLE_P168_PARENT_AND_THREE_ADDITIVE_FILES=PASS'
+      - name: Reauthenticate P168 original native evidence and run focused Windows negatives
+        shell: pwsh
+        env:
+          P169_EVIDENCE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p169_windows_failure_causality_and_guard_provenance
+            if($LASTEXITCODE -ne 0){throw 'P169 causal diagnostic FAIL CLOSED'}
+            Write-Output 'P169_DIAGNOSTIC_COLLECTOR_SUCCESS_NOT_ORIGINAL_SUITE_PASS'
+            Write-Output 'P169_NO_INDEPENDENT_SECURITY_REVIEW_OR_PRODUCTION_GO'
+            Write-Output 'P169_ORIGINAL_HISTORIC_ASSERTIONS_UNWAIVED'
+            Write-Output 'P169_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive exact original Windows native stdout stderr and review ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p169-genuine-windows-original-causal-and-source-guard-evidence
+          path: |
+            ${{ runner.temp }}/nayeon-p169-native-causal-evidence/*.log
+            ${{ runner.temp }}/nayeon-p169-native-causal-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
