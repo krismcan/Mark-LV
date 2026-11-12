@@ -1,0 +1,81 @@
+name: P176 Authentic Windows Adversarial Current Credential Import and Signing Gate — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p176-adversarial-current-policy-review-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p176-adversarial-current-source:
+    name: P176 Eleven Mutation Negatives and P175 Complete Original Windows Ledger
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate P175 direct ancestor and only three additive P176 evidence files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p176-adversarial-current-policy-review-20261112'){
+            throw 'P176 unauthenticated hosted Windows source refused'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p176-adversarial-current-policy-review-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P176 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P176 exact source SHA mismatch'
+          }
+          $base='381abcf4976dd01736bb542533c837e9afa66a56'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P176 source not directly based on authenticated P175'
+          }
+          $expected=@(
+            '.github/workflows/p176-windows-adversarial-current-policy.yml'
+            'docs/byok-c1-p176-adversarial-current-policy-review.md'
+            'scripts/p176_windows_adversarial_current_policy.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P176 original product or tests edited'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P176 additive diff whitespace failed'}
+          Write-Output 'P176_EXACT_PARENT_AND_THREE_NEW_AUDIT_PATHS=PASS'
+      - name: Authenticate original P175 native archive and run eleven adversarial negatives
+        shell: pwsh
+        env:
+          P176_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p176_windows_adversarial_current_policy
+            if($LASTEXITCODE -ne 0){throw 'P176 adversarial candidate or source custody incomplete; HOLD'}
+            Write-Output 'P176_CURRENT_ADVERSARIAL_EVIDENCE=COMPLETE_NOT_RELEASE'
+            Write-Output 'P176_SEVEN_QUALIFIED_INDEPENDENT_DECISIONS=OPEN'
+            Write-Output 'P176_HISTORICAL_NEGATIVE_RESULTS=UNWAIVED'
+            Write-Output 'P176_ACCEPTED_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P176_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive genuine original Windows log and governance ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p176-source-authenticated-windows-adversarial-policy-negatives
+          path: |
+            ${{ runner.temp }}/nayeon-p176-adversarial-current/*.log
+            ${{ runner.temp }}/nayeon-p176-adversarial-current/*.json
+          if-no-files-found: warn
+          retention-days: 14
