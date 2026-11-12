@@ -1,0 +1,82 @@
+name: P166 Genuine Windows Current-Branch Positive Negative Security Acceptance — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p166-current-branch-positive-negative-acceptance-20261112
+
+permissions:
+  contents: read
+
+jobs:
+  versioned-current-branch-security-candidate:
+    name: P166 real Windows C positive/negative + original H hold + unchanged C25
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Install native CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact original P165 ancestor and exactly five additive paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p166-current-branch-positive-negative-acceptance-20261112'){
+            throw 'P166 requires exact genuine hosted Windows source event'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p166-current-branch-positive-negative-acceptance-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P166 exact GitHub source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P166 hosted source SHA event drift'
+          }
+          $base='bafb9760dbadb75de323f6739efd07ea945eab5b'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P166 exact P165 ancestor absent'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p166-windows-current-branch-acceptance.yml'
+            'docs/byok-c1-p166-versioned-current-branch-acceptance.md'
+            'scripts/p166_windows_current_branch_acceptance.py'
+            'scripts/p166_windows_current_branch_runner.py'
+            'tests/test_p166_current_branch_acceptance.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P166 immutable source custody/additive path violation'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P166 source diff whitespace regression'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P166 source checkout unexpectedly dirty'
+          }
+          Write-Output 'P166_EXACT_P165_ANCESTRY_FIVE_ADDITIVE_FILES=PASS'
+      - name: Run original H and source-bound C using real native Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p166_windows_current_branch_runner
+            if($LASTEXITCODE -ne 0){
+              throw 'P166 real Windows candidate HOLD, preserve authentic logs'
+            }
+            Write-Output 'P166_COLLECTOR_SUCCESS_IS_NOT_ORIGINAL_HISTORICAL_SUCCESS'
+            Write-Output 'P166_INDEPENDENT_QUALIFIED_SECURITY_GO=NOT_OBTAINED'
+            Write-Output 'P166_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Archive original stdout stderr and real source-bound reviewer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p166-actual-windows-current-source-H-C-R-reviewer-candidate
+          path: |
+            ${{ runner.temp }}/nayeon-p166-windows-current-branch/*.log
+            ${{ runner.temp }}/nayeon-p166-windows-current-branch/*.json
+          if-no-files-found: warn
+          retention-days: 14
