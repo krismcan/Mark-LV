@@ -353,7 +353,7 @@ class P182FailClosedBatchSecurityCases(unittest.TestCase):
         b=FailClosedGitBatch(process=p)
         with self.assertRaises(ValueError):b.read(b"Z"*40)
         self.assertTrue(b.retired)
-        self.assertEqual(p.stdin.getvalue(),b"")
+        self.assertTrue(p.stdin.closed)  # invalid OID retired before any write
         with self.assertRaises(RuntimeError):b.read(b"a"*40)
 
     def test_09_stalled_pipe_deadline_enforced_and_child_killed(self):
