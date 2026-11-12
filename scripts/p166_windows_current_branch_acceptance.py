@@ -21,6 +21,7 @@ BASE = "bafb9760dbadb75de323f6739efd07ea945eab5b"
 BRANCH = "byok-c1-p166-current-branch-positive-negative-acceptance-20261112"
 P166_PATHS = frozenset({
     "scripts/p166_windows_current_branch_acceptance.py",
+    "scripts/p166_windows_current_branch_runner.py",
     "tests/test_p166_current_branch_acceptance.py",
     "docs/byok-c1-p166-versioned-current-branch-acceptance.md",
     ".github/workflows/p166-windows-current-branch-acceptance.yml",
