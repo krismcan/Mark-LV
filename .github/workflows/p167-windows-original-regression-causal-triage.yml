@@ -1,0 +1,83 @@
+name: P167 Genuine Windows Authenticated Original Regression Causal Triage — RELEASE HOLD
+
+on:
+  push:
+    branches:
+      - byok-c1-p167-historical-regression-causal-triage-20261112
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-failure-causal-triage:
+    name: P167 P159 23 authentic native failures and unchanged original Windows focused cases
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Install CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact immutable P166 parent and three new paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p167-historical-regression-causal-triage-20261112'){
+            throw 'P167 requires genuine hosted Windows exact branch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p167-historical-regression-causal-triage-20261112 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P167 genuine GitHub source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P167 source event SHA mismatch'
+          }
+          $base='eec397fb90ffbd5c4a8e527904738b0d0668d35b'
+          if((git -C reviewed merge-base $base HEAD).Trim() -ne $base){
+            throw 'P167 exact P166 predecessor missing'
+          }
+          $actual=@(git -C reviewed diff --name-only $base HEAD | Sort-Object)
+          $expected=@(
+            '.github/workflows/p167-windows-original-regression-causal-triage.yml'
+            'docs/byok-c1-p167-authenticated-original-regression-causal-triage.md'
+            'scripts/p167_windows_original_regression_causal_triage.py'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P167 original security/test/source changed or missing original path'
+          }
+          git -C reviewed diff --check $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P167 source diff whitespace error'}
+          if(@(git -C reviewed status --porcelain=v1).Count -ne 0){
+            throw 'P167 original source checkout dirty'
+          }
+          Write-Output 'P167_EXACT_P166_BASE_AND_THREE_ADDITIVE_PATHS=PASS'
+      - name: Authenticate P159 archive and replay five unchanged original Windows tests
+        shell: pwsh
+        env:
+          P167_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p167_windows_original_regression_causal_triage
+            if($LASTEXITCODE -ne 0){ throw 'P167 original focused Windows causal diagnostic HOLD' }
+            Write-Output 'P167_COLLECTOR_GREEN_NEVER_WAIVES_ORIGINAL_PHASE830_23_FAILURES'
+            Write-Output 'P167_NO_INDEPENDENT_REVIEWER_GO'
+            Write-Output 'P167_PRODUCTION_RELEASE=HOLD'
+          } finally {
+            Pop-Location
+          }
+      - name: Archive genuine original Windows logs and authenticated reviewer ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p167-genuine-windows-authenticated-P159-original-causal-regression
+          path: |
+            ${{ runner.temp }}/nayeon-p167-historical-causal-evidence/*.log
+            ${{ runner.temp }}/nayeon-p167-historical-causal-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
