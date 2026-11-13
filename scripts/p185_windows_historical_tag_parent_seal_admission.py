@@ -55,6 +55,10 @@ PINNED_PATHS={
  "tests/phase_8_37_scope_migration.py":"79cbfffb932aea28321f017b76d26185774747a3d30cc0a7455530b6d01188cd",
 }
 P184_HEAD_PATH="tests/phase8_byok_b_scope_migration.py"
+PINNED_PARENT_BLOB_OIDS={
+ "tests/phase_8_30_scope_migration.py":b"4c903ac9aa43293c9f66b422bb0d49fd38dd8b49",
+ "tests/phase_8_37_scope_migration.py":b"c5804e6d8d95a46792196cbedf42d1e469b85959",
+}
 HEX40=re.compile(r"^[0-9a-f]{40}$")
 
 def sha(b:bytes)->str:
@@ -228,6 +232,7 @@ class TaggedParentSealedRead:
             or s.parent_line!=HIST_PARENT+" "+HIST_PARENT_PARENT
             or s.path!=path or s.mode!="100644"
             or not p180.valid_oid(s.blob_oid)
+            or s.blob_oid!=PINNED_PARENT_BLOB_OIDS[path]
             or s.source_SHA256!=PINNED_PATHS[path]
             or not s.repo_root_ok):
             raise RuntimeError("P185 historical annotated tag/tree/ancestry/source admission refused")
@@ -432,16 +437,57 @@ def main()->int:
         for key in list(env):
             if key in {"P185_ARCHIVE_TOKEN","GITHUB_TOKEN","GH_TOKEN"} or key.endswith(("_API_KEY","_SECRET")):
                 env.pop(key,None)
+        # The original frozen P184 scenario explicitly asserts its own
+        # historical branch name. Run it on the EXACT source revision for
+        # which it was authored, never patch or monkeypatch that test.
+        prior_path=os.environ.get("P185_P184_ROOT","")
+        if not prior_path:
+            raise RuntimeError("P185 exact prior P184 source tree missing")
+        prior_root=Path(prior_path).resolve()
+        if prior_root==ROOT or not prior_root.is_dir():
+            raise RuntimeError("P185 prior test worktree not independently isolated")
+        def prior_git(*args):
+            return subprocess.run(
+                ["git","-C",str(prior_root),*args],
+                stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,timeout=35,check=True).stdout
+        if (prior_git("rev-parse","HEAD").decode().strip()!=BASE
+            or prior_git("branch","--show-current").decode().strip()!="byok-c1-p184-fresh-historical-source-admission-20261112"
+            or prior_git("status","--porcelain=v1").strip()
+            or prior_git("rev-parse","HEAD:tests")!=git("rev-parse",BASE+":tests")
+            or prior_git("rev-parse","HEAD:nayeon")!=git("rev-parse",BASE+":nayeon")):
+            raise RuntimeError("P185 real original P184 scope/source not authenticated")
+        prior_log=out/"p185_exact_original_P184_branch_Windows_12_cases.log"
+        with prior_log.open("wb") as f:
+            original_native=subprocess.run(
+                [sys.executable,"-B","-m","unittest","-v",
+                 "scripts.p184_windows_fresh_historical_source_admission.P184FreshHistoricalSourceAdmissionTests"],
+                cwd=prior_root,env=env,stdin=subprocess.DEVNULL,
+                stdout=f,stderr=subprocess.STDOUT,timeout=100,check=False)
+        original_raw=prior_log.read_bytes()
+        original_t=original_raw.decode("utf8","replace").replace("\r\n","\n")
+        original_count=re.findall(r"^Ran (\d+) tests? in [0-9.]+s$",original_t,re.M)
+        ledger["original_P184_native_Windows_exact_source_12_cases"]={
+           "source_HEAD":BASE,"source_branch":"byok-c1-p184-fresh-historical-source-admission-20261112",
+           "original_frozen_P184_tests":12,
+           "native_exit":original_native.returncode,
+           "complete_unittest_count":int(original_count[-1]) if original_count else None,
+           "complete_raw_log_SHA256":sha(original_raw),
+           "log_name":prior_log.name,
+           "named_FAIL_ERROR":re.findall(r"^(?:FAIL|ERROR): .+$",original_t,re.M),
+        }
+        if (original_native.returncode!=0 or original_count!=["12"]
+            or not re.search(r"^OK\s*$",original_t,re.M)):
+            raise RuntimeError("P185 exact original P184 historical source Windows 12-case tests failed")
         selectors=[
           "scripts.p180_windows_sealed_blob_transport_equivalence.P180SourceBoundAdversarialTests",
           "scripts.p181_windows_batch_transport_security_review.P181BatchAdversarialSecurityTests",
           "scripts.p182_windows_fail_closed_batch_transport.P182FailClosedBatchSecurityCases",
           "scripts.p183_windows_historical_security_equivalence.P183HistoricalEquivalenceAdversarialCases",
-          "scripts.p184_windows_fresh_historical_source_admission.P184FreshHistoricalSourceAdmissionTests",
           "scripts.p185_windows_historical_tag_parent_seal_admission.P185HistoricalTagSealAdmissionTests",
           "tests.test_phase8_byok_b_scope_integrity.ExactBYOKBTests.test_self_canonicalization_only_zeros_own_single_literal",
         ]
-        log=out/"p185_authentic_Windows_69_historical_tag_parent_and_original_security_cases.log"
+        log=out/"p185_authentic_Windows_57_current_source_historical_tag_and_security_cases.log"
         with log.open("wb") as f:
             p=subprocess.run([sys.executable,"-B","-m","unittest","-v",*selectors],
                 cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=f,
@@ -452,25 +498,30 @@ def main()->int:
         ledger["genuine_Windows_native_result"]={
             "original_P180_cases":8,"original_P181_cases":12,
             "original_P182_cases":12,"original_P183_cases":12,
-            "original_P184_cases":12,"new_P185_adversarial_cases":12,
+            "original_P184_cases_executed_separately_at_exact_P184_HEAD":12,
+            "new_P185_adversarial_cases":12,
             "original_frozen_BYOK_B_control":1,
-            "complete_unittest_count":int(count[-1]) if count else None,
+            "complete_current_branch_unittest_count":int(count[-1]) if count else None,
+            "aggregate_two_exact_source_branches_genuine_native_tests":69,
             "native_exit":p.returncode,"original_complete_raw_log_SHA256":sha(raw),
             "log_filename":log.name,
             "original_named_FAIL_ERROR":re.findall(r"^(?:FAIL|ERROR): .+$",t,re.M),
         }
-        if p.returncode!=0 or count!=["69"] or not re.search(r"^OK\s*$",t,re.M):
+        if p.returncode!=0 or count!=["57"] or not re.search(r"^OK\s*$",t,re.M):
             raise RuntimeError("P185 genuine original Windows 69-case narrow security evidence not all complete")
         ledger["source_after"]=custody()
         good=(before==ledger["source_after"])
         if not good:raise RuntimeError("P185 original source drift after real native execution")
-        print("P185_NATIVE_WINDOWS_ORIGINAL_SECURITY_AND_TAG_CASES=69/69_PASS|EXIT=0",flush=True)
-        print("P185_ORIGINAL_P180_P181_P182_P183_P184_TESTS=56_UNMODIFIED",flush=True)
+        print("P185_NATIVE_WINDOWS_EXACT_P184_ORIGINAL=12/12_PASS|EXIT=0",flush=True)
+        print("P185_NATIVE_WINDOWS_CURRENT_SOURCE=57/57_PASS|EXIT=0",flush=True)
+        print("P185_TOTAL_TWO_AUTHENTICATED_SOURCE_IDENTITIES=69/69_PASS",flush=True)
+        print("P185_ORIGINAL_P180_P181_P182_P183_TESTS=44_UNMODIFIED",flush=True)
         print("P185_ORIGINAL_BYOK_B_FROZEN_SELF_CONTROL=1_PASS",flush=True)
         print("P185_ANNOTATED_TAG_PARENT_TREE_ANCESTRY_AND_A_SOURCE_SHA256=DOUBLE_OBSERVED",flush=True)
         print("P185_FRESH_PARENT_READ_POST_TAG_TAMPER=REJECTED_BY_ISOLATED_CANDIDATE",flush=True)
         print("P185_ENTIRE_ORIGINAL_B_23FILE_SECURITY_VERIFIER=UNMODIFIED_AND_NOT_REPLACED",flush=True)
-        print("P185_RAW_WINDOWS_LOG_SHA256="+sha(raw),flush=True)
+        print("P185_CURRENT_57_RAW_WINDOWS_LOG_SHA256="+sha(raw),flush=True)
+        print("P185_PRIOR_12_RAW_WINDOWS_LOG_SHA256="+sha(original_raw),flush=True)
         print("P185_EXTERNAL_QUALIFIED_REVIEW=7_OPEN|FULL_PRODUCT_NATIVE=0/3|RELEASE=HOLD",flush=True)
     except Exception as exc:
         ledger["collector_error"]=repr(exc)

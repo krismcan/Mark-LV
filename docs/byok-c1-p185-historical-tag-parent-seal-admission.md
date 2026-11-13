@@ -22,6 +22,8 @@ Read-only values from original frozen \`tests/phase8_byok_b_scope_migration.py\`
 | Annotated A tag | \`nayeon-v1-phase8-byok-first-run-owner-fake-only-01\` |
 | Exact annotated tag Git object | \`7496961c83de9607402dcdabff25917674d6688a\` |
 
+The original pinned Git blob OIDs in the immutable A parent tree are `4c903ac9aa43293c9f66b422bb0d49fd38dd8b49` and `c5804e6d8d95a46792196cbedf42d1e469b85959`, respectively. Each is rejected if a source snapshot instead reports a different blob ID, even when the returned bytes look plausible.
+
 The immutable original A SHA256 manifest in \`tests/phase8_byok_scope_migration.py\` establishes these *historical A commit* blob pins, distinct from current branch disk bytes:
 
 - \`tests/phase_8_30_scope_migration.py\` SHA256 \`23d5b1a0a9e4f83ffd870f6b72693bb8878c85f94d8d7c142ca2a57fa0aeb218\`.
@@ -40,7 +42,7 @@ A separate P182 bounded \`git cat-file --batch\` read obtains the full original 
 
 ### Actual source-preserving Windows tests
 
-Authenticate exact P184 source parent, 57/57 original Windows log ZIP SHA256/member CRC, original ledger and seven OPEN independent decisions. Execute original P180 **8**, P181 **12**, P182 **12**, P183 **12**, P184 **12**, one untouched frozen BYOK-B self-canonicalisation case **1**, plus P185 **12** new synthetically mutated tag/tree/ancestry/type/mode/blob/parent and full payload cases = **69 genuine native Windows cases**.
+Authenticate exact P184 source parent, 57/57 original Windows log ZIP SHA256/member CRC, original ledger and seven OPEN independent decisions. Execute unchanged P184 **12** tests on an independently cloned, exact original P184 branch at `a66a5221ab74d0b7f65fd381c554f186cd6c8ed1` (that frozen original test insists on its precise branch), and independently run P180 **8**, P181 **12**, P182 **12**, P183 **12**, one untouched frozen BYOK-B self-canonicalisation case **1**, and P185 **12** new tests on the exact P185 head. These are **12 + 57 = 69 genuine native Windows cases across two authenticated source identities**, never one falsely homogenized 69-case run. Capture both complete raw logs, native exits and SHA256 receipts. Do not rewrite or patch original P184 for this successor branch.
 
 The P185 originals include real Git metadata/tag-tree verification on the exact historical commit and two separate immutable original A-source bounded Git byte reads. The synthetic mutation cases are **not** real history modifications: their purpose is to assert refusal without touching source.
 

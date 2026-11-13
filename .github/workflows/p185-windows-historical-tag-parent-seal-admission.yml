@@ -32,6 +32,12 @@ jobs:
           git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p185-historical-tag-seal-parent-admission-20261113 https://github.com/krismcan/Mark-LV.git reviewed
           if($LASTEXITCODE -ne 0){throw 'P185 clean isolated source clone failed'}
           git -C reviewed config --local core.autocrlf false
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p184-fresh-historical-source-admission-20261112 https://github.com/krismcan/Mark-LV.git reviewed_p184_original
+          if($LASTEXITCODE -ne 0){throw 'P185 original P184 source branch clone failed'}
+          git -C reviewed_p184_original config --local core.autocrlf false
+          if((git -C reviewed_p184_original rev-parse HEAD).Trim() -ne 'a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'){
+            throw 'P185 original P184 immutable test identity mismatch'
+          }
           if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
             throw 'P185 triggering exact HEAD/source mismatch'
           }
@@ -51,10 +57,11 @@ jobs:
           git -C reviewed diff --check $parent HEAD
           if($LASTEXITCODE -ne 0){throw 'P185 malformed 3-file source diff'}
           Write-Output 'P185_EXACT_P184_BASE_THREE_ADDITIVE_REVIEW_FILES=PASS'
-      - name: Authenticate P184 original real Windows and execute 69 P180-P185 native tests
+      - name: Authenticate original P184 native 12 on exact parent and P185 native 57 at new source
         shell: pwsh
         env:
           P185_ARCHIVE_TOKEN: ${{ github.token }}
+          P185_P184_ROOT: ${{ github.workspace }}/reviewed_p184_original
         run: |
           $ErrorActionPreference='Stop'
           Push-Location reviewed
