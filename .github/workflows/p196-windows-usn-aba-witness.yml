@@ -1,0 +1,83 @@
+name: P196 Real Windows USN ABA Diagnostic — PRODUCTION HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p196-usn-aba-source-alias-recovery-20261113
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p196-windows-native:
+    name: P196 Authenticated Original P195 plus Genuine Windows File USN ABA
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: GitHub original source metadata checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Windows Python 3.12 for actual NTFS IOCTL
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install only synthetic signer verification dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P196 synthetic lab dependency unavailable — HOLD'}
+      - name: Verify exact source ancestor and only new P196 audit files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p196-usn-aba-source-alias-recovery-20261113'){
+               throw 'P196 requires correct GitHub hosted Windows source'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P196 original event SHA changed'}
+          $parent='56ff1722a4704c28b228d5f6d5137227bde7ded2'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P196 wrong exact P195 source parent'}
+          $expected=@(
+            '.github/workflows/p196-windows-usn-aba-witness.yml'
+            'docs/byok-c1-p196-usn-alias-witness-security-review.md'
+            'scripts/p196_windows_usn_aba_source_witness.py'
+          ) | Sort-Object
+          $changed=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object $expected $changed).Count -ne 0){throw 'P196 contains non-audit source modifications'}
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P196 source diff invalid'}
+          Write-Output 'P196_EXACT_P195_PARENT_AND_THREE_ADDITIVE_AUDIT_PATHS=VERIFIED'
+      - name: Isolated autocrlf-disabled clone and native USN source witness
+        shell: pwsh
+        env:
+          P196_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          # Clean disposable clone BEFORE any line-ending conversion; never reset worktrees.
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p196-usn-aba-source-alias-recovery-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P196 isolated clean clone unavailable'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P196 isolated source clone SHA does not match original push'
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p196_windows_usn_aba_source_witness
+            if($LASTEXITCODE -ne 0){throw 'P196 native Windows security diagnostic failure: evidence preserved, HOLD'}
+          } finally {Pop-Location}
+          Write-Output 'P196_USN_OBSERVATIONS_ARE_NOT_ATOMIC_PROOF'
+          Write-Output 'P196_ORIGINAL_BYOK_B_ADS_GAP=UNPATCHED'
+          Write-Output 'P196_COMPLETE_WINDOWS_FULL_PRODUCT=0/3'
+          Write-Output 'P196_INDEPENDENT_GOV_SEC_REL=OPEN'
+          Write-Output 'P196_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve genuine original Windows raw tests and HOLD custody even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p196-real-windows-file-usn-aba-experimental-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p196-native-usn/*.log
+            ${{ runner.temp }}/nayeon-p196-native-usn/*.json
+          if-no-files-found: warn
+          retention-days: 14
