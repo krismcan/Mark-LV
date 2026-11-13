@@ -1,0 +1,83 @@
+name: P189 Actual Original Full BYOK-B Hardlink and ADS Admission — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p189-full-b-physical-alias-verdict-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-full-B-physical-alias:
+    name: P189 Authentic Windows Original Full B Real Hardlink ADS Admission Verdict
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Actual hosted native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate P189 exact P188 parent and unchanged frozen source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p189-full-b-physical-alias-verdict-20261113'){
+            throw 'P189 authentic hosted native Windows source required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p189-full-b-physical-alias-verdict-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P189 original source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P189 original HEAD changed'}
+          $parent='d351c1a968991a14c233e53a566b466e5ffe2d19'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P189 not exact P188 branch successor'}
+          $expected=@(
+            '.github/workflows/p189-windows-full-B-alias-admission.yml'
+            'docs/byok-c1-p189-original-full-B-alias-admission-review.md'
+            'scripts/p189_windows_original_full_b_physical_alias_verdict.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P189 unauthorized original product/frozen source mutation'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P189 source review diff format invalid'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p188-real-windows-hardlink-ads-junction-race-witness-20261113 https://github.com/krismcan/Mark-LV.git reviewed_p188
+          if($LASTEXITCODE -ne 0){throw 'P189 exact original P188 clone failed'}
+          git -C reviewed_p188 config --local core.autocrlf false
+          if((git -C reviewed_p188 rev-parse HEAD).Trim() -ne $parent){
+            throw 'P189 original P188 HEAD not independent exact source'
+          }
+          Write-Output 'P189_EXACT_P188_PARENT_AND_ONLY_THREE_NEW_AUDIT_FILES=PASS'
+          Write-Output 'P189_ORIGINAL_P188_SOURCE_IDENTITY=INDEPENDENT_AND_EXACT'
+      - name: Authenticate original P188 evidence and run genuine full historical B physical alias verdicts
+        shell: pwsh
+        env:
+          P189_ARCHIVE_TOKEN: ${{ github.token }}
+          P189_ORIGINAL_P188_ROOT: ${{ github.workspace }}/reviewed_p188
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p189_windows_original_full_b_physical_alias_verdict
+            if($LASTEXITCODE -ne 0) {
+              throw 'P189 native original full B alias admission evidence incomplete: HOLD'
+            }
+            Write-Output 'P189_TRUE_FULL_HISTORICAL_B_ALIAS_VERDICTS=EVIDENCE_ONLY'
+            Write-Output 'P189_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=OPEN'
+            Write-Output 'P189_SIGNED_WINDOWS_ATOMIC_HANDLE_SOURCE_ADMISSION=NOT_APPROVED'
+            Write-Output 'P189_FULL_PRODUCT_NATIVE_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P189_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve real native Windows logs and H C R governance including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p189-true-original-B-full-Windows-hardlink-ADS-admission-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p189-full-B-physical-admission/*.log
+            ${{ runner.temp }}/nayeon-p189-full-B-physical-admission/*.json
+          if-no-files-found: warn
+          retention-days: 14
