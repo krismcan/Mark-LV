@@ -57,8 +57,19 @@ jobs:
           P195_ARCHIVE_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
-          python -B -m scripts.p195_windows_durable_root_authority_aba_review
-          if($LASTEXITCODE -ne 0){throw 'P195 physical Windows security test failure — HOLD'}
+          # actions/checkout can apply Windows CRLF conversion before local Git config.
+          # Use the proven P194 clean-clone method; never clean/reset any worktree.
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p195-authenticated-durable-source-root-aba-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P195 isolated clean clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P195 isolated clone exact HEAD mismatch'
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p195_windows_durable_root_authority_aba_review
+            if($LASTEXITCODE -ne 0){throw 'P195 physical Windows security test failure — HOLD'}
+          } finally { Pop-Location }
           Write-Output 'P195_ORIGINAL_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
           Write-Output 'P195_PRE_ENROLMENT_ROLLBACK_ADS_HARDLINK_ABA=SECURITY_REVIEW_OPEN'
           Write-Output 'P195_INDEPENDENT_QUALIFIED_SECURITY_REVIEW=OPEN'
