@@ -190,17 +190,28 @@ def demand_chain(chain:tuple[str,...])->None:
     if chain!=expected:
         raise RuntimeError("P186 original exact A/B tagged parent/HEAD/tree ancestry admission refused")
 
+def canonical_legacy_path(path:str)->bool:
+    # Original immutable manifests include .codex/ and docs/, which were
+    # deliberately outside P180's narrow two-subtree performance benchmark.
+    # Never weaken P180's own original security/path test; use a separate,
+    # exact manifest membership + canonical path policy for P186.
+    return (isinstance(path,str) and len(path)<=240
+            and re.fullmatch(r"[A-Za-z0-9_./-]+",path) is not None
+            and not path.startswith("/")
+            and all(part not in ("",".","..") and not part.endswith(".")
+                    for part in path.split("/")))
+
 def original_data(envelope:str,path:str)->bytes:
     commit,manifest,_=SOURCES[envelope]
     if path not in manifest:
         raise ValueError("P186 unknown original pinned historical path")
-    if not p180.valid_path(path):
+    if not canonical_legacy_path(path):
         raise ValueError("P186 noncanonical original path denied")
     return git("show",commit+":"+path)
 
 def original_oid(envelope:str,path:str)->bytes:
     commit,manifest,_=SOURCES[envelope]
-    if path not in manifest or not p180.valid_path(path):
+    if path not in manifest or not canonical_legacy_path(path):
         raise ValueError("P186 unapproved pinned source path")
     record=git("ls-tree","--full-tree","-z",commit,"--",path)
     m=re.fullmatch(rb"100644 blob ([0-9a-f]{40})\t"+
@@ -210,7 +221,7 @@ def original_oid(envelope:str,path:str)->bytes:
 
 def validate_source(envelope:str,path:str,payload:bytes,oid:bytes)->None:
     _,manifest,digest=SOURCES[envelope]
-    if (path not in manifest or not p180.valid_path(path)
+    if (path not in manifest or not canonical_legacy_path(path)
         or not isinstance(payload,bytes) or not p180.valid_oid(oid)):
         raise ValueError("P186 malformed original source verification")
     if digest(path,payload)!=manifest[path]:
