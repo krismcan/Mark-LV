@@ -1,0 +1,75 @@
+name: P195 Authenticated Durable Root and Actual Windows ABA — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p195-authenticated-durable-source-root-aba-20261113
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p195-native-review:
+    name: P195 Real Windows Synthetic Signature and Physical ABA Review
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Clean source-authenticated original Git checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup real Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated laboratory signature verifier dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){ throw 'P195 synthetic-only crypto dependency missing' }
+      - name: Prove original P194 exact parent and three additive review paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p195-authenticated-durable-source-root-aba-20261113'){
+             throw 'P195 requires authenticated genuine hosted Windows source branch'
+          }
+          git config --local core.autocrlf false
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P195 exact source SHA mismatch'}
+          $parent='6f9d6c4316522dec0b5f586bb8d3d9ab5eef9b2b'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P195 P194 ancestor drift'}
+          $expected=@(
+            '.github/workflows/p195-windows-authenticated-root-aba.yml'
+            'docs/byok-c1-p195-authenticated-durable-source-root-aba-security-review.md'
+            'scripts/p195_windows_durable_root_authority_aba_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P195 non-audit or unexpected file change'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P195 invalid source diff'}
+          Write-Output 'P195_P194_PARENT_AND_THREE_AUDIT_ONLY_PATHS=VERIFIED'
+      - name: Authenticate original seven-member P194 ZIP then execute actual Windows tests
+        shell: pwsh
+        env:
+          P195_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          python -B -m scripts.p195_windows_durable_root_authority_aba_review
+          if($LASTEXITCODE -ne 0){throw 'P195 physical Windows security test failure — HOLD'}
+          Write-Output 'P195_ORIGINAL_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+          Write-Output 'P195_PRE_ENROLMENT_ROLLBACK_ADS_HARDLINK_ABA=SECURITY_REVIEW_OPEN'
+          Write-Output 'P195_INDEPENDENT_QUALIFIED_SECURITY_REVIEW=OPEN'
+          Write-Output 'P195_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve actual raw Windows logs and H C R ledger even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p195-real-Windows-synthetic-signing-ABA-hold
+          path: |
+            ${{ runner.temp }}/nayeon-p195-native-review/*.log
+            ${{ runner.temp }}/nayeon-p195-native-review/*.json
+          if-no-files-found: warn
+          retention-days: 14
