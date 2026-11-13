@@ -61,3 +61,15 @@ Independent reviewer must examine the original authentic Windows logs, physical 
 GOV-01/GOV-02/SEC-03/SEC-04/REL-05/REL-06/REL-07: OPEN. Privileged G0–G6: OPEN. Signed executable/helper/installer and SAC/WDAC/Code Integrity GO: NOT ESTABLISHED. Accepted full unfiltered genuine Windows full-product regressions: **0/3**. Require independent security approval and 3 passes before future production GO.
 
 **Conclusion:** P195 may close only as an isolated research checkpoint when authentic test evidence passes. Full current gate integration, root provenance, durable anti-rollback, reversible alias race resistance and release remain **HOLD**. No Git merge/tag or Google Drive production release reconciliation is justified by selected tests.
+
+
+## Authenticated first successful native P195 experiment — 13 November 2026
+
+The physical Windows run 43482220893 (source 7dcf26aa9d198a748bef1e455b5f2f1242bdbd1f; artifact 14065398100; artifact ZIP SHA-256 0B6C39BF10935DBCE20CB7B5F13C3750D1977BD112BF214D7DA6FAD6BA6AF503) independently yielded two ZIP members with valid CRC: native raw 22-test log SHA-256 9C28FC828187BB30B473CEEC9EB5B49F3B0CAB7DB485B95986A1D82335C30FD3 and exact H/C/R ledger SHA-256 9FA35071C9C0ED227A621B201EB5BE8E9CA5E2CC8874C0621FDF917B52F42A30. All **22 selected native Windows tests had real OS process exit zero**, a complete 22-test footer and no test failures. Source-before and source-after were identical; P194 original seven-member evidence and 64 selected prior source-bound tests were authenticated from the source-accurate ZIP.
+
+**Security finding SEC-P195-ABA-03 upgraded from hypothetical to experimentally CONFIRMED:**
+* In test 21 a genuine external Windows process **created and removed** a named ADS while a held P194 source leaf HANDLE was active. Both physical operations succeeded; the experimental two-snapshot reader accepted the original sealed source.
+* In test 22 a genuine external Windows process **created and removed** a hardlink during the same observation interval. Both physical operations succeeded; the reader again accepted the original sealed source.
+* These are **admission gaps observed in the isolated prototype**. They do not prove every filesystem schedule is exploitable in the current product, because no reviewed product integration has occurred. They do disprove the proposition that two matching snapshots and an exclusive read HANDLE alone provide atomic NTFS alias exclusion.
+
+**Decision:** The diagnostic tests passed because they accurately *observed a vulnerability*; they are NOT a security GO. Keep the historical original B ADS admission unpatched status, 0/3 full Windows regressions and all independent GOV/SEC/REL and G0–G6 holds. Any future remediation must prove a stronger atomic or fail-closed alias policy, and verify the complete original historical gate and current Phase 10 integration without weakening old tests.
