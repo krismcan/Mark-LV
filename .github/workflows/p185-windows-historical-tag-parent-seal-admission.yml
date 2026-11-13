@@ -1,0 +1,88 @@
+name: P185 Historical Annotated Tag Parent Seal Admission — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p185-historical-tag-seal-parent-admission-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p185-historical-tag-seal-admission:
+    name: P185 Genuine Windows 69 Original and Historical Tagged Parent Security Cases
+    runs-on: windows-2025
+    timeout-minutes: 11
+    steps:
+      - name: Hosted genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact P184 parent and three additive read-only P185 files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p185-historical-tag-seal-parent-admission-20261113'){
+            throw 'P185 genuine authenticated Windows push context required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p185-historical-tag-seal-parent-admission-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P185 clean isolated source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p184-fresh-historical-source-admission-20261112 https://github.com/krismcan/Mark-LV.git reviewed_p184_original
+          if($LASTEXITCODE -ne 0){throw 'P185 original P184 source branch clone failed'}
+          git -C reviewed_p184_original config --local core.autocrlf false
+          if((git -C reviewed_p184_original rev-parse HEAD).Trim() -ne 'a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'){
+            throw 'P185 original P184 immutable test identity mismatch'
+          }
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P185 triggering exact HEAD/source mismatch'
+          }
+          $parent='a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P185 source missing exact P184 baseline ancestor'
+          }
+          $expected=@(
+            '.github/workflows/p185-windows-historical-tag-parent-seal-admission.yml'
+            'docs/byok-c1-p185-historical-tag-parent-seal-admission.md'
+            'scripts/p185_windows_historical_tag_parent_seal_admission.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P185 frozen original tests/product or unauthorized path mutated'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P185 malformed 3-file source diff'}
+          Write-Output 'P185_EXACT_P184_BASE_THREE_ADDITIVE_REVIEW_FILES=PASS'
+      - name: Authenticate original P184 native 12 on exact parent and P185 native 57 at new source
+        shell: pwsh
+        env:
+          P185_ARCHIVE_TOKEN: ${{ github.token }}
+          P185_P184_ROOT: ${{ github.workspace }}/reviewed_p184_original
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p185_windows_historical_tag_parent_seal_admission
+            if($LASTEXITCODE -ne 0){
+              throw 'P185 true Windows narrow historical tag and seal test incomplete; HOLD'
+            }
+            Write-Output 'P185_FROZEN_ORIGINAL_BYOK_VERIFIER=UNCHANGED'
+            Write-Output 'P185_HISTORICAL_TAG_PARENT_ADMISSION=NARROW_EXPERIMENT_ONLY'
+            Write-Output 'P185_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=NOT_OBTAINED'
+            Write-Output 'P185_COMPLETE_FULL_PRODUCT_NATIVE_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P185_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Upload raw 69-case authentic native Windows log and H C R gate ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p185-native-windows-tag-parent-source-seal-review-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p185-historical-tag-parent/*.log
+            ${{ runner.temp }}/nayeon-p185-historical-tag-parent/*.json
+          if-no-files-found: warn
+          retention-days: 14
