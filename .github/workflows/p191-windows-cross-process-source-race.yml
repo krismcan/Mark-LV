@@ -1,0 +1,91 @@
+name: P191 Real Windows Cross Process Source HANDLE and ADS Races — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p191-concurrent-source-handle-ads-race-witness-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p191-windows-source-races:
+    name: P191 Exact-Source Native Windows Cross-Process NTFS Source Race Witnesses
+    runs-on: windows-2025
+    timeout-minutes: 13
+    steps:
+      - name: Real native hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P190 parent, audit scope and original P189 and P190 source clones
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p191-concurrent-source-handle-ads-race-witness-20261113'){
+             throw 'P191 exact Windows native source push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p191-concurrent-source-handle-ads-race-witness-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P191 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P191 exact source HEAD mismatch'}
+          $parent='8a94be2670610048416cf6832831a14073a635f5'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P191 wrong P190 source lineage'}
+          $expected=@(
+            '.github/workflows/p191-windows-cross-process-source-race.yml'
+            'docs/byok-c1-p191-concurrent-win32-source-ads-race-review.md'
+            'scripts/p191_windows_cross_process_source_race_witness.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P191 frozen original product or historical tests changed'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P191 audit source diff malformed'}
+          $original=@(
+            @('byok-c1-p189-full-b-physical-alias-verdict-20261113','reviewed_p189','75a312cce7e0231b41b2920c45c3c002bd59f120'),
+            @('byok-c1-p190-ntfs-handle-bound-source-inspection-20261113','reviewed_p190','8a94be2670610048416cf6832831a14073a635f5')
+          )
+          foreach($part in $original){
+             git -c core.autocrlf=false clone --quiet --single-branch --branch $part[0] https://github.com/krismcan/Mark-LV.git $part[1]
+             if($LASTEXITCODE -ne 0){throw 'P191 original source clone failed'}
+             git -C $part[1] config --local core.autocrlf false
+             if((git -C $part[1] rev-parse HEAD).Trim() -ne $part[2]){
+                throw 'P191 original exact branch/source mismatch'
+             }
+          }
+          Write-Output 'P191_EXACT_P190_PARENT_ONLY_THREE_ADDITIVE_FILES=PASS'
+          Write-Output 'P191_P189_AND_P190_ORIGINAL_SEPARATE_SOURCE_BRANCHES_AUTHENTICATED'
+      - name: Authenticate P190 ZIP and run native original and new concurrent Win32 tests
+        shell: pwsh
+        env:
+          P191_ARCHIVE_TOKEN: ${{ github.token }}
+          P191_EXACT_P189_ROOT: ${{ github.workspace }}/reviewed_p189
+          P191_EXACT_P190_ROOT: ${{ github.workspace }}/reviewed_p190
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p191_windows_cross_process_source_race_witness
+            if($LASTEXITCODE -ne 0){
+               throw 'P191 real Win32 source race/security evidence incomplete; production HOLD'
+            }
+            Write-Output 'P191_CROSS_PROCESS_WIN32=ISOLATED_TESTS_ONLY'
+            Write-Output 'P191_ANCESTOR_ABA_RACE_FREE_PROOF=NOT_ESTABLISHED'
+            Write-Output 'P191_ORIGINAL_FULL_HISTORICAL_B_ADS_GAP=UNMITIGATED'
+            Write-Output 'P191_QUALIFIED_EXTERNAL_SECURITY_REVIEW=OPEN'
+            Write-Output 'P191_FULL_PRODUCT_UNFILTERED_WINDOWS=0/3'
+            Write-Output 'P191_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve all authentic native Windows logs and H C R including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p191-true-Windows-cross-process-ADS-source-race-evidence-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p191-win32-cross-process-race/*.log
+            ${{ runner.temp }}/nayeon-p191-win32-cross-process-race/*.json
+          if-no-files-found: warn
+          retention-days: 14
