@@ -200,7 +200,13 @@ class Win32SourceInspectionCandidate:
         return raw
 
 def make_junction(alias:Path,target:Path)->None:
-    cmd=["cmd.exe","/d","/c",'mklink /J "'+str(alias)+'" "'+str(target)+'"']
+    # Native PowerShell FileSystem provider creates a true NTFS junction in
+    # this disposable host-owned directory; avoid cmd.exe /c quote folding.
+    safe_alias=str(alias).replace("'","''")
+    safe_target=str(target).replace("'","''")
+    operation=("New-Item -ItemType Junction -Path '"+safe_alias+
+               "' -Target '"+safe_target+"' -ErrorAction Stop | Out-Null")
+    cmd=["powershell.exe","-NoProfile","-NonInteractive","-Command",operation]
     p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                      timeout=25,check=False)
     if p.returncode!=0 or not alias.is_junction():
@@ -315,7 +321,7 @@ class P188NativePhysicalWindowsSourceCases(unittest.TestCase):
     def test_08_canonical_windows_alias_and_wrong_historical_path_refused(self):
         for path in ("tests/../phase8_byok_b_scope_migration.py",
                      self.rel+":stream","tests\\phase8_byok_b_scope_migration.py",
-                     "tests/phase8_byok_scope_migration.py"):
+                     "tests/p188_unapproved_source_alias.py"):
             with self.subTest(path=path):
                 with self.assertRaisesRegex(SourceRefusal,"UNAPPROVED_PATH_ALIAS"):
                     self.normal().read(path)
