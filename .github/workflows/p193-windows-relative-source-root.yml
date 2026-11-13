@@ -1,0 +1,95 @@
+name: P193 Native NT RootDirectory Relative Original Source Verdict — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p193-nt-relative-source-root-admission-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p193-nt-relative-source:
+    name: P193 Exact Original Sources NT RootDirectory Relative Security And Provenance Diagnostic
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate P192 parent exact three new files and four original source branches
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p193-nt-relative-source-root-admission-20261113'){
+             throw 'P193 genuine hosted source Windows branch push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p193-nt-relative-source-root-admission-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P193 exact source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P193 wrong current source SHA'}
+          $parent='3541db02537c1b0ec1c7b3b0be4fb925b0271588'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P193 wrong P192 parent'}
+          $expected=@(
+            '.github/workflows/p193-windows-relative-source-root.yml'
+            'docs/byok-c1-p193-relative-source-root-admission-security-review.md'
+            'scripts/p193_windows_nt_relative_trusted_root_source.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P193 only three audit-only files allowed, original frozen source changed'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P193 source diff malformed'}
+          $original=@(
+            @('byok-c1-p189-full-b-physical-alias-verdict-20261113','reviewed_p189','75a312cce7e0231b41b2920c45c3c002bd59f120'),
+            @('byok-c1-p190-ntfs-handle-bound-source-inspection-20261113','reviewed_p190','8a94be2670610048416cf6832831a14073a635f5'),
+            @('byok-c1-p191-concurrent-source-handle-ads-race-witness-20261113','reviewed_p191','6c759056b380626991e86e2543fac855da8fc5c9'),
+            @('byok-c1-p192-stable-parent-handle-identity-ads-race-20261113','reviewed_p192','3541db02537c1b0ec1c7b3b0be4fb925b0271588')
+          )
+          foreach($part in $original){
+             git -c core.autocrlf=false clone --quiet --single-branch --branch $part[0] https://github.com/krismcan/Mark-LV.git $part[1]
+             if($LASTEXITCODE -ne 0){throw 'P193 original exact source clone failed'}
+             git -C $part[1] config --local core.autocrlf false
+             if((git -C $part[1] rev-parse HEAD).Trim() -ne $part[2]){
+                throw 'P193 original source branch SHA mismatch'
+             }
+          }
+          Write-Output 'P193_EXACT_P192_PARENT_PLUS_THREE_AUDIT_ONLY_ADDITIONS=VERIFIED'
+          Write-Output 'P193_P189_P190_P191_P192_ORIGINAL_SEPARATE_SOURCE_CLONES=AUTHENTIC'
+      - name: Authenticate P192 archive and run genuine Win32 original and NT rooted relative source evidence
+        shell: pwsh
+        env:
+          P193_ARCHIVE_TOKEN: ${{ github.token }}
+          P193_EXACT_P189_ROOT: ${{ github.workspace }}/reviewed_p189
+          P193_EXACT_P190_ROOT: ${{ github.workspace }}/reviewed_p190
+          P193_EXACT_P191_ROOT: ${{ github.workspace }}/reviewed_p191
+          P193_EXACT_P192_ROOT: ${{ github.workspace }}/reviewed_p192
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p193_windows_nt_relative_trusted_root_source
+            if($LASTEXITCODE -ne 0){
+              throw 'P193 original-source NT RootDirectory Windows security evidence incomplete — HOLD'
+            }
+            Write-Output 'P193_NATIVE_NTCREATEFILE_COMPONENT_RELATIVE=EXPERIMENT_ONLY'
+            Write-Output 'P193_ALTERNATE_SEALED_BYTES_PARENT_PROVENANCE=NOT_PROVEN'
+            Write-Output 'P193_ORIGINAL_FULL_BYOK_B_ADS_GAP=UNMITIGATED'
+            Write-Output 'P193_QUALIFIED_INDEPENDENT_EXTERNAL_SECURITY_REVIEW=OPEN'
+            Write-Output 'P193_COMPLETE_UNFILTERED_WINDOWS_PRODUCT_REGRESSIONS=0/3'
+            Write-Output 'P193_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve genuine Windows original source logs and H C R including all failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p193-true-NT-root-relative-original-source-identity-diagnostic-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p193-root-relative-Windows/*.log
+            ${{ runner.temp }}/nayeon-p193-root-relative-Windows/*.json
+          if-no-files-found: warn
+          retention-days: 14
