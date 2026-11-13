@@ -45,3 +45,14 @@ PERF-P187-01 and historical native failures still OPEN: P135 3 x 600s original s
 H/C/R = HOLD / isolated NT rooted-source test / HOLD. Full-product unfiltered native Windows accepted regressions 0/3; independent GOV-01/GOV-02/SEC-03/SEC-04/REL-05/REL-06/REL-07 reviews OPEN; privileged G0–G6 OPEN; signed main/helper/installer, cert SAC/WDAC Code Integrity authorization absent. No real key, WinCred operation, provider validation, production service, source seal modification, merge, tag, release or Google Drive MASTER/dashboard production success assertion.
 
 P193 may close only as an independently inspectable source-preserving narrow genuine Windows audit, with all original failed and passing raw logs and proven unresolved identity gap. BYOK C1 PRODUCTION RELEASE HOLD.
+
+
+## Actual initial Windows failure preserved — P193 handle lifecycle security review
+
+The first real hosted Windows run #43451379768 at source HEAD 7a246e356c741702d2a8c43f32c409696e81af2d returned FAIL with original evidence artifact #14050337137 ZIP SHA256 511212CEC8B7DFD356E513F681AFB9BCC70AEE7E61F55BC3A47421A9047A83A1. All 36 original source-separated P189/P190/P191/P192 tests passed; the P193 14 new native Windows tests had 12 passing and 2 with primary ERROR, plus 2 extra cleanup ERROR entries.
+
+The genuine primary errors occurred on test_07 preexisting junction and test_08 junction substitution before NT relative component open. The native reader **correctly denied both reparse/junction source paths**, but the new NtCreateFile call had already returned an open HANDLE for the reparse directory. The code then called _parent_snapshot before appending that HANDLE to its cleanup list. A raised SourceDenied left the HANDLE open; Windows **WinError 32** then prevented deleting the rejected junction and caused temporary directory cleanup to fail. This is an actual **SEC-P193-HANDLE-01 resource-leak and denial-of-cleanup finding**, distinct from any original source verification failure.
+
+An audit-only repair to the new P193 prototype closes the returned NT relative directory HANDLE in an exception handler if the directory snapshot fails, before propagating the exact original SourceDenied. Historical sources, all original tests, the reparse-denial security assertion, original 8.34 guard, product and Phase 10 unchanged. Retain all first-run authentic logs and failure SHA evidence; require a fresh native Windows successful test run before P193 may close as experimental evidence.
+
+The separately demonstrated alternate physically different ancestor with identical literal original sealed B source bytes **remains accepted by the test candidate** without independently pinned trusted parent FileIds. The repair does not attempt to disguise or close this provenance finding. H/C/R remain HOLD / experimental / HOLD.
