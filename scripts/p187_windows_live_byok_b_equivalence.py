@@ -44,9 +44,15 @@ def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest().upper()
 
 def git(*args: str, cwd: Path = ROOT, timeout: int = 60) -> bytes:
-    return subprocess.run(["git", "-C", str(cwd), *args], stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          timeout=timeout, check=True).stdout
+    process = subprocess.run(["git", "-C", str(cwd), *args], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            timeout=timeout, check=False)
+    if process.returncode != 0:
+        detail = process.stderr.decode("utf8", "replace").strip()[-2400:]
+        raise RuntimeError("P187 isolated Git command failed: " + repr(args)
+                           + " native exit=" + str(process.returncode)
+                           + " stderr=" + detail)
+    return process.stdout
 
 def source_custody() -> dict:
     if (sys.platform != "win32" or os.environ.get("GITHUB_ACTIONS") != "true"
@@ -295,7 +301,7 @@ class P187RealWindowsDisposableWorktreeTests(unittest.TestCase):
             raise RuntimeError("P187 physical B admission requires actual Windows runner")
         cls.temporary=tempfile.TemporaryDirectory(prefix="p187-byok-b-",dir=os.environ["RUNNER_TEMP"])
         cls.path=Path(cls.temporary.name)/"historical-real-b"
-        subprocess.run(["git","clone","--quiet","--no-local",str(ROOT),str(cls.path)],
+        subprocess.run(["git","-c","core.autocrlf=false","clone","--quiet","--no-local","--no-checkout",str(ROOT),str(cls.path)],
                        check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=100)
         git("config","--local","core.autocrlf","false",cwd=cls.path)
         git("checkout","--quiet","-b","nayeon-v1",A_COMMIT,cwd=cls.path)
