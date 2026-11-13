@@ -420,7 +420,7 @@ def run_unittest(root:Path,selector:str,output:Path,head:str,count:int,
             "selected_cases_expected":count,
             "actual_complete_footers":re.findall(r"^Ran (\d+) tests? in [0-9.]+s$",text,re.M),
             "complete_footer_OK":bool(re.search(r"^OK\s*$",text,re.M)),
-            "native_observed_child_actions":re.findall(r"^P191_EXTERNAL_PROCESS_[^\r\n]+",text,re.M),
+            "native_observed_child_actions":re.findall(r"P191_EXTERNAL_PROCESS_[^\r\n]+",text,re.M),
             "native_ABA_observation":re.findall(r"^P191_PARENT_ABA_OBSERVATION=[^\r\n]+",text,re.M),
             "native_named_FAIL_ERROR":re.findall(r"^(?:FAIL|ERROR): .+$",text,re.M)}
 def demand_pass(result:dict):
