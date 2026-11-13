@@ -1,0 +1,97 @@
+name: P186 Source-Preserving Historical A11 B23 Envelope and Tamper Witness — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p186-full-historical-a-b-envelope-witness-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p186-full-original-historical-envelopes:
+    name: P186 Actual Windows 81 Narrow Tests Across 3 Authenticated Source IDs and 34 Pin Refusals
+    runs-on: windows-2025
+    timeout-minutes: 13
+    steps:
+      - name: Genuine hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate P186 exact P185 parent, three additive files and original P184/P185 clones
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or
+             $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p186-full-historical-a-b-envelope-witness-20261113'){
+            throw 'P186 authenticated real Windows source push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p186-full-historical-a-b-envelope-witness-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P186 clean source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P186 triggering exact source commit mismatch'
+          }
+          $parent='68b338723ba9130be071289c7662c9d68db748f4'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){
+            throw 'P186 parent not exact authenticated P185 source'
+          }
+          $expected=@(
+            '.github/workflows/p186-windows-full-historical-envelope-witness.yml'
+            'docs/byok-c1-p186-historical-A11-B23-envelope-witness.md'
+            'scripts/p186_windows_full_historical_envelope_witness.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P186 frozen original test/product or unrelated source modification denied'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P186 malformed additive source diff'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p184-fresh-historical-source-admission-20261112 https://github.com/krismcan/Mark-LV.git reviewed_p184_original
+          if($LASTEXITCODE -ne 0){throw 'P186 exact original P184 branch clone failed'}
+          git -C reviewed_p184_original config --local core.autocrlf false
+          if((git -C reviewed_p184_original rev-parse HEAD).Trim() -ne 'a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'){
+            throw 'P186 original P184 source identity mismatch'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p185-historical-tag-seal-parent-admission-20261113 https://github.com/krismcan/Mark-LV.git reviewed_p185_original
+          if($LASTEXITCODE -ne 0){throw 'P186 exact original P185 branch clone failed'}
+          git -C reviewed_p185_original config --local core.autocrlf false
+          if((git -C reviewed_p185_original rev-parse HEAD).Trim() -ne $parent){
+            throw 'P186 original P185 source identity mismatch'
+          }
+          Write-Output 'P186_EXACT_P185_PARENT_AND_ONLY_THREE_ADDITIVE_FILES=PASS'
+          Write-Output 'P186_ORIGINAL_P184_P185_BRANCH_SOURCE_IDENTITIES=EXACT'
+      - name: Authenticate original P185 archive and run 81 real Windows source-isolated tests
+        shell: pwsh
+        env:
+          P186_ARCHIVE_TOKEN: ${{ github.token }}
+          P186_ORIGINAL_P184_CLONE_ROOT: ${{ github.workspace }}/reviewed_p184_original
+          P186_ORIGINAL_P185_CLONE_ROOT: ${{ github.workspace }}/reviewed_p185_original
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p186_windows_full_historical_envelope_witness
+            if($LASTEXITCODE -ne 0){
+              throw 'P186 real original Windows A11/B23 targeted security witness incomplete; HOLD'
+            }
+            Write-Output 'P186_HISTORIC_11_A_AND_23_B_SHA256_SOURCE_WITNESSES=ISOLATED_PASS'
+            Write-Output 'P186_34_ORIGINAL_PER_FILE_TAMPER_CANARIES=REFUSED'
+            Write-Output 'P186_ORIGINAL_FULL_LIVE_BYOK_B_INTEGRITY_VERIFIER=UNCHANGED_NOT_REPLACED'
+            Write-Output 'P186_QUALIFIED_INDEPENDENT_REVIEW=NOT_OBTAINED'
+            Write-Output 'P186_COMPLETE_FULL_PRODUCT_NATIVE_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P186_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve 3 genuine native Windows logs plus H C R original-source evidence register
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p186-original-Windows-A11-B23-historical-seal-evidence-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p186-historical-envelope/*.log
+            ${{ runner.temp }}/nayeon-p186-historical-envelope/*.json
+          if-no-files-found: warn
+          retention-days: 14
