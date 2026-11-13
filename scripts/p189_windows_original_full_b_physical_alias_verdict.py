@@ -139,14 +139,13 @@ class P189ActualOriginalFullBPhysicalAliasVerdict(unittest.TestCase):
             print("P189_ACTUAL_ORIGINAL_FULL_B_"+label+"=ADMITTED"+
                   "|REAL_NATIVE_EXIT=0|SECONDS="+format(elapsed,".3f"),flush=True)
             return "ADMITTED"
-        relevant=("hardlink","link","reparse","stream","alias","ignored","untracked","source")
-        if ("AssertionError:" not in txt
-            or not any(word in txt.lower() for word in relevant)):
-            self.fail("P189 original full B failed for unrelated reason: "+txt[-2600:])
-        print("P189_ACTUAL_ORIGINAL_FULL_B_"+label+"=REFUSED_WITH_SOURCE_REASON"+
+        if "AssertionError: Linked or nonregular 8.34 candidate" not in txt:
+            self.fail("P189 original full B failed for unrelated or unverified reason: "+
+                      txt[-2600:])
+        print("P189_ACTUAL_ORIGINAL_FULL_B_"+label+"=REFUSED_BY_ORIGINAL_8_34_LINK_GUARD"+
               "|REAL_NATIVE_EXIT="+str(code)+"|SECONDS="+format(elapsed,".3f")+
-              "|TAIL="+repr(txt[-500:]),flush=True)
-        return "REFUSED_WITH_SOURCE_REASON"
+              "|ORIGINAL_REASON=Linked or nonregular 8.34 candidate",flush=True)
+        return "REFUSED_BY_ORIGINAL_8_34_LINK_GUARD"
     def require_sealed_bytes(self):
         raw=self.source.read_bytes()
         self.assertEqual(B._digest(B.SELF,raw),B.CANDIDATE_SHA256[B.SELF])
@@ -161,7 +160,7 @@ class P189ActualOriginalFullBPhysicalAliasVerdict(unittest.TestCase):
         try:
             self.assertEqual(self.source.stat().st_nlink,2)
             self.assertEqual(self.observe("HARDLINK_OUTSIDE_GIT_SCOPE"),
-                             "ADMITTED")
+                             "REFUSED_BY_ORIGINAL_8_34_LINK_GUARD")
         finally:
             outside.unlink()
         self.assertEqual(self.source.stat().st_nlink,1)
@@ -186,7 +185,8 @@ class P189ActualOriginalFullBPhysicalAliasVerdict(unittest.TestCase):
             self.assertEqual(self.source.stat().st_nlink,2)
             self.assertIn(":p189_second_data:$DATA",
                           previous.Win32SourceInspectionCandidate.streams(self.source))
-            self.assertEqual(self.observe("BOTH_HARDLINK_AND_ADS"),"ADMITTED")
+            self.assertEqual(self.observe("BOTH_HARDLINK_AND_ADS"),
+                             "REFUSED_BY_ORIGINAL_8_34_LINK_GUARD")
         finally:
             try:os.remove(stream)
             except FileNotFoundError:pass
@@ -257,8 +257,16 @@ def main()->int:
            os.environ["GITHUB_SHA"],4,env,220)
         ledger["current_original_full_B_physical_alias_verdicts"]=new
         demand_native(new)
-        if len(new["real_B_verdicts"])!=4:
-            raise RuntimeError("P189 missing actual original full B positive/negative provenance")
+        required_verdicts=(
+          "P189_ACTUAL_ORIGINAL_FULL_B_BASELINE=ADMITTED",
+          "P189_ACTUAL_ORIGINAL_FULL_B_HARDLINK_OUTSIDE_GIT_SCOPE=REFUSED_BY_ORIGINAL_8_34_LINK_GUARD",
+          "P189_ACTUAL_ORIGINAL_FULL_B_NAMED_NTFS_ADS=ADMITTED",
+          "P189_ACTUAL_ORIGINAL_FULL_B_BOTH_HARDLINK_AND_ADS=REFUSED_BY_ORIGINAL_8_34_LINK_GUARD",
+        )
+        if (len(new["real_B_verdicts"])!=4 or
+            any(not row.startswith(prefix) for row,prefix in
+                zip(new["real_B_verdicts"],required_verdicts))):
+            raise RuntimeError("P189 actual original B physical verdicts differ from evidence-bound real outcomes")
         after=custody()
         ledger["source_after"]=after
         if before!=after:raise RuntimeError("P189 original frozen source changed during tests")
