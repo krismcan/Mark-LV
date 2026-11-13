@@ -51,9 +51,22 @@ import sys
 operation,source,destination=sys.argv[1:4]
 try:
     if operation=="write_source":
-        with open(source,"r+b") as f:
-            f.seek(0)
-            f.write(b"P191-SYNTHETIC-DISALLOWED-WRITE")
+        # Request native GENERIC_WRITE from an external process to obtain the
+        # real GetLastError Win32 sharing decision; do not alter source bytes.
+        import ctypes
+        from ctypes import wintypes
+        kernel=ctypes.WinDLL("kernel32",use_last_error=True)
+        kernel.CreateFileW.argtypes=[
+            wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,
+            ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE
+        ]
+        kernel.CreateFileW.restype=wintypes.HANDLE
+        kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+        kernel.CloseHandle.restype=wintypes.BOOL
+        handle=kernel.CreateFileW(source,0x40000000,7,None,3,0x200000,None)
+        if handle is None or handle==ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        kernel.CloseHandle(handle)
     elif operation=="create_ads":
         with open(source+":p191_cross_process_stream","wb") as f:
             f.write(b"P191 synthetic named ADS")
@@ -222,10 +235,22 @@ class P191ActualCrossProcessWindowsRaceCases(unittest.TestCase):
     def test_03_external_process_attempts_NTFS_ADS_creation_while_handle_live(self):
         result=[]
         def competing(_):result.append(self.child("create_ads",self.source))
-        self.assertEqual(self.reader.read(ORIGINAL_B_SELF,on_open=competing),self.sealed)
-        self.assert_os_refusal(result[0])
-        self.assertEqual(p190.p188.Win32SourceInspectionCandidate.streams(self.source),
-                         ("::$DATA",))
+        try:
+            with self.assertRaisesRegex(p190.SourceDenied,
+                   "HANDLE_HAS_UNAPPROVED_NTFS_STREAM"):
+                self.reader.read(ORIGINAL_B_SELF,on_open=competing)
+            self.assertEqual(len(result),1)
+            self.assertTrue(result[0]["succeeded"],
+               "Native NTFS ADS creation must not be misrepresented as OS refused")
+            self.assertIn(":p191_cross_process_stream:$DATA",
+                p190.p188.Win32SourceInspectionCandidate.streams(self.source))
+            print("P191_ADS_DURING_EXCLUSIVE_SOURCE_HANDLE="+
+                  "OS_ALLOWED_AND_POST_HANDLE_SCAN_REFUSED",flush=True)
+        finally:
+            stream=str(self.source)+":p191_cross_process_stream"
+            if ":p191_cross_process_stream:$DATA" in (
+               p190.p188.Win32SourceInspectionCandidate.streams(self.source)):
+                os.remove(stream)
 
     def test_04_external_process_attempts_source_leaf_rename_while_handle_live(self):
         target=self.root/"p191_displaced_source"
@@ -355,11 +380,15 @@ class P191ActualCrossProcessWindowsRaceCases(unittest.TestCase):
         result=[]
         def competing(_):
             result.append(self.child("write_sibling",self.source,sibling))
-        self.assertEqual(self.reader.read(ORIGINAL_B_SELF,on_open=competing),self.sealed)
+        with self.assertRaisesRegex(p190.SourceDenied,"PARENT_PATH_IDENTITY_DRIFT"):
+            self.reader.read(ORIGINAL_B_SELF,on_open=competing)
         self.assertEqual(len(result),1)
         self.assertTrue(result[0]["succeeded"],
-                        "Source lock must not require blocking unrelated sibling files")
+                        "Native Windows does not lock unrelated sibling paths")
         self.assertEqual(sibling.read_bytes(),b"P191 independent sibling file")
+        self.assertEqual(self.source.read_bytes(),self.sealed)
+        print("P191_UNRELATED_SIBLING_FILE_CREATED="+
+              "OS_ALLOWED_BUT_P190_PARENT_MTIME_FALSE_REFUSAL",flush=True)
 
     def test_10_child_stream_creation_after_unlock_refused_on_next_fresh_open(self):
         self.assertEqual(self.reader.read(ORIGINAL_B_SELF),self.sealed)
@@ -427,7 +456,7 @@ def main()->int:
         env=os.environ.copy()
         prior=[
           ("P189", "P191_EXACT_P189_ROOT",
-             p190.p189.P188 if False else p190.P189,
+             p190.P189,
              "scripts.p189_windows_original_full_b_physical_alias_verdict.P189ActualOriginalFullBPhysicalAliasVerdict",4),
           ("P190", "P191_EXACT_P190_ROOT",P190,
              "scripts.p190_windows_handle_bound_source_probe.P190ActualHandleBoundWin32Tests",10),
