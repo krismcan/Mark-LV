@@ -228,7 +228,17 @@ class NtRootRelativeSourceCandidate(p192.StableParentHandleReader):
                 h=self._nt_open_relative(hparent,name,is_dir)
                 if is_dir:
                     directory=parent/name
-                    opened.append((directory,h,self._parent_snapshot(h,directory)))
+                    # Never allocate a directory HANDLE without entering it
+                    # into the cleanup chain: _parent_snapshot can deny a
+                    # reparse point after NtCreateFile succeeds. Without this
+                    # except/CloseHandle, Windows retains the junction and
+                    # subsequent cleanup fails with WinError 32.
+                    try:
+                        snapshot=self._parent_snapshot(h,directory)
+                    except BaseException:
+                        self.api.CloseHandle(h)
+                        raise
+                    opened.append((directory,h,snapshot))
                 else:
                     leaf=h
             if leaf is None:
