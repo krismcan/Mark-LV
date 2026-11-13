@@ -61,6 +61,13 @@ jobs:
           if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
             throw 'P196 isolated source clone SHA does not match original push'
           }
+          # Read-only evidence: do not create/enable/alter any volume journal.
+          Write-Output 'P196_READ_ONLY_WINDOWS_VOLUME_JOURNAL_INVENTORY'
+          foreach($volume in @('C:','D:')){
+            Write-Output ('P196_VOLUME_USN_QUERY='+$volume)
+            & fsutil usn queryjournal $volume 2>&1 | Select-Object -First 16 | ForEach-Object {Write-Output $_}
+            Write-Output ('P196_VOLUME_USN_QUERY_NATIVE_EXIT='+$LASTEXITCODE)
+          }
           Push-Location reviewed
           try {
             python -B -m scripts.p196_windows_usn_aba_source_witness
