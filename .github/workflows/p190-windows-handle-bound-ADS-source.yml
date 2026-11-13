@@ -1,0 +1,84 @@
+name: P190 True Windows HANDLE Bound ADS FileId Source Inspection — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p190-ntfs-handle-bound-source-inspection-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p190-isolated-win32-source:
+    name: P190 Authenticated Real Windows Handle Stream and Sharing Refusal Evidence
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Authentic hosted native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P189 ancestry, three new audit paths and original historical clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p190-ntfs-handle-bound-source-inspection-20261113'){
+             throw 'P190 exact hosted native Windows source push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p190-ntfs-handle-bound-source-inspection-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P190 exact current source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P190 source SHA mismatch'}
+          $parent='75a312cce7e0231b41b2920c45c3c002bd59f120'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P190 wrong exact P189 parent'}
+          $expected=@(
+            '.github/workflows/p190-windows-handle-bound-ADS-source.yml'
+            'docs/byok-c1-p190-handle-bound-ADS-source-threat-review.md'
+            'scripts/p190_windows_handle_bound_source_probe.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P190 original frozen source or product edits not permitted'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P190 audit-only source diff malformed'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p189-full-b-physical-alias-verdict-20261113 https://github.com/krismcan/Mark-LV.git reviewed_p189
+          if($LASTEXITCODE -ne 0){throw 'P190 original P189 branch clone failed'}
+          git -C reviewed_p189 config --local core.autocrlf false
+          if((git -C reviewed_p189 rev-parse HEAD).Trim() -ne $parent){
+             throw 'P190 exact original P189 source identity mismatch'
+          }
+          Write-Output 'P190_EXACT_P189_PARENT_AND_THREE_ADDITIVE_ONLY_FILES=PASS'
+          Write-Output 'P190_UNCHANGED_ORIGINAL_P189_SOURCE_SEPARATE_CLONE=AUTHENTIC'
+      - name: Authenticate P189 native evidence and run original and new Win32 handle refusal suites
+        shell: pwsh
+        env:
+          P190_ARCHIVE_TOKEN: ${{ github.token }}
+          P190_ORIGINAL_P189_ROOT: ${{ github.workspace }}/reviewed_p189
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+             python -B -m scripts.p190_windows_handle_bound_source_probe
+             if($LASTEXITCODE -ne 0){
+                throw 'P190 actual Win32 handle-bound original-source negative evidence incomplete; HOLD'
+             }
+             Write-Output 'P190_WIN32_HANDLE_BOUND=ISOLATED_EXPERIMENT_ONLY'
+             Write-Output 'P190_GENUINE_ORIGINAL_FULL_B_ADS_GAP=OPEN_UNMITIGATED'
+             Write-Output 'P190_ATOMIC_PARENT_DIRECTORY_HANDLE_PROOF=NOT_ESTABLISHED'
+             Write-Output 'P190_QUALIFIED_EXTERNAL_SECURITY_REVIEW=OPEN'
+             Write-Output 'P190_FULL_PRODUCT_NATIVE_WINDOWS_REGRESSIONS=0/3'
+             Write-Output 'P190_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve complete source-bound Windows logs and H C R including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p190-Win32-handle-bound-ADS-original-source-evidence-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p190-handle-bound-source-security/*.log
+            ${{ runner.temp }}/nayeon-p190-handle-bound-source-security/*.json
+          if-no-files-found: warn
+          retention-days: 14
