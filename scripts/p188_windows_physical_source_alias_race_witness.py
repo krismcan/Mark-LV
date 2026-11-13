@@ -387,7 +387,7 @@ def main()->int:
           ("P185","P188_ORIGINAL_P185_ROOT",
            "68b338723ba9130be071289c7662c9d68db748f4",
            "scripts.p185_windows_historical_tag_parent_seal_admission.P185HistoricalTagSealAdmissionTests",12),
-          ("P186","P188_ORIGINAL_P186_ROOT",previous.previous.P186,
+          ("P186","P188_ORIGINAL_P186_ROOT",previous.P186,
            "scripts.p186_windows_full_historical_envelope_witness.P186OriginalFullHistoricalPinEnvelopeCases",12),
           ("P187","P188_ORIGINAL_P187_ROOT",P187,
            "scripts.p187_windows_live_byok_b_equivalence.P187RealWindowsDisposableWorktreeTests",6),
