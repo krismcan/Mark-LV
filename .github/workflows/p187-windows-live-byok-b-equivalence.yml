@@ -1,0 +1,89 @@
+name: P187 Original BYOK-B Live Workspace Index and Tamper Refusal Equivalence — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p187-live-byok-b-workspace-index-tamper-equivalence-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p187-original-live-b-security:
+    name: P187 Real Windows Historical B Private Gate and Source-Isolated Negative Tests
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - name: Genuine hosted native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P187 clean source and separate three original branch identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p187-live-byok-b-workspace-index-tamper-equivalence-20261113'){
+            throw 'P187 native hosted Windows authenticated push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p187-live-byok-b-workspace-index-tamper-equivalence-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P187 clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P187 branch source mismatch'}
+          $parent='9c6b40ac0e81ac22851b7eb1237b0ec9f06ac3cf'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P187 wrong P186 parent'}
+          $expected=@(
+            '.github/workflows/p187-windows-live-byok-b-equivalence.yml'
+            'docs/byok-c1-p187-live-workspace-index-tamper-matrix.md'
+            'scripts/p187_windows_live_byok_b_equivalence.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){throw 'P187 unauthorised test/product diff'}
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P187 add-only source formatting error'}
+          $older=@(
+            @('byok-c1-p184-fresh-historical-source-admission-20261112','reviewed_p184','a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'),
+            @('byok-c1-p185-historical-tag-seal-parent-admission-20261113','reviewed_p185','68b338723ba9130be071289c7662c9d68db748f4'),
+            @('byok-c1-p186-full-historical-a-b-envelope-witness-20261113','reviewed_p186','9c6b40ac0e81ac22851b7eb1237b0ec9f06ac3cf')
+          )
+          foreach($entry in $older){
+            git -c core.autocrlf=false clone --quiet --single-branch --branch $entry[0] https://github.com/krismcan/Mark-LV.git $entry[1]
+            if($LASTEXITCODE -ne 0){throw 'P187 exact original branch clone failed'}
+            git -C $entry[1] config --local core.autocrlf false
+            if((git -C $entry[1] rev-parse HEAD).Trim() -ne $entry[2]){
+              throw 'P187 historical exact source original branch identity mismatch'
+            }
+          }
+          Write-Output 'P187_EXACT_P186_ANCESTRY_AND_THREE_ADDITIVE_PATHS=AUTHENTIC'
+          Write-Output 'P187_AUTHENTIC_ORIGINAL_P184_P185_P186_BRANCHES=SEPARATE'
+      - name: Authenticate original P186 Windows archive and run original full BYOK B live source tests
+        shell: pwsh
+        env:
+          P187_ARCHIVE_TOKEN: ${{ github.token }}
+          P187_P184_ORIGINAL_ROOT: ${{ github.workspace }}/reviewed_p184
+          P187_P185_ORIGINAL_ROOT: ${{ github.workspace }}/reviewed_p185
+          P187_P186_ORIGINAL_ROOT: ${{ github.workspace }}/reviewed_p186
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p187_windows_live_byok_b_equivalence
+            if($LASTEXITCODE -ne 0){
+              throw 'P187 original full-B live Windows evidence incomplete: preserve logs and remain HOLD'
+            }
+            Write-Output 'P187_ORIGINAL_B_LIVE_WORKSPACE_INDEX_TAMPER=EXPERIMENTAL_TEST_SCOPE_ONLY'
+            Write-Output 'P187_QUALIFIED_INDEPENDENT_SECURITY_APPROVAL=NOT_OBTAINED'
+            Write-Output 'P187_ORIGINAL_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P187_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          } finally { Pop-Location }
+      - name: Preserve all genuine Windows logs, SHA256 and H C R ledger including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p187-original-live-byok-b-windows-experimental-evidence-not-release
+          path: |
+            ${{ runner.temp }}/nayeon-p187-live-b/*.log
+            ${{ runner.temp }}/nayeon-p187-live-b/*.json
+          if-no-files-found: warn
+          retention-days: 14
