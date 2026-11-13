@@ -31,6 +31,19 @@ All cases are **real Win32** with documented error details. Unexpected unrelated
 
 Each of original P189 four genuine full B gate cases and P190 ten genuine Win32 handle-source cases is rerun against its own **exact original source commit** in independent Windows clones, with source-bound native OS exit, complete original raw log footer and SHA-256. P191 ten new actual cross-process scenarios are separate exact P191 HEAD tests. Source HEAD/status and original frozen paths must remain identical before/after.
 
+## Actual initial native Windows evidence and retained failures
+
+The **first** P191 native runner, HEAD 31f9071d9e1542501a1326db600aa8f0a00eed52, run #43424682107, authentic artifact #14036670756 SHA256 5BAAB3207F85F6D8E61E3FBFC306D0E1C8EC45896C54D1C9E5F7FF575FEA8D95, returned native FAIL. Original exact P189 four and P190 ten selected tests individually PASS; new P191 ten ran with 7 PASS, 1 FAIL, 2 ERROR because the new harness hypothesised incorrectly that exclusive source open blocks NTFS ADS creation and that an unrelated sibling write never affects pre/post ancestor metadata.
+
+Real OS observations from the native failed P191 log:
+- Separate process **successfully created a named NTFS ADS while the source's zero-share GENERIC_READ HANDLE remained open**. P190 post-read FileStreamInfo inspection **refused** with HANDLE_HAS_UNAPPROVED_NTFS_STREAM. This disproves the hypothesised OS sharing ban on ADS creation but supports candidate's *specific post-read detection*.
+- Separate process **created a hardlink while source exclusive HANDLE remained open**. P190 post-inspection refused the changed hardlink count; this is not an OS hardlink creation ban.
+- An independent sibling file was **successfully written**, but P190's pre/post parent lstat tuple changed due parent mtime and the candidate refused PARENT_PATH_IDENTITY_DRIFT. This is an **availability false positive and performance risk**, not a proven authentication bypass.
+- Separate process source rename and delete were **OS-refused with WinError 32**. Source replace and ancestor directory rename were OS-refused with WinError 5 on this particular Windows runner. This is bounded observational evidence, not proof of all-version or elevated/privileged race freedom.
+- The Python built-in attempted main-file write produced PermissionError errno 13 with no exposed winerror, so it cannot substantiate the intended precise native Win32 rejection reason. P191 audit-only repair switches to native CreateFileW GENERIC_WRITE and reads ctypes.WinError(GetLastError), **without writing** source content.
+
+Preserve the first true Windows run, error footers and original immutable artifact. A corrected source-preserving **P191 audit-only** rerun must capture actual corrected outcomes. No original P190 code, original historical security guards or product components are changed to achieve passing results.
+
 ## Blocking security and release decisions
 
 **SEC-P191-ABA / OPEN:** a zero-share HANDLE protects the **leaf it opened** according to normal Windows sharing semantics. It does not by itself pin all ancestor directories, prove race-safe relative opens, or give an immutable relationship to historical Git index/tree authority. Observe actual parent rename-and-restore; if it succeeds during leaf open, verify no false release claim is made. Even a denied parent rename on one runner does not prove the race impossible on all Windows versions, privilege contexts or filesystems.
