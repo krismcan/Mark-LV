@@ -141,6 +141,20 @@ class UsnGuardedSourceReader(p194.PreboundWin32SourceReader):
 
 class P196NativeUsnReview(p195.P195NativeWindowsReview):
     """Preserves unchanged P194 14 + P195 8 tests; adds 8 P196 experiments."""
+    def setUp(self):
+        # D: hosted runner is NTFS but lacks a USN journal (Error 1179).
+        # Use only pre-existing C: user temp, confirmed via read-only fsutil.
+        # Preserve runner.temp on D: for authentic log/ledger upload.
+        original=os.environ["RUNNER_TEMP"]
+        home=Path(os.environ["LOCALAPPDATA"])/"Temp"
+        if home.drive.upper()!="C:" or not home.is_dir():
+            raise RuntimeError("P196 independently witnessed C: user temporary volume absent")
+        os.environ["RUNNER_TEMP"]=str(home)
+        try:
+            super().setUp()
+        finally:
+            os.environ["RUNNER_TEMP"]=original
+        print("P196_FIXTURE_SOURCE_VOLUME=C_ACTIVE_JOURNAL_ONLY|RUNNER_ARTIFACT_VOLUME=UNCHANGED",flush=True)
     def guarded(self):
         # P195 signature/physical FileId authority is still synthetic only.
         verified=p195.load(self.record,self.root,self.public,7)
