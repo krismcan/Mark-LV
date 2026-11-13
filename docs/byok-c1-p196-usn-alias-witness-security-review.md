@@ -51,3 +51,34 @@ A false-positive unrelated write, missed transient event, concurrent privileged 
 Qualified external GOV-01/GOV-02/SEC-03/SEC-04/REL-05/REL-06/REL-07 review decisions OPEN; G0–G6 privileged admission OPEN; signed main/helper/installer SAC/WDAC/Code Integrity GO ABSENT; native full-product Windows accepted **0/3**. An assistant-authored review and experimental Windows lab evidence do not count as independent reviewer signoff or product release.
 
 **No credentials, production Windows Credential Manager writes, real provider validation, privileged service operations, source test weakening, Git PR merge, tag or release.** MASTER workbook and dashboard are not release-reconciled without actual release. H/C/R remains **HOLD / isolated experimental security research / HOLD**.
+
+
+## Authenticated P196 Windows results — 13 November 2026
+
+**Initial genuine Windows attempts preserved as failures**, not rewritten:
+- 43492063092: six actual failures/errors in 30-test suite because the reader refused a zero USN.
+- 43492290175: raw v2 FILE_USN_DATA record confirmed positive return but zero Usn; fail-closed refusal preserved.
+- 43492621310: read-only actual Windows fsutil confirmed **C: journal ACTIVE** (ID 0x01dd641594027556, native query exit 0) and **D: journal INACTIVE**, error 1179, native query exit 1. No journal was enabled/modified. This explains the D:-fixture zero USN, and documents the real environmental fail-closed requirement.
+
+The isolated P196 fixtures were moved only to the runner's existing **C: user TEMP** directory. The original log/ledger collection remained under RUNNER_TEMP on D:, and all source, signer, credential and product boundaries remained intact.
+
+### Successful source-authenticated actual Windows experiment
+
+Run 43492807325; exact P196 source SHA 93a3505feb57dc6cb4f62186ca765bcf16d0ea38, based on P195 56ff1722a4704c28b228d5f6d5137227bde7ded2. Artifact 14071290025, ZIP SHA-256 **08683FF99C1A30636B480A44DF22ECB52466FE3E5C2DB77040E9AF7DD79CE3BB**. ZIP CRC valid, two exact members; selected original 22 P194/P195 inherited cases and eight new P196 cases **30/30 PASS**, actual Windows process exit 0, native footer OK.
+
+Member SHA-256:
+- p196_exact_Windows_USN_30_native_cases.log: 9A42949BDDC6263A7B1540A9F61EC17929425C308121D960E1351444563E743A
+- p196_USN_source_ABA_HCR_ledger.json: 7E1726BBB11BE9E641CF18E0CC65B2D35CC29226BBE54E3D9F4AB65F39233B86
+
+Evidence-verified source_before == source_after; P195 seven review findings and release HOLD preserved. Actual C: events included:
+- Original approved bytes on stable leaf USN ADMITTED.
+- Real independent parent/root sibling writes ADMITTED without leaf USN drift.
+- Real separate-process ADS add **and remove** observed OS-allowed; new USN-extended P194 reader **REFUSED due actual leaf USN change**. Original P195 unguarded reader's prior admission test still PASSED as a deliberately unsafe control.
+- Real separate-process hardlink add **and remove** observed OS-allowed; USN-extended reader **REFUSED due actual leaf USN change**. Original P195 unguarded reader again admitted.
+- Absent or malformed USN witness FAIL-CLOSED; valid old signed manifest still accepted if the caller lowers its supposed independent epoch floor — rollback problem remains OPEN.
+
+**SEC-P196-USN-01 experimental observation:** per-file last USN can detect these two reversible NTFS alias operations in the documented C: fixture. This is a limited diagnostic mitigation, **not** a general atomic exclusion proof: journal absence as on D: forces HOLD; USN reset, volume changes, wrap/identity, privileged mutation, alternative timing, and full volume-journal continuity remain unproven. Nothing in the current original BYOK-B or Phase 10 admission was patched.
+
+### Final reviewer-ready disposition
+
+P196 is eligible for **experimental closure only** after the final documentation-only commit undergoes another exact-head authenticated real Windows run. Qualified independent security review OPEN; all original negative test failures and 0/3 full Windows-product regression hold unchanged. H/C/R = HOLD / isolated file-USN security experiment / HOLD.
