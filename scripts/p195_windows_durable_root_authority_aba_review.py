@@ -42,7 +42,7 @@ def custody():
         git("merge-base",P194,"HEAD").decode().strip()!=P194 or
         git("status","--porcelain=v1").strip() or
         set(git("diff","--name-only",P194,"HEAD").decode().splitlines())!=NEW):
-        raise RuntimeError("P195 exact clean hosted Windows P194 descendant and three audit-only files required")
+        raise RuntimeError("P195 source-custody mismatch | "+json.dumps({"platform":sys.platform,"runner":os.environ.get("RUNNER_OS"),"event":os.environ.get("GITHUB_EVENT_NAME"),"repository":os.environ.get("GITHUB_REPOSITORY"),"ref":os.environ.get("GITHUB_REF_NAME"),"head":git("rev-parse","HEAD").decode().strip(),"branch":git("branch","--show-current").decode().strip(),"merge_base":git("merge-base",P194,"HEAD").decode().strip(),"status":git("status","--porcelain=v1").decode()[:600],"changed":git("diff","--name-only",P194,"HEAD").decode().splitlines()},sort_keys=True))
     for directory in ("tests","nayeon"):
         if git("rev-parse",P194+":"+directory)!=git("rev-parse","HEAD:"+directory):
             raise RuntimeError("P195 historical product or frozen tests changed")
