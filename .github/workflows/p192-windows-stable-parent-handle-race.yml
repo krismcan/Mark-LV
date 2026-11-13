@@ -1,0 +1,93 @@
+name: P192 Stable Parent HANDLE FileId and Cross-Process ADS Race — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p192-stable-parent-handle-identity-ads-race-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p192-stable-parent-windows:
+    name: P192 Original Source Authenticated Win32 Held Ancestor FileId and ADS Tests
+    runs-on: windows-2025
+    timeout-minutes: 13
+    steps:
+      - name: Genuine hosted Windows native Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P191 parent, audit-only scope and three original Windows source branches
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p192-stable-parent-handle-identity-ads-race-20261113'){
+             throw 'P192 original exact hosted native Windows push only'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p192-stable-parent-handle-identity-ads-race-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P192 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P192 wrong triggering HEAD'}
+          $parent='6c759056b380626991e86e2543fac855da8fc5c9'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P192 exact P191 ancestor missing'}
+          $expected=@(
+            '.github/workflows/p192-windows-stable-parent-handle-race.yml'
+            'docs/byok-c1-p192-stable-parent-handle-race-review.md'
+            'scripts/p192_windows_stable_parent_handle_identity.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P192 only three new review/audit paths allowed'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P192 original source diff format invalid'}
+          $previous=@(
+            @('byok-c1-p189-full-b-physical-alias-verdict-20261113','reviewed_p189','75a312cce7e0231b41b2920c45c3c002bd59f120'),
+            @('byok-c1-p190-ntfs-handle-bound-source-inspection-20261113','reviewed_p190','8a94be2670610048416cf6832831a14073a635f5'),
+            @('byok-c1-p191-concurrent-source-handle-ads-race-witness-20261113','reviewed_p191','6c759056b380626991e86e2543fac855da8fc5c9')
+          )
+          foreach($part in $previous){
+             git -c core.autocrlf=false clone --quiet --single-branch --branch $part[0] https://github.com/krismcan/Mark-LV.git $part[1]
+             if($LASTEXITCODE -ne 0){throw 'P192 original historical source clone failed'}
+             git -C $part[1] config --local core.autocrlf false
+             if((git -C $part[1] rev-parse HEAD).Trim() -ne $part[2]){
+                throw 'P192 exact prior source identity mismatch'
+             }
+          }
+          Write-Output 'P192_ONLY_THREE_ADDITIVE_AUDIT_FILES_AND_P191_PARENT=VERIFIED'
+          Write-Output 'P192_P189_P190_P191_PRIOR_EXACT_NATIVE_SOURCE_CLONES=VERIFIED'
+      - name: Authenticate P191 archive and run native source-bound Win32 stable parent security
+        shell: pwsh
+        env:
+          P192_ARCHIVE_TOKEN: ${{ github.token }}
+          P192_ORIGINAL_P189_ROOT: ${{ github.workspace }}/reviewed_p189
+          P192_ORIGINAL_P190_ROOT: ${{ github.workspace }}/reviewed_p190
+          P192_ORIGINAL_P191_ROOT: ${{ github.workspace }}/reviewed_p191
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p192_windows_stable_parent_handle_identity
+             if($LASTEXITCODE -ne 0){
+                throw 'P192 authentic hosted Windows stable-parent security case incomplete; HOLD'
+             }
+             Write-Output 'P192_STABLE_PARENT_FILEID=EXPERIMENTAL_ONLY'
+             Write-Output 'P192_ROOTED_ATOMIC_ANCESTOR_HANDLE_OPEN=NOT_PROVEN'
+             Write-Output 'P192_ORIGINAL_HISTORICAL_FULL_B_ADS_GAP=UNMITIGATED'
+             Write-Output 'P192_QUALIFIED_INDEPENDENT_SECURITY_REVIEW=OPEN'
+             Write-Output 'P192_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+             Write-Output 'P192_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve all genuine Windows raw logs and H C R including failed original evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p192-native-Windows-parent-FileId-ADS-security-experiment-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p192-held-parent-security/*.log
+            ${{ runner.temp }}/nayeon-p192-held-parent-security/*.json
+          if-no-files-found: warn
+          retention-days: 14
