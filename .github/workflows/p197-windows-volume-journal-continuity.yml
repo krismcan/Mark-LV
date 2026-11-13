@@ -1,0 +1,92 @@
+name: P197 Windows Volume Journal Continuity Review — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p197-volume-journal-continuity-recovery-20261113
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p197-native-journal:
+    name: P197 Original Windows Security Tests and Journal Continuity Audit
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Authenticated event Git metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Real hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Isolated ephemeral signing test package
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P197 synthetic-signature package unavailable'}
+      - name: Prove exact P196 ancestry and exactly three audit-only files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p197-volume-journal-continuity-recovery-20261113'){
+             throw 'P197 authenticated hosted Windows branch identity wrong'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P197 event HEAD mismatch'}
+          $parent='b5c37f3e718e7d9e75a0bc891b6a8dd237f7a1e6'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P197 exact P196 ancestor mismatch'}
+          $expected=@(
+            '.github/workflows/p197-windows-volume-journal-continuity.yml'
+            'docs/byok-c1-p197-volume-journal-continuity-rollback-security-review.md'
+            'scripts/p197_windows_volume_journal_continuity_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P197 contains unauthorized product or previous source modification'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P197 diff whitespace/source error'}
+          Write-Output 'P197_ONLY_THREE_AUDIT_PATHS_EXACT_P196_PARENT=VERIFIED'
+      - name: Authenticate genuine P196 ZIP and run isolated native Windows journal cases
+        shell: pwsh
+        env:
+          P197_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          # Clean disposable clone BEFORE file conversion. Preserve Kristian worktree.
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p197-volume-journal-continuity-recovery-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P197 source-bound clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P197 source clone HEAD mismatch'
+          }
+          Write-Output 'P197_READ_ONLY_USN_JOURNAL_C_D_INVENTORY'
+          foreach($volume in @('C:','D:')){
+            Write-Output ('P197_VOLUME_QUERY='+$volume)
+            & fsutil usn queryjournal $volume 2>&1 | Select-Object -First 14 | ForEach-Object {Write-Output $_}
+            Write-Output ('P197_VOLUME_QUERY_OS_EXIT='+$LASTEXITCODE)
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p197_windows_volume_journal_continuity_review
+            if($LASTEXITCODE -ne 0){throw 'P197 native Windows security evidence failed; retain actual logs and release HOLD'}
+          } finally { Pop-Location }
+          Write-Output 'P197_SYNTHETIC_JOURNAL_RESET_IS_NOT_REAL_OS_RESET'
+          Write-Output 'P197_PRIVILEGED_OS_DISK_RESTORE_ATOMIC_PROOF=NOT_ESTABLISHED'
+          Write-Output 'P197_HISTORICAL_FULL_BYOK_B_ADS_GAP=UNPATCHED'
+          Write-Output 'P197_FULL_NATIVE_WINDOWS_PRODUCT_REGRESSIONS=0/3'
+          Write-Output 'P197_QUALIFIED_INDEPENDENT_GOV_SEC_REL=OPEN'
+          Write-Output 'P197_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Upload original raw Windows logs and HOLD evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p197-native-Windows-volume-journal-continuity-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p197-volume-journal/*.log
+            ${{ runner.temp }}/nayeon-p197-volume-journal/*.json
+          if-no-files-found: warn
+          retention-days: 14
