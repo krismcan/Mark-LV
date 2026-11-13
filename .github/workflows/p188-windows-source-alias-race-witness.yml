@@ -1,0 +1,94 @@
+name: P188 Native Windows Hardlink ADS Junction and Parent-Swap Witnesses — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p188-real-windows-hardlink-ads-junction-race-witness-20261113
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p188-original-filesystem-security:
+    name: P188 Authenticated Windows Original B Reader Alias and Candidate Refusal Evidence
+    runs-on: windows-2025
+    timeout-minutes: 16
+    steps:
+      - name: Genuine native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authenticate exact P187 parent and original source-specific P184 through P187 clones
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p188-real-windows-hardlink-ads-junction-race-witness-20261113'){
+             throw 'P188 exact hosted native Windows authenticated push required'
+          }
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p188-real-windows-hardlink-ads-junction-race-witness-20261113 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P188 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P188 source SHA is not exact triggering commit'}
+          $parent='a00b888e38fad5fed06ba05190be9c2838fb0320'
+          if((git -C reviewed merge-base $parent HEAD).Trim() -ne $parent){throw 'P188 wrong authenticated P187 parent'}
+          $expected=@(
+            '.github/workflows/p188-windows-source-alias-race-witness.yml'
+            'docs/byok-c1-p188-real-windows-link-ads-race-security-evidence.md'
+            'scripts/p188_windows_physical_source_alias_race_witness.py'
+          ) | Sort-Object
+          $actual=@(git -C reviewed diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P188 source-preserving three-path contract failed'
+          }
+          git -C reviewed diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P188 diff format invalid'}
+          $original=@(
+            @('byok-c1-p184-fresh-historical-source-admission-20261112','reviewed_p184','a66a5221ab74d0b7f65fd381c554f186cd6c8ed1'),
+            @('byok-c1-p185-historical-tag-seal-parent-admission-20261113','reviewed_p185','68b338723ba9130be071289c7662c9d68db748f4'),
+            @('byok-c1-p186-full-historical-a-b-envelope-witness-20261113','reviewed_p186','9c6b40ac0e81ac22851b7eb1237b0ec9f06ac3cf'),
+            @('byok-c1-p187-live-byok-b-workspace-index-tamper-equivalence-20261113','reviewed_p187','a00b888e38fad5fed06ba05190be9c2838fb0320')
+          )
+          foreach($part in $original){
+             git -c core.autocrlf=false clone --quiet --single-branch --branch $part[0] https://github.com/krismcan/Mark-LV.git $part[1]
+             if($LASTEXITCODE -ne 0){throw 'P188 original branch clone failed'}
+             git -C $part[1] config --local core.autocrlf false
+             if((git -C $part[1] rev-parse HEAD).Trim() -ne $part[2]){
+                throw 'P188 old authentic original branch SHA mismatch'
+             }
+          }
+          Write-Output 'P188_EXACT_P187_PARENT_THREE_AUDIT_ONLY_PATHS=PASS'
+          Write-Output 'P188_FOUR_OLDER_ORIGINAL_SOURCE_BRANCHES_AUTHENTICATED'
+      - name: Authenticate original P187 archive and run native Windows physical security witnesses
+        shell: pwsh
+        env:
+          P188_ARCHIVE_TOKEN: ${{ github.token }}
+          P188_ORIGINAL_P184_ROOT: ${{ github.workspace }}/reviewed_p184
+          P188_ORIGINAL_P185_ROOT: ${{ github.workspace }}/reviewed_p185
+          P188_ORIGINAL_P186_ROOT: ${{ github.workspace }}/reviewed_p186
+          P188_ORIGINAL_P187_ROOT: ${{ github.workspace }}/reviewed_p187
+        run: |
+          $ErrorActionPreference='Stop'
+          Push-Location reviewed
+          try{
+            python -B -m scripts.p188_windows_physical_source_alias_race_witness
+            if($LASTEXITCODE -ne 0){
+              throw 'P188 genuine Windows source/NTFS witness or original log incomplete; release HOLD'
+            }
+            Write-Output 'P188_ORIGINAL_COMPONENT_ACCEPTANCES=BLOCKING_GAPS_UNTIL_REVIEWED'
+            Write-Output 'P188_ATOMIC_WINDOWS_SOURCE_HANDLE_PROOF=NOT_ESTABLISHED'
+            Write-Output 'P188_QUALIFIED_INDEPENDENT_SECURITY_GO=NOT_OBTAINED'
+            Write-Output 'P188_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+            Write-Output 'P188_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+          }finally{Pop-Location}
+      - name: Preserve native Windows source-bound logs and historical diagnostic even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p188-original-Windows-source-alias-ADS-junction-and-race-evidence-NOT-release
+          path: |
+            ${{ runner.temp }}/nayeon-p188-physical-windows-security/*.log
+            ${{ runner.temp }}/nayeon-p188-physical-windows-security/*.json
+          if-no-files-found: warn
+          retention-days: 14
