@@ -119,7 +119,7 @@ class UsnGuardedSourceReader(p194.PreboundWin32SourceReader):
         if n<offset+8 or n>len(raw) or n>4096:
             raise win.SourceDenied("MALFORMED_USN_RECORD_LENGTH")
         usn=int.from_bytes(raw[offset:offset+8],"little",signed=True)
-        if usn<=0:raise win.SourceDenied("INVALID_FILE_USN")
+        if usn<=0:raise win.SourceDenied("INVALID_FILE_USN_RECORD_DIAGNOSTIC_SIZE_"+str(len(raw))+"_VERSION_"+str(version)+"_RAWHEX_"+raw[:88].hex())
         return usn
 
     def _last_file_usn(self,handle)->int:
