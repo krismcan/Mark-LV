@@ -334,7 +334,7 @@ def unittest_run(path:Path,selectors:list[str],output:Path,
                  expected_sha:str,expected_count:int,env:dict,timeout:int)->dict:
     if git("rev-parse","HEAD",root=path).decode().strip()!=expected_sha:
         raise RuntimeError("P188 exact historical branch HEAD drift")
-    cleanenv=dict(env,PYTHONDONTWRITEBYTECODE="1",PYTHONNOUSERSITE="1")
+    cleanenv=dict(env,GITHUB_SHA=expected_sha,PYTHONDONTWRITEBYTECODE="1",PYTHONNOUSERSITE="1")
     for key in list(cleanenv):
         if key in {"GH_TOKEN","GITHUB_TOKEN","P188_ARCHIVE_TOKEN"} or key.endswith(("_API_KEY","_SECRET")):
             cleanenv.pop(key,None)
