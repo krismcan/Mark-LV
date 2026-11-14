@@ -152,6 +152,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: p223-windows-actual-CustodyService-denial-HOLD
-          path: ${{ runner.temp }}/p223-actual-host-native-evidence/*.log
+          path: |
+            ${{ runner.temp }}/p223-actual-host-native-evidence/*.log
+            ${{ runner.temp }}/p223-actual-host-native-evidence/*.txt
           retention-days: 14
           if-no-files-found: warn
