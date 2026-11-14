@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 import subprocess
 import sys
@@ -32,6 +33,7 @@ P212="e5d8f5f92a21d7314bf7ef6a7e9b2f9a95bc658f"
 BRANCH="byok-c1-p213-readonly-windows-signed-service-admission-20261114"
 ADDED={
  "nayeon/brain/p213_readonly_windows_signer_observer.py",
+ "native_c1_candidate/P213NativeWintrustObservation.cs",
  "tests/test_p213_real_windows_authenticode_service_admission.py",
  "scripts/p213_windows_signed_service_observation.py",
  "docs/byok-c1-p213-windows-authenticode-service-admission.md",
@@ -82,8 +84,64 @@ def custody()->dict:
         if git("rev-parse","HEAD:"+path)!=git("rev-parse",P212+":"+path):
             raise RuntimeError("P213 original named source changed "+path)
     return {"event_HEAD":head,"exact_P212_ancestor":P212,
-            "five_additive_paths":sorted(ADDED),
+            "six_additive_paths":sorted(ADDED),
             "original_source_pins":pins}
+
+def compile_native_wintrust_probe(out:Path)->dict:
+    """Build a genuine read-only native WinVerifyTrust helper from P116
+    source, with no service Main, credentials, signer or network calls."""
+    csc=Path("C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe")
+    if sys.platform!="win32" or not csc.is_file():
+        raise RuntimeError("P213 genuine Windows x64 compiler unavailable")
+    p49=ROOT/"tests/p99_original_native_c1_denial"
+    c1=ROOT/"native_c1_candidate"
+    peer=ROOT/"native_c1_g1_peer_review"
+    originals=[p49/p for p in (
+        "ServiceGate.cs","ProtectedAcl.cs","CustodyLedger.cs")]
+    candidates=[c1/p for p in (
+        "CustodyService.cs","ServiceOwnedAdmissionBoundary.cs",
+        "ServiceBoundRequestIdentity.cs",
+        "NativeJ2ProtectedReadOnlyPreflight.cs",
+        "CandidateCredentialEffectHold.cs",
+        "IsolatedCandidateContracts.cs",
+        "CandidateProtectedReadOnlySnapshot.cs")]
+    peerfiles=[peer/p for p in (
+        "WindowsPipePeerObservation.cs",
+        "WindowsPipeClientProcessProvenance.cs",
+        "WindowsPipeClientSessionIntegrity.cs",
+        "WindowsWintrustFilePolicyReview.cs")]
+    sources=originals+candidates+peerfiles+[
+        c1/"P213NativeWintrustObservation.cs"]
+    if len(sources)!=15 or any(not p.is_file() for p in sources):
+        raise RuntimeError("P213 original native P116 source set invalid")
+    for p in sources:
+        if git("rev-parse","HEAD:"+str(p.relative_to(ROOT)).replace("\\","/"))!=git(
+            "rev-parse",P212+":"+str(p.relative_to(ROOT)).replace("\\","/")
+        ) and p.name!="P213NativeWintrustObservation.cs":
+            raise RuntimeError("P213 original native P116 source drift "+p.name)
+    gate=(c1/"P213NativeWintrustObservation.cs").read_text("utf8")
+    if ("#if C1_REVIEW_ISOLATED_ASSEMBLY" not in gate or
+        any(x in gate for x in ("CredWriteW(","CredDeleteW(","ServiceBase.Run(",
+                                "DllImport(","Set-Service","New-Service"))):
+        raise RuntimeError("P213 test-only source/native boundary violated")
+    exe=out/"p213_original_P116_native_WinTrust_readonly.exe"
+    cmd=[str(csc),"/nologo","/target:exe","/platform:x64",
+         "/define:C1_REVIEW_ISOLATED_ASSEMBLY",
+         "/r:System.ServiceProcess.dll","/r:System.Core.dll",
+         "/main:P213NativeWintrustObservation",
+         "/out:"+str(exe)]+[str(p) for p in sources]
+    c=subprocess.run(cmd,cwd=ROOT,stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+        timeout=90,check=False)
+    (out/"p213_original_P116_native_wintrust_compiler.log").write_bytes(c.stdout)
+    if c.returncode!=0 or c.stdout.strip():
+        raise RuntimeError("P213 original P116 native WinTrust CSharp compile failure")
+    return {"exe":str(exe),"csc_OS_exit":c.returncode,
+            "original_compiler_stdout_SHA256":sha256(c.stdout),
+            "native_exe_SHA256":sha256(exe.read_bytes()),
+            "real_Windows_WinTrust_source":"original P116 read-only",
+            "local_service_or_credential_effects":"NONE"}
+
 
 def main()->int:
     out=Path(os.environ.get("RUNNER_TEMP",str(ROOT)))/"nayeon-p213-evidence"
@@ -132,6 +190,9 @@ def main()->int:
         bridge=compile_native_bridge(out)
         ledger["p210_native_compiler"]=bridge
         os.environ["P210_NATIVE_EXE"]=bridge["path"]
+        wintrust=compile_native_wintrust_probe(out)
+        ledger["p213_native_P116_wintrust_compiler"]=wintrust
+        os.environ["P213_NATIVE_WINTRUST_EXE"]=wintrust["exe"]
         reference=system_powershell_reference()
         if reference is None:
             raise RuntimeError("P213 real Windows signed reference unavailable")
@@ -148,8 +209,8 @@ def main()->int:
             "approved_installer_or_code_integrity_policy":False,
             "real_key_or_production_admission":False,
         }
-        if (signed.status is not P213SignatureStatus.VALID
-            or unsigned.status is not P213SignatureStatus.NOT_SIGNED
+        if (signed.status is not P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED
+            or unsigned.status is not P213SignatureStatus.OS_POLICY_REJECTED
             or not signed.stable_stat_and_bytes_observed
             or not unsigned.stable_stat_and_bytes_observed):
             raise RuntimeError("P213 actual Windows Authenticode read-only mismatch")
@@ -169,7 +230,7 @@ def main()->int:
             raise RuntimeError("P213 source custody changed after actual Windows tests")
         complete=True
         print("P213_WINDOWS_ORIGINAL_199_NATIVE_SIGNATURE_20=219_SELECTED_PASS",flush=True)
-        print("P213_OS_AUTHENTICODE_WINDOWS_SIGNED_REFERENCE_AND_UNSIGNED_C1=READ_ONLY",flush=True)
+        print("P213_ACTUAL_NATIVE_P116_WINVERIFYTRUST_SIGNED_REFERENCE_AND_UNSIGNED_C1=READ_ONLY",flush=True)
         print("P213_SIGNED_SERVICE_TRUST_ROOT=NOT_ENROLLED",flush=True)
         print("P213_REAL_KEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3",flush=True)
     except BaseException as error:
