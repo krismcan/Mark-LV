@@ -1,0 +1,89 @@
+name: P199 Windows Consumer Identity and Signed-Fixture Handoff — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p199-consumer-provenance-challenge-handoff-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p199-windows-identity:
+    name: P199 Native Windows Consumer Process Identity and Spoof Negative
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Authenticated original GitHub event source metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Hosted original Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic signing test-only dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P199 test-only cryptography unavailable'}
+      - name: Source-bound exact P198 branch and only three new audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p199-consumer-provenance-challenge-handoff-20261114'){
+             throw 'P199 original hosted Windows event source invalid'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P199 wrong GitHub source event SHA'}
+          $parent='9b80021a5a3a5b49c54dcc150d0a5f7f0fff4a83'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P199 source ancestor mismatch'}
+          $expected=@(
+            '.github/workflows/p199-windows-consumer-provenance.yml'
+            'docs/byok-c1-p199-consumer-identity-signed-loader-security-review.md'
+            'scripts/p199_windows_consumer_identity_handoff_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P199 source diff includes unexpected historical/product file changes'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P199 source diff invalid'}
+          Write-Output 'P199_EXACT_P198_PARENT_ONLY_THREE_AUDIT_PATHS=VERIFIED'
+      - name: Authenticate P198 actual ZIP and run source-bound native Windows process cases
+        shell: pwsh
+        env:
+          P199_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p199-consumer-provenance-challenge-handoff-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P199 clean disposable clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P199 isolate exact GitHub source SHA mismatch'
+          }
+          $pythonexe=(python -c "import sys; print(sys.executable)").Trim()
+          $sig=Get-AuthenticodeSignature -LiteralPath $pythonexe
+          Write-Output ('P199_WINDOWS_PYTHON_IMAGE_AUTHENTICODE_STATUS_OBSERVED_ONLY='+[string]$sig.Status)
+          Write-Output 'P199_AUTHENTICODE_ON_INTERPRETER_DOES_NOT_ATTEST_INLINE_SCRIPT'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p199_windows_consumer_identity_handoff_review
+            if($LASTEXITCODE -ne 0){throw 'P199 genuine native Windows consumer security tests failed — HOLD'}
+          } finally {Pop-Location}
+          Write-Output 'P199_ORIGINAL_PRODUCT_FULL_WINDOWS_REGRESSIONS=0/3'
+          Write-Output 'P199_ORIGINAL_FULL_BYOK_B_ADS_GAP=UNPATCHED'
+          Write-Output 'P199_SIGNED_PRODUCTION_EXECUTABLE_AND_INDEPENDENT_ROOT=NOT_IMPLEMENTED'
+          Write-Output 'P199_QUALIFIED_SECURITY_GOVERNANCE_REVIEWS=OPEN'
+          Write-Output 'P199_PRIVILEGED_G0_G6=OPEN'
+          Write-Output 'P199_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve genuine native Windows log and HCR ledger including failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p199-Windows-consumer-provenance-lab-signed-and-spoof-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p199-provenance/*.log
+            ${{ runner.temp }}/nayeon-p199-provenance/*.json
+          if-no-files-found: warn
+          retention-days: 14
