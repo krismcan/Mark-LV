@@ -1,0 +1,195 @@
+name: P221 Original P96 CSharp Windows Native Linearisation Review HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p221-original-p96-native-linearization-review-20261114
+permissions:
+  contents: read
+jobs:
+  real-windows-original-p96-and-review:
+    name: Original P96 negative + P221 monitored test-only comparison x64/x86 HOLD
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Exact source checkout, no credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Original Windows Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify original source and run native original and P221 review-only tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path 'p221-native-evidence' -Force | Out-Null
+          $baseline='af9e593a8dc460d1ee651f373f05cd4cbd622ad6'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p221-original-p96-native-linearization-review-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P221 original source or native Windows runner unverified: HOLD'
+          }
+          # GitHub runner isolated working tree only: preserve exact Git blob
+          # bytes for previously established historical P96 SHA-256 pins.
+          git config --local core.autocrlf false
+          git -c core.autocrlf=false checkout-index --force --all
+          if($LASTEXITCODE -ne 0){throw 'Exact original Git blobs unavailable'}
+          git merge-base --is-ancestor $baseline HEAD
+          if($LASTEXITCODE -ne 0){throw 'P220 source ancestor not found'}
+          $expected=@(
+            '.github/workflows/p221-windows-original-p96-review-linearization.yml'
+            'docs/byok-c1-p221-original-p96-native-gate-linearization-review.md'
+            'native_c1_g2_review/P221OriginalP96ReviewLinearizer.cs'
+            'tests/p221_native_original_p96_linearization/P221OriginalP96LinearizerTests.cs'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $baseline HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P221 changed frozen source or unreviewed paths: HOLD'
+          }
+          $ledger='tests/p95_native_custody_preflight/CustodyLedger.cs'
+          $p96='tests/p96_native_transaction_negative/PendingCustodyTransaction.cs'
+          $oldFixture='tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs'
+          $newActor='native_c1_g2_review/P221OriginalP96ReviewLinearizer.cs'
+          $newFixture='tests/p221_native_original_p96_linearization/P221OriginalP96LinearizerTests.cs'
+          $protected=@(
+            $ledger,$p96,$oldFixture,
+            'native_c1_candidate/CustodyService.cs',
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs',
+            'native_c1_candidate/CandidateCredentialEffectHold.cs',
+            'nayeon/secrets/windows_credential.py',
+            'nayeon/brain/local_byok_user_scope.py',
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py',
+            'nayeon/desktop_alpha/frozen_signed_byok_companion.py',
+            'nayeon/brain/p216_service_store_decision.py',
+            'tests/test_p216_service_store_decision_inventory.py',
+            'nayeon/brain/p220_artifact_effect_closure.py',
+            'tests/test_p220_actual_artifact_effect_closure.py'
+          )
+          git diff --quiet $baseline HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Original protected C1 source changed: HOLD'}
+          $before=@{}
+          foreach($path in $protected){
+             $before[$path]=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+          }
+          if($before[$p96] -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $before[$ledger] -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+             throw 'Exact source identity of historical C# coordinator/ledger mismatch: HOLD'
+          }
+          $oldCode=Get-Content -Raw -LiteralPath $oldFixture
+          $newCode=Get-Content -Raw -LiteralPath $newActor
+          $newTests=Get-Content -Raw -LiteralPath $newFixture
+          foreach($testCode in @($oldCode,$newCode,$newTests)){
+             if($testCode -match 'DllImport|CredReadW|CredWriteW|CredDeleteW|RegistryKey|System.Runtime.InteropServices|ServiceBase.Run'){
+                throw 'Unexpected credential/native effect code in test assembly: HOLD'
+             }
+          }
+          foreach($required in @('#if !C1_REVIEW_ISOLATED_ASSEMBLY || !C1_SYNTHETIC_TEST',
+                                  '#error P221 original P96 review linearizer is NONDEPLOYABLE')){
+             if(-not $newCode.Contains($required)){throw ('P221 test-only source flag missing '+$required)}
+          }
+          $host=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
+          if($host -notmatch 'throw new InvalidOperationException' -or $host -match 'ServiceBase.Run\s*\('){
+             throw 'Actual native C1 service denial-only hold broken'
+          }
+          foreach($arch in @('x64','x86')){
+             $csc=if($arch -eq 'x64'){'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'}else{'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'}
+             if(-not (Test-Path -LiteralPath $csc)){throw ('Native Windows CSharp compiler missing '+$arch)}
+             $ledgerPath=(Resolve-Path $ledger).Path
+             $p96Path=(Resolve-Path $p96).Path
+             $originalPath=(Resolve-Path $oldFixture).Path
+             $actorPath=(Resolve-Path $newActor).Path
+             $fixturePath=(Resolve-Path $newFixture).Path
+             $originalExe=Join-Path (Get-Location).Path ('p221-native-evidence/original-p96-'+$arch+'.exe')
+             $reviewExe=Join-Path (Get-Location).Path ('p221-native-evidence/p221-original-review-'+$arch+'.exe')
+             $noFlagsExe=Join-Path (Get-Location).Path ('p221-native-evidence/p221-must-not-compile-'+$arch+'.dll')
+             $originalCompile='p221-native-evidence/p96-'+$arch+'-compile.log'
+             $originalLog='p221-native-evidence/p96-'+$arch+'-negative.log'
+             $reviewCompile='p221-native-evidence/p221-'+$arch+'-compile.log'
+             $reviewLog='p221-native-evidence/p221-'+$arch+'-review.log'
+             $noFlagsLog='p221-native-evidence/p221-'+$arch+'-no-flags-refusal.log'
+             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$originalExe) $ledgerPath $p96Path $originalPath *> $originalCompile
+             $originalExit=$LASTEXITCODE
+             ('P221_ORIGINAL_CSC_'+$arch+'_EXIT='+$originalExit) | Add-Content 'p221-native-evidence/native-exits.log'
+             if($originalExit -ne 0){throw ('Original P96 native source compile failed '+$arch)}
+             & $originalExe *> $originalLog
+             $originalRunExit=$LASTEXITCODE
+             ('P221_ORIGINAL_P96_'+$arch+'_EXIT='+$originalRunExit) | Add-Content 'p221-native-evidence/native-exits.log'
+             if($originalRunExit -ne 0){throw ('Original P96 fake-only historical race missing '+$arch)}
+             $oldResult=Get-Content -Raw -LiteralPath $originalLog
+             foreach($marker in @('P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15',
+               'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_FAILED=0',
+               'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY',
+               'P96_REAL_NATIVE_EFFECTS=NONE',
+               'P96_SECURITY_FINDING=OPEN',
+               'P96_C1_PRODUCTION_RELEASE=HOLD')){
+               if(-not $oldResult.Contains($marker)){throw ('Original P96 native result marker absent '+$arch+': '+$marker)}
+             }
+             & $csc /nologo /target:library ("/platform:"+$arch) ("/out:"+$noFlagsExe) $actorPath *> $noFlagsLog
+             $noFlagsExit=$LASTEXITCODE
+             ('P221_NO_FLAGS_CSC_'+$arch+'_EXIT='+$noFlagsExit) | Add-Content 'p221-native-evidence/native-exits.log'
+             $noFlagsText=Get-Content -Raw -LiteralPath $noFlagsLog
+             if($noFlagsExit -eq 0 -or $noFlagsText -notmatch 'P221 original P96 review linearizer is NONDEPLOYABLE'){
+               throw ('P221 standalone production/no-flags compile was not refused '+$arch)
+             }
+             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$reviewExe) '/define:C1_SYNTHETIC_TEST,C1_REVIEW_ISOLATED_ASSEMBLY' '/main:Nayeon.ByokC1.P221OriginalP96LinearizerTests' $ledgerPath $p96Path $originalPath $actorPath $fixturePath *> $reviewCompile
+             $reviewCompileExit=$LASTEXITCODE
+             ('P221_REVIEW_CSC_'+$arch+'_EXIT='+$reviewCompileExit) | Add-Content 'p221-native-evidence/native-exits.log'
+             if($reviewCompileExit -ne 0){throw ('P221 source-linked review native compile failed '+$arch)}
+             & $reviewExe *> $reviewLog
+             $reviewRunExit=$LASTEXITCODE
+             ('P221_REVIEW_'+$arch+'_EXIT='+$reviewRunExit) | Add-Content 'p221-native-evidence/native-exits.log'
+             if($reviewRunExit -ne 0){throw ('P221 native review test failed '+$arch)}
+             $reviewResult=Get-Content -Raw -LiteralPath $reviewLog
+             foreach($marker in @('P221_ORIGINAL_P96_FAKE_COORDINATOR_REVIEW_PASSED=13',
+               'P221_ORIGINAL_P96_FAKE_COORDINATOR_REVIEW_FAILED=0',
+               'P221_P96_ORIGINAL_SECURITY_RACE=STILL_OPEN',
+               'P221_REVIEW_MONITOR=TEST_ONLY_NOT_ACTUAL_SERVICE_BOUNDARY',
+               'P221_REAL_NATIVE_CREDENTIAL_EFFECTS=NONE',
+               'P221_QUALIFIED_SECURITY_APPROVAL=NOT_RECEIVED',
+               'P221_REAL_KEY=NO_GO',
+               'P221_C1_PRODUCTION_RELEASE=HOLD')){
+               if(-not $reviewResult.Contains($marker)){throw ('P221 review marker absent '+$arch+': '+$marker)}
+             }
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          & python -B -m unittest -v tests.test_p216_service_store_decision_inventory tests.test_p220_actual_artifact_effect_closure *> 'p221-native-evidence/original-p216-and-p220-tests.log'
+          $pythonExit=$LASTEXITCODE
+          ('P221_PYTHON_NATIVE_EXIT='+$pythonExit) | Add-Content 'p221-native-evidence/native-exits.log'
+          if($pythonExit -ne 0){throw 'Frozen original P216/P220 Windows Python security tests failed'}
+          $pyLog=Get-Content -Raw -LiteralPath 'p221-native-evidence/original-p216-and-p220-tests.log'
+          if($pyLog -notmatch 'Ran 33 tests' -or $pyLog -notmatch '(?m)^OK\r?$'){
+             throw '33 original Python focused tests not proven'
+          }
+          foreach($path in $protected){
+             $after=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+             if($after -ne $before[$path]){throw ('Historical source custody changed '+$path)}
+             ($after+'  '+$path) | Add-Content 'p221-native-evidence/historical-source-sha256.txt'
+          }
+          if(@(git status --porcelain=v1 --untracked-files=all).Count -ne 0){
+             throw 'P221 runner checkout dirty outside git-ignored temporary evidence'
+          }
+          ('P221_HEAD='+$env:GITHUB_SHA) | Add-Content 'p221-native-evidence/native-exits.log'
+          ('P221_SOURCE_PARENT='+$baseline) | Add-Content 'p221-native-evidence/native-exits.log'
+          'P221_ORIGINAL_P96_INSECURE_RACE=UNCHANGED_AND_REPRODUCED' | Add-Content 'p221-native-evidence/native-exits.log'
+          'P221_PROPOSED_REVIEW_LOCK=FAKE_ONLY_NOT_NATIVE_SERVICE_EFFECT_FIX' | Add-Content 'p221-native-evidence/native-exits.log'
+          'P221_EXTERNAL_SEC03_SEC04=UNISSUED|REALKEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3' | Add-Content 'p221-native-evidence/native-exits.log'
+          foreach($file in @(Get-ChildItem -LiteralPath 'p221-native-evidence' -File | Where-Object {$_.Extension -ne '.exe' -and $_.Extension -ne '.dll' -and $_.Name -ne 'evidence-log-sha256.txt'})){
+             $sum=(Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash
+             ($sum+'  '+$file.Name) | Add-Content 'p221-native-evidence/evidence-log-sha256.txt'
+          }
+          Write-Output 'P221: original P96 Windows x64/x86 negative and source-linked test-only monitor review completed. P96 PRODUCTION FIX ABSENT; real-key NO-GO, production HOLD.'
+      - name: Preserve actual native logs and source hashes on success/failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p221-Windows-original-P96-native-review-and-production-HOLD
+          path: |
+            p221-native-evidence/*.log
+            p221-native-evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 14
