@@ -60,8 +60,8 @@ jobs:
           if($fake -match 'DllImport|CredRead|CredWrite|CredDelete|WindowsIdentity|RegistryKey|System.Runtime.InteropServices'){
              throw 'P96 original harness not fake-only'
           }
-          $host=Get-Content -Raw 'native_c1_candidate/CustodyService.cs'
-          if($host -notmatch 'throw new InvalidOperationException' -or $host -match 'ServiceBase.Run\s*\('){
+          $hostSource=Get-Content -Raw 'native_c1_candidate/CustodyService.cs'
+          if($hostSource -notmatch 'throw new InvalidOperationException' -or $hostSource -match 'ServiceBase.Run\s*\('){
              throw 'Original native service denial no longer intact'
           }
           foreach($arch in @('x64','x86')){
