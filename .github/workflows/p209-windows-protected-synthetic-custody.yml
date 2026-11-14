@@ -1,0 +1,55 @@
+name: P209 Genuine Windows DPAPI/DACL Synthetic Custody Recovery HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p209-protected-synthetic-durable-custody-20261114
+permissions:
+  contents: read
+jobs:
+  native-windows-synthetic-protection:
+    name: P209 Protected CurrentUser DPAPI Durable No-Retry Recovery
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Exact GitHub source push checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preexisting P205 test dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P209 prior original source dependency unavailable'}
+      - name: Windows source-bound real DPAPI/DACL and native synthetic cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p209-protected-synthetic-durable-custody-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P209 real Windows original-source provenance failed'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p209_windows_protected_synthetic_custody
+          if($LASTEXITCODE -ne 0){throw 'P209 genuine native DPAPI/durable source review failed: HOLD'}
+          Write-Output 'P209_ACTUAL_WINDOWS_DPAPI_AND_DACL=SYNTHETIC_ONLY'
+          Write-Output 'P209_INDEPENDENT_ANTIROLLBACK_ROOT=NOT_IMPLEMENTED'
+          Write-Output 'P209_REAL_KEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3'
+      - name: Preserve original failed and passing native source/DPAPI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p209-Windows-protected-synthetic-custody-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p209-dpapi/*.log
+            ${{ runner.temp }}/nayeon-p209-dpapi/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
