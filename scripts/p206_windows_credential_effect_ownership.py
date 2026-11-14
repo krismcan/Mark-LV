@@ -109,7 +109,7 @@ def run_suite(label: str, args: list[str], target: Path) -> dict:
     return {"log": target.name, "SHA256": sha256(raw),
             "actual_Windows_OS_exit": result.returncode,
             "test_footer": footer, "complete_OK": accepted,
-            "markers": re.findall(r"^P20[56]_[^\r\n]+", txt, re.M)}
+            "markers": re.findall(r"P20[56]_[^\r\n]+", txt)}
 
 
 def main() -> int:
