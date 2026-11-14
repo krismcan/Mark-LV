@@ -1,0 +1,92 @@
+name: P198 Windows Validated-Byte Handoff vs Post-Read Path Reopen — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p198-source-byte-handoff-toctou-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p198-windows-native:
+    name: P198 Original Tests and Windows Cross-Process Byte Integrity
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact original Git event metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup actual Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install only synthetic prior signature fixture
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P198 ephemeral lab dependency absent; HOLD'}
+      - name: Prove exact original P197 ancestry and only 3 audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p198-source-byte-handoff-toctou-20261114'){
+            throw 'P198 requires authenticated hosted Windows branch'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P198 Git event source mismatch'}
+          $parent='d881936573813d8cd76107cbe67e1297b983d5bf'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P198 exact P197 parent mismatch'}
+          $expected=@(
+             '.github/workflows/p198-windows-source-byte-handoff.yml'
+             'docs/byok-c1-p198-source-byte-handoff-toctou-security-review.md'
+             'scripts/p198_windows_source_byte_handoff_toctou_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P198 unexpected prior source or product change'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P198 source diff invalid'}
+          Write-Output 'P198_EXACT_P197_PARENT_AND_THREE_AUDIT_ONLY_PATHS=VERIFIED'
+      - name: Isolated no-autocrlf Windows clone, authenticate prior ZIP, run native cases
+        shell: pwsh
+        env:
+          P198_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p198-source-byte-handoff-toctou-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P198 isolated clean clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P198 isolated source HEAD mismatch'
+          }
+          # Read-only OS source volume inventory. Do not enable/change any journal.
+          Write-Output 'P198_READ_ONLY_USN_JOURNAL_C_D_INVENTORY'
+          foreach($volume in @('C:','D:')){
+            Write-Output ('P198_VOLUME_QUERY='+$volume)
+            & fsutil usn queryjournal $volume 2>&1 | Select-Object -First 14 | ForEach-Object {Write-Output $_}
+            Write-Output ('P198_VOLUME_QUERY_NATIVE_EXIT='+$LASTEXITCODE)
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p198_windows_source_byte_handoff_toctou_review
+            if($LASTEXITCODE -ne 0){throw 'P198 actual Windows security witness failed; HOLD and retain logs'}
+          } finally {Pop-Location}
+          Write-Output 'P198_UNTRUSTED_CALLER_DIGEST_IS_NOT_ROOT_AUTHORITY'
+          Write-Output 'P198_STATIC_HASH_ONLY_CHILD_IS_NOT_SIGNED_TRUSTED_LOADER'
+          Write-Output 'P198_ORIGINAL_BYOK_B_ADS_GAP=UNPATCHED'
+          Write-Output 'P198_FULL_NATIVE_WINDOWS_PRODUCT_REGRESSIONS=0/3'
+          Write-Output 'P198_QUALIFIED_INDEPENDENT_REVIEW=OPEN'
+          Write-Output 'P198_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve actual raw Windows logs and HCR even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p198-real-Windows-post-validation-byte-custody-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p198-handoff-review/*.log
+            ${{ runner.temp }}/nayeon-p198-handoff-review/*.json
+          if-no-files-found: warn
+          retention-days: 14
