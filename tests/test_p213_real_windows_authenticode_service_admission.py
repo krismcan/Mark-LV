@@ -127,7 +127,7 @@ class P213GenuineWindowsSignerReviewTests(unittest.TestCase):
     def test_14_forged_positive_observation_cannot_be_constructed(self):
         with self.assertRaises(ValueError):
             probe.P213WindowsSignatureObservation(
-                probe.P213SignatureStatus.VALID,
+                probe.P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED,
                 "a"*64,"b"*64,True,True,release_eligible=True)
 
     def test_15_observation_receipt_cannot_be_modified_after_creation(self):
