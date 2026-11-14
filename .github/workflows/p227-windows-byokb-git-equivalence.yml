@@ -1,0 +1,71 @@
+name: P227 Actual Windows BYOK-B Immutable Git Batch Equivalence — NO RELEASE
+on:
+  push:
+    branches:
+      - byok-c1-p227-immutable-git-batch-real-test-equivalence-20261114
+permissions:
+  contents: read
+jobs:
+  original-vs-candidate:
+    name: Unchanged original BYOK-B vs isolated verified immutable Git object transport
+    runs-on: windows-2025
+    timeout-minutes: 11
+    steps:
+      - name: Checkout source event for independent verified fixture clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify event identity then make independent exact-blob raw-byte Windows clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p227-immutable-git-batch-real-test-equivalence-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P227 original Windows event identity refused'
+          }
+          if(Test-Path -LiteralPath reviewed){throw 'P227 raw-byte fixture already exists'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p227-immutable-git-batch-real-test-equivalence-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P227 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P227 independent clone source SHA changed'
+          }
+          if(git -C reviewed status --porcelain=v1 -uall){
+            throw 'P227 cloned original source checkout not pristine'
+          }
+          Write-Output 'P227_AUTHENTIC_RAW_SOURCE=VERIFIED_SEPARATE_CLONE'
+      - name: Real Windows CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute actual original and separately instrumented candidate with native exits
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'p227-actual-original-vs-immutable-candidate'
+          New-Item -Path $out -ItemType Directory -Force | Out-Null
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p227_windows_byokb_immutable_git_equivalence *> (Join-Path $out 'p227-native-process-runner.log')
+            $code=$LASTEXITCODE
+          } finally {Pop-Location}
+          ('P227_EVENT_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'p227-native-exit.log')
+          ('P227_REAL_NATIVE_PROCESS_EXIT='+$code) | Add-Content (Join-Path $out 'p227-native-exit.log')
+          Get-Content -LiteralPath (Join-Path $out 'p227-native-process-runner.log') | ForEach-Object {Write-Output $_}
+          if($code -ne 0){throw 'P227 original or candidate Windows test failed; preserve original status and evidence'}
+          Write-Output 'P227_ORIGINAL_NATIVE_CASE_AND_DIAGNOSTIC_CANDIDATE_BOTH_PASS=YES'
+          Write-Output 'P227_NOT_A_FULL_REGRESSION|R0_R4=NO_GO|PRODUCTION=HOLD'
+      - name: Archive both original and candidate Windows logs and crypto receipts, even if failed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p227-real-Windows-BYOKB-immutable-Git-equivalence-HOLD
+          path: ${{ runner.temp }}/p227-actual-original-vs-immutable-candidate/*
+          if-no-files-found: warn
+          retention-days: 14
