@@ -84,33 +84,7 @@ jobs:
           "P218_ORIGINAL_P216_FOCUSED_SECURITY_TEST_EXIT=$testExit" | Add-Content 'p218-review-evidence/native-exits.log'
           if($testExit -ne 0){throw 'Original source-bound P216 tests failed on Windows: HOLD'}
           $testText=Get-Content -Raw -LiteralPath 'p218-review-evidence/p216-original-security-tests.log'
-          if($testText -notmatch 'Ran 18 tests' -or $testText -notmatch '(?m)^OK\r?
-            throw 'P218 cannot prove 18 original focused passes: HOLD'
-          }
-          foreach($path in $protected){
-            $after = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
-            if($before[$path] -ne $after){throw "P218 source custody changed: $path"}
-            "$after  $path" | Add-Content 'p218-review-evidence/source-sha256.txt'
-          }
-          "P218_HEAD=$env:GITHUB_SHA" | Add-Content 'p218-review-evidence/native-exits.log'
-          "P218_PARENT=$baseline" | Add-Content 'p218-review-evidence/native-exits.log'
-          "P218_CI_POLICY_RESULTS_ARE_NOT_KRISTIAN_APPROVAL=true" | Add-Content 'p218-review-evidence/native-exits.log'
-          "P218_G0_R3_INDEPENDENT_SIGNOFF=NOT_RECEIVED" | Add-Content 'p218-review-evidence/native-exits.log'
-          "P218_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_PRODUCT_WINDOWS=0/3" | Add-Content 'p218-review-evidence/native-exits.log'
-          foreach($path in @('windows-readonly-platform.json','p216-original-security-tests.log')){
-            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath "p218-review-evidence/$path").Hash
-            "$sha  $path" | Add-Content 'p218-review-evidence/evidence-sha256.txt'
-          }
-          Write-Output 'P218 actual Windows read-only OS preflight, original 18 tests and protected source hashes PASS; independent external GO NOT RECEIVED; production HOLD.'
-      - name: Retain original OS logs and SHA receipts even on failure
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: p218-real-Windows-readonly-service-ci-G0-R3-HOLD
-          path: p218-review-evidence/
-          if-no-files-found: warn
-          retention-days: 14
-){
+          if($testText -notmatch 'Ran 18 tests' -or $testText -notmatch '(?m)^OK\r?$'){
             throw 'P218 cannot prove 18 original focused passes: HOLD'
           }
           foreach($path in $protected){
