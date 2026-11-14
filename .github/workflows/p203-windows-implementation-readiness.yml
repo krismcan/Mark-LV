@@ -1,0 +1,83 @@
+name: P203 Windows Current Phase10/P76 Authority and C1 Implementation Readiness — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p203-current-authority-implementation-readiness-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p203-source-bound-readiness:
+    name: P203 Genuine Windows Current Product Source Route / Denial Readiness
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Original source SHA and GitHub event custody
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Historical synthetic signing fixture dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P203 inherited test dependency unavailable'}
+      - name: Prove exact P202 parent, original Phase10 and native service custody
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p203-current-authority-implementation-readiness-20261114'){
+             throw 'P203 original hosted native Windows GitHub event required'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P203 GitHub original source SHA differs from HEAD'}
+          $parent='fb6814fad38fb021576ee3aa7ee01558ea4f3cb5'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P203 exact verified P202 parent ancestry mismatch'}
+          $expected=@(
+            '.github/workflows/p203-windows-implementation-readiness.yml'
+            'docs/byok-c1-p203-current-authority-implementation-readiness.md'
+            'scripts/p203_windows_current_authority_readiness_audit.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P203 forbidden native service/current Phase10/product/historical source modification'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P203 source diff invalid'}
+          Write-Output 'P203_EXACT_P202_PARENT_ONLY_THREE_ADDITIVE_AUDIT_PATHS=VERIFIED'
+      - name: Authenticated predecessor and real Windows public-gate denial / readiness
+        shell: pwsh
+        env:
+          P203_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p203-current-authority-implementation-readiness-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P203 exact source isolated clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P203 clone source advanced; stale event must refuse, no false evidence'
+          }
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p203_windows_current_authority_readiness_audit
+             if($LASTEXITCODE -ne 0){throw 'P203 genuine Windows current authority readiness audit FAILED — HOLD'}
+          } finally {Pop-Location}
+          Write-Output 'P203_NONPRIVILEGED_SYNTHETIC_IMPLEMENTATION_ENGINEERING=AUTHORIZED'
+          Write-Output 'P203_G0_G6_PRODUCTION_CREDENTIAL_EFFECT_ADMISSION=NOT_READY'
+          Write-Output 'P203_QUALIFIED_INDEPENDENT_REVIEWS=OPEN|FULL_UNFILTERED_WINDOWS=0/3'
+          Write-Output 'P203_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve raw Windows source/OS-exit/HCR readiness evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p203-Windows-current-authority-C1-implementation-readiness-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p203-current-authority/*.log
+            ${{ runner.temp }}/nayeon-p203-current-authority/*.json
+          if-no-files-found: warn
+          retention-days: 14
