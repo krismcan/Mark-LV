@@ -1,0 +1,55 @@
+name: P210 Genuine Windows Python-Native Synthetic Integration HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p210-controlled-python-native-integration-20261114
+permissions:
+  contents: read
+jobs:
+  native-windows-controlled-integration:
+    name: P210 Actual Windows Python to CSharp DPAPI Negative Path
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Authenticate exact GitHub push source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Genuine native Windows Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pre-existing original P205 synthetic fixture prerequisite
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P210 historical synthetic fixture unavailable'}
+      - name: Run source-custodied genuine Windows cross-language negative integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p210-controlled-python-native-integration-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P210 original Windows GitHub event identity invalid'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p210_windows_python_native_synthetic_integration
+          if($LASTEXITCODE -ne 0){throw 'P210 genuine native Windows Python-to-CSharp integration FAILED: HOLD'}
+          Write-Output 'P210_REAL_WINCRED_PROVIDER_SECRET_OPERATIONS=ZERO'
+          Write-Output 'P210_NATIVE_SIGNED_SERVICE_AND_AUTHENTICATED_CONSENT=NOT_IMPLEMENTED'
+          Write-Output 'P210_REALKEY_R0_R4=NO_GO|PRODUCTION_P0_P5=HOLD|FULL_WINDOWS=0/3'
+      - name: Preserve original compiler, Windows native, Python and HCR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p210-Windows-Python-native-integrated-negative-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p210-integration/*.log
+            ${{ runner.temp }}/nayeon-p210-integration/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
