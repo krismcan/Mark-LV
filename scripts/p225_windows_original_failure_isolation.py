@@ -36,15 +36,15 @@ TESTS = (
      "test_creates_only_one_self_owned_empty_temporary_file", 32),
     ("p166-exact-source-class-setup",
      "tests.test_p166_current_branch_acceptance.P166RealCurrentBranchAcceptanceTests."
-     "test_real_exact_current_branch_source", 32),
+     "test_positive_live_windows_head_tree_and_19_original_security_sources", 32),
     ("p210-native-binary-class-setup",
      "tests.test_p210_python_native_synthetic_integration."
      "P210OriginalPythonNativeBoundaryTests."
-     "test_fixed_pending_effect_denial", 32),
+     "test_01_missing_owner_denied", 32),
     ("p213-signature-class-setup",
      "tests.test_p213_real_windows_authenticode_service_admission."
      "P213GenuineWindowsSignerReviewTests."
-     "test_original_unapproved_service_remains_denied", 32),
+     "test_01_all_nayeon_signer_release_and_code_policy_pins_absent", 32),
     ("phase10-2-literal-source-gate",
      "tests.test_phase10_2_privacy_scope_integrity.NativeExactSourceAdmissionTests."
      "test_real_complete_source_live_admission", 32),
