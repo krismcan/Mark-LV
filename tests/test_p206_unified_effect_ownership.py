@@ -160,7 +160,7 @@ class P206SyntheticEffectEntryTests(unittest.TestCase):
                             f.attr if isinstance(f, ast.Attribute) else "")
                     if name in names:
                         hits.append((str(path.relative_to(ROOT)), obj.lineno, name))
-        normalized = [(p.replace("\\\\", "/"), n, name) for p, n, name in hits]
+        normalized = [(p.replace("\\", "/"), n, name) for p, n, name in hits]
         self.assertEqual(
             normalized,
             [("nayeon/brain/local_byok_user_scope.py", 207, "WindowsCredentialBackend")],
