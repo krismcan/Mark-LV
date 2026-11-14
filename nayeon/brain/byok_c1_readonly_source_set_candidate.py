@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import re
 import sys
-from types import MappingProxyType
 from typing import Mapping
 
 class SourceSetRefused(RuntimeError):pass
@@ -38,8 +37,13 @@ def _canonical_source_path(path:str)->bool:
     if "\\" in path or ":" in path or "//" in path or "\x00" in path:
         return False
     bits=path.split("/")
+    reserved={"CON","PRN","AUX","NUL"} | {
+        f"{kind}{i}" for kind in ("COM","LPT") for i in range(1,10)
+    }
     return len(bits)>1 and all(
-        p not in ("",".","..") and re.fullmatch(r"[A-Za-z0-9._-]+",p)
+        p not in ("",".","..") and not p.endswith(".") and
+        re.fullmatch(r"[A-Za-z0-9._-]+",p) and
+        p.split(".",1)[0].upper() not in reserved
         for p in bits
     )
 
@@ -67,14 +71,20 @@ class WindowsReadOnlySourceSetProbe:
         self.probe=Win32HandleBoundSourceProbe(root,max_bytes=max_single_bytes)
 
     def inspect_untrusted_pin_set(self,pins:Mapping[str,str])->SourceSetObservation:
-        if not isinstance(pins,Mapping) or type(pins) is dict and len(pins)>23:
+        if not isinstance(pins,Mapping):
             raise SourceSetRefused("P204_SOURCE_MANIFEST_INVALID")
+        try:
+            length=len(pins)
+        except Exception as exc:
+            raise SourceSetRefused("P204_UNREADABLE_PIN_COUNT") from exc
+        if type(length) is not int or not 1<=length<=23:
+            raise SourceSetRefused("P204_REQUIRES_BOUNDED_EXACT_SOURCE_INVENTORY")
         try:
             rows=list(pins.items())
         except Exception as exc:
             raise SourceSetRefused("P204_UNREADABLE_PIN_MAP") from exc
-        if not 1<=len(rows)<=23:
-            raise SourceSetRefused("P204_REQUIRES_BOUNDED_EXACT_SOURCE_INVENTORY")
+        if len(rows)!=length:
+            raise SourceSetRefused("P204_SOURCE_INVENTORY_CHANGED_DURING_ENUMERATION")
         if any(not _canonical_source_path(k) or
                type(v) is not str or not re.fullmatch(r"[A-F0-9]{64}",v)
                for k,v in rows):
@@ -83,6 +93,7 @@ class WindowsReadOnlySourceSetProbe:
             raise SourceSetRefused("P204_DUPLICATE_PATH")
         observed=[]
         total=0
+        single_volume=None
         for relative,expected in sorted(rows):
             full=self.root.joinpath(*relative.split("/"))
             h=None
@@ -96,6 +107,10 @@ class WindowsReadOnlySourceSetProbe:
                     raise SourceSetRefused("P204_PATH_PARENT_OR_FILEID_DRIFT")
                 if hashlib.sha256(data).hexdigest().upper()!=expected:
                     raise SourceSetRefused("P204_ORIGINAL_PIN_MISMATCH")
+                if single_volume is None:
+                    single_volume=identity[0]
+                elif single_volume!=identity[0]:
+                    raise SourceSetRefused("P204_CROSS_VOLUME_SOURCE_SET_REFUSED")
                 total+=len(data)
                 if total>self.max_total_bytes:
                     raise SourceSetRefused("P204_SOURCE_SET_TOTAL_SIZE_LIMIT")
