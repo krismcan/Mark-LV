@@ -1,9 +1,7 @@
-"""P213 Windows source-bound executable build-gate integration and original H/C/R.
+"""P213 genuine Windows source-bound Authenticode read-only intake.
 
-Actual Python subprocess exit 41 proves the candidate high-assurance product
-build is refused BEFORE any output. A second subprocess may emit a single
-non-executable review TEXT note; it is not a product artifact. Real key NO-GO,
-production HOLD, external approvals and three full product regressions OPEN.
+Compares actual Windows-signed OS reference and test-only unsigned C1
+native candidate. Neither is trusted Nayeon service/UI publisher or installer.
 """
 from __future__ import annotations
 
@@ -22,7 +20,10 @@ from scripts.p209_windows_protected_synthetic_custody import p209_native
 from scripts.p210_windows_python_native_synthetic_integration import (
     compile_native_bridge,
 )
-from nayeon.brain.p213_readonly_windows_signer_observer import source_pins_unissued
+from nayeon.brain.p213_readonly_windows_signer_observer import (
+    source_pins_unissued, observe_readonly_windows_signer,
+    system_powershell_reference, P213SignatureStatus,
+)
 from nayeon.brain.p211_high_assurance_package_quarantine import (
     inspect_current_source_tree,
 )
@@ -66,7 +67,7 @@ def custody()->dict:
     head=git("rev-parse","HEAD")
     if (head!=os.environ.get("GITHUB_SHA")
         or git("merge-base",P212,"HEAD")!=P212):
-        raise RuntimeError("P213 exact Git event/P211 parent mismatch")
+        raise RuntimeError("P213 exact Git event/P212 parent mismatch")
     if set(git("diff","--name-only",P212,"HEAD").splitlines())!=ADDED:
         raise RuntimeError("P213 original product/security source changed")
     if git("status","--porcelain=v1","-uall"):
@@ -78,84 +79,11 @@ def custody()->dict:
             raise RuntimeError("P213 original P205 blob changed "+path)
         pins[path]={"git_blob":sha,"disk_SHA256":sha256((ROOT/path).read_bytes())}
     for path in UNMODIFIED:
-        if git("rev-parse","HEAD:"+path)!=git("rev-parse",P211+":"+path):
+        if git("rev-parse","HEAD:"+path)!=git("rev-parse",P212+":"+path):
             raise RuntimeError("P213 original named source changed "+path)
     return {"event_HEAD":head,"exact_P212_ancestor":P212,
             "five_additive_paths":sorted(ADDED),
             "original_source_pins":pins}
-
-def exact_build_entrypoint(out:Path)->dict:
-    """Exercise REAL Python process/OS exit, not a mocked function result."""
-    before=list(out.iterdir())
-    cmd=[sys.executable,"-B","-m",
-         "scripts.p212_high_assurance_build_gate"]
-    env=os.environ.copy()
-    env["PYTHONDONTWRITEBYTECODE"]="1"
-    # Untrusted release claims must have no effect on P211/P212.
-    env["NAYEON_P212_RELEASE_GO"]="true"
-    env["NAYEON_P212_SIGNER"]="fake-test-only"
-
-    bad=subprocess.run(cmd+["--attempt-ha-release"],cwd=ROOT,env=env,
-        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,timeout=45,check=False)
-    log=out/"p212_high_assurance_product_build_refused.log"
-    log.write_bytes(bad.stdout+bad.stderr)
-    txt=bad.stdout.decode("utf8","replace").replace("\r\n","\n")
-    if (bad.returncode!=41 or bad.stderr or
-        "P212_BUILD=DENIED_LEGACY_EFFECT_PATH" not in txt
-        or "P212_OUTPUT_PRODUCT_COUNT=0" not in txt
-        or "P212_REAL_KEY=NO_GO|PRODUCTION=HOLD" not in txt):
-        raise RuntimeError("P213 CLI product build did not fail closed")
-    # Before review mode, only original run log is permitted.
-    if (set(p.name for p in out.iterdir())
-        != set(p.name for p in before)|{log.name}):
-        raise RuntimeError("P213 denied product build emitted extra artifact")
-
-    review_dir=Path(os.environ["RUNNER_TEMP"])/"nayeon-p212-build-preflight"
-    if review_dir.exists():
-        raise RuntimeError("P213 review staging unexpectedly exists")
-    review_dir.mkdir()
-    good=subprocess.run(cmd+["--emit-review-only"],cwd=ROOT,env=env,
-        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,timeout=45,check=False)
-    receipt_log=out/"p212_nonexecutable_review_only.log"
-    receipt_log.write_bytes(good.stdout+good.stderr)
-    s=good.stdout.decode("utf8","replace").replace("\r\n","\n")
-    if (good.returncode!=0 or good.stderr or
-        "P212_REVIEW=NONEXECUTABLE_TEXT_CREATED" not in s or
-        "P212_PRODUCT_PACKAGE=NONE|RELEASE=HOLD" not in s):
-        raise RuntimeError("P213 fixed review evidence mode failed")
-    members=list(review_dir.iterdir())
-    if (len(members)!=1 or members[0].name!="P212_QUARANTINE_REVIEW_NO_GO.txt"
-        or not members[0].is_file() or members[0].is_symlink()
-        or members[0].stat().st_size>2048):
-        raise RuntimeError("P213 review folder contains unapproved payloads")
-    note=members[0].read_bytes()
-    if (b"HIGH_ASSURANCE_RELEASE=NO_GO" not in note
-        or b"ARTIFACT_CLASS=NONEXECUTABLE_REVIEW_TEXT_ONLY" not in note
-        or b"NO_RELEASE_AUTHORITY_GRANTED" not in note):
-        raise RuntimeError("P213 metadata falsely implies production release")
-    # All executable/distributable outputs are prohibited. This deliberately
-    # is not a PyInstaller, signed installer or product build.
-    forbidden={".exe",".dll",".py",".pyc",".pyd",".msi",".msix",".whl",".zip"}
-    if any(p.suffix.lower() in forbidden for p in review_dir.rglob("*")):
-        raise RuntimeError("P213 unsafe executable or bundled file present")
-    return {
-      "attempted_real_subprocess_OS_exit":bad.returncode,
-      "attempt_stdout_SHA256":sha256(bad.stdout),
-      "attempt_stderr_SHA256":sha256(bad.stderr),
-      "attempt_log_SHA256":sha256(log.read_bytes()),
-      "product_files_created":0,
-      "actual_review_subprocess_OS_exit":good.returncode,
-      "review_stdout_SHA256":sha256(good.stdout),
-      "review_note_SHA256":sha256(note),
-      "review_note_bytes":len(note),
-      "review_file_count":1,
-      "contains_production_payload":False,
-      "mandatory_p211_source_refusal":"LEGACY_EFFECT_PATH",
-      "real_key_R0_R4":"NO_GO",
-      "release_P0_P5":"HOLD",
-    }
 
 def main()->int:
     out=Path(os.environ.get("RUNNER_TEMP",str(ROOT)))/"nayeon-p213-evidence"
@@ -204,6 +132,27 @@ def main()->int:
         bridge=compile_native_bridge(out)
         ledger["p210_native_compiler"]=bridge
         os.environ["P210_NATIVE_EXE"]=bridge["path"]
+        reference=system_powershell_reference()
+        if reference is None:
+            raise RuntimeError("P213 real Windows signed reference unavailable")
+        signed=observe_readonly_windows_signer(reference)
+        unsigned=observe_readonly_windows_signer(Path(bridge["path"]))
+        ledger["real_windows_authenticode_readonly"]={
+            "Windows_OS_reference_status":signed.status.value,
+            "Windows_OS_reference_file_SHA256":signed.file_sha256,
+            "Windows_OS_reference_signer_cert_SHA256":signed.signer_cert_sha256,
+            "unsigned_native_C1_candidate_status":unsigned.status.value,
+            "unsigned_native_C1_candidate_SHA256":unsigned.file_sha256,
+            "signed_binary_is_approved_Nayeon_publisher":False,
+            "signed_service_image_load_trust":False,
+            "approved_installer_or_code_integrity_policy":False,
+            "real_key_or_production_admission":False,
+        }
+        if (signed.status is not P213SignatureStatus.VALID
+            or unsigned.status is not P213SignatureStatus.NOT_SIGNED
+            or not signed.stable_stat_and_bytes_observed
+            or not unsigned.stable_stat_and_bytes_observed):
+            raise RuntimeError("P213 actual Windows Authenticode read-only mismatch")
         for label,file,count in (
           ("p210_python_native_13","test_p210_python_native_synthetic_integration.py",13),
           ("p211_package_refusal_22","test_p211_high_assurance_package_quarantine.py",22),
