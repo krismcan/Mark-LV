@@ -161,7 +161,12 @@ class P204RealWindowsSourceSetProbe(unittest.TestCase):
                         {'tests/p204_alpha.txt:injected':"A"*64},
                         {'tests\\p204_alpha.txt':"A"*64},
                         {'tests/p204_alpha.txt':"bad"},
-                        {'../other.txt':"A"*64}):
+                        {'tests/CON.txt':"A"*64},
+                        {'tests/aux.log':"A"*64},
+                        {'tests/COM1.py':"A"*64},
+                        {'tests/dot.':"A"*64},
+                        {'../other.txt':"A"*64},
+                        {f"tests/p204_extra_{i}.txt":"A"*64 for i in range(24)}):
             with self.subTest(invalid=invalid),self.assertRaises(SourceSetRefused):
                 self.reader.inspect_untrusted_pin_set(invalid)
         print("P204_UNAPPROVED_PATH_ALIAS_OR_MALFORMED_PIN_SET=REFUSED",flush=True)
@@ -195,6 +200,20 @@ class P204RealWindowsSourceSetProbe(unittest.TestCase):
                 self.reader.inspect_untrusted_pin_set(self.pins)
         print("P204_OS_STREAM_METADATA_FAILURE=FAIL_CLOSED_NO_PARTIAL_RESULT",flush=True)
 
+    def test_09_inconsistent_windows_fileid_volume_between_members_refused(self):
+        real=p190.Win32HandleBoundSourceProbe._handle_identity
+        def substitute_volume(instance,handle,path):
+            identity=real(instance,handle,path)
+            if path.name=="p204_alpha.txt":
+                return (identity[0]+1,*identity[1:])
+            return identity
+        with mock.patch.object(p190.Win32HandleBoundSourceProbe,
+                               "_handle_identity",new=substitute_volume):
+            with self.assertRaisesRegex(SourceSetRefused,
+                                        "P204_CROSS_VOLUME_SOURCE_SET_REFUSED"):
+                self.reader.inspect_untrusted_pin_set(self.pins)
+        print("P204_INCONSISTENT_SOURCE_SET_VOLUME_FILEIDS=REFUSED",flush=True)
+
 def main()->int:
     out=Path(os.environ["RUNNER_TEMP"])/"nayeon-p204-readonly-source-set"
     out.mkdir(parents=True,exist_ok=True)
@@ -218,7 +237,7 @@ def main()->int:
             if k in {"P204_ARCHIVE_TOKEN","GITHUB_TOKEN","GH_TOKEN"} or k.endswith(("_API_KEY","_SECRET")):
                 env.pop(k,None)
         env["PYTHONDONTWRITEBYTECODE"]="1"
-        log=out/"p204_real_windows_source_set_8.log"
+        log=out/"p204_real_windows_source_set_9.log"
         with log.open("wb") as f:
             p=subprocess.run([sys.executable,"-B","-m","unittest","-v",
                 "scripts.p204_windows_readonly_source_set_review.P204RealWindowsSourceSetProbe"],
@@ -233,8 +252,8 @@ def main()->int:
                 "events":events,
                 "failures":re.findall(r"^(?:FAIL|ERROR): .+$",txt,re.M)}
         ledger["current_P204_native"]=native
-        if p.returncode!=0 or native["test_footer"]!=["8"] or not native["complete_OK"]:
-            raise RuntimeError("P204 source-set actual Windows eight-case review FAILED; HOLD")
+        if p.returncode!=0 or native["test_footer"]!=["9"] or not native["complete_OK"]:
+            raise RuntimeError("P204 source-set actual Windows nine-case review FAILED; HOLD")
         for marker in (
           "P204_REAL_WINDOWS_TWO_PINNED_SOURCE_HANDLES_BYTES_AND_FILEIDS=OBSERVED_NOT_ADMITTED",
           "P204_GENUINE_WINDOWS_NAMED_ADS_SOURCE_SET=REFUSED",
@@ -242,14 +261,15 @@ def main()->int:
           "P204_GENUINE_WINDOWS_CHANGED_MAIN_SOURCE_BYTES=REFUSED",
           "P204_POST_HANDLE_CLOSE_PATH_REPLACEMENT=OLD_BYTES_STABLE_NEW_PATH_REFUSED",
           "P204_CALLER_CONTROLLED_SOURCE_AND_REPIN=UNSAFE_OBSERVATION_ACCEPTED_NO_TRUST_ROOT",
-          "P204_OS_STREAM_METADATA_FAILURE=FAIL_CLOSED_NO_PARTIAL_RESULT"
+          "P204_OS_STREAM_METADATA_FAILURE=FAIL_CLOSED_NO_PARTIAL_RESULT",
+          "P204_INCONSISTENT_SOURCE_SET_VOLUME_FILEIDS=REFUSED"
         ):
             if marker not in events:raise RuntimeError("P204 required honest native source-set marker absent "+marker)
         after=custody();ledger["source_after"]=after
         if before!=after:raise RuntimeError("P204 Git source changed during actual Windows audit")
         complete=True
         print("P204_AUTHENTIC_CURRENT_P203_WINDOWS_8CASE_SOURCE_AUTHORITY=VERIFIED",flush=True)
-        print("P204_REAL_WINDOWS_PINNED_SOURCE_SET_HANDLE=8/8_SELECTED_TESTS",flush=True)
+        print("P204_REAL_WINDOWS_PINNED_SOURCE_SET_HANDLE=9/9_SELECTED_TESTS",flush=True)
         print("P204_NONATOMIC_SOURCE_SET_AND_UNAUTHENTICATED_PIN_MANIFEST=NOT_PRODUCTION_ADMISSION",flush=True)
         print("P204_REAL_CREDENTIAL_EFFECT_AND_FULL_PRODUCT_WINDOWS=NO_GO_0/3",flush=True)
     except BaseException as exc:
