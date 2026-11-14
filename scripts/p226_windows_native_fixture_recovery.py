@@ -40,6 +40,7 @@ FROZEN = (
     "tests/test_p210_python_native_synthetic_integration.py",
     "tests/test_p213_real_windows_authenticode_service_admission.py",
     "native_c1_candidate/P210SyntheticBoundaryExecutable.cs",
+    "native_c1_candidate/P213NativeWintrustObservation.cs",
     "native_c1_candidate/CustodyService.cs",
     "tests/p96_native_transaction_negative/PendingCustodyTransaction.cs",
     "tests/p95_native_custody_preflight/CustodyLedger.cs",
@@ -190,6 +191,16 @@ def main() -> int:
              "P210OriginalPythonNativeBoundaryTests"],
             180, output, env, 13,
         ))
+        # P213 requires TWO originals: P210's unsigned synthetic test
+        # binary AND a separate read-only P116 WinVerifyTrust test assembly.
+        # Its original compiler verifies every original P116 source blob
+        # against frozen P212, and does not sign/install/elevate anything.
+        from scripts.p213_windows_signed_service_observation import (
+            compile_native_wintrust_probe,
+        )
+        wintrust = compile_native_wintrust_probe(output)
+        ledger["original_P213_P116_native_wintrust_compiler"] = wintrust
+        env["P213_NATIVE_WINTRUST_EXE"] = wintrust["exe"]
         ledger["records"].append(run_test(
             "P213-twenty-original-Windows-Authenticode-review-tests",
             ["-m", "unittest", "-v",
