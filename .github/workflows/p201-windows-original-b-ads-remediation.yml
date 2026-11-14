@@ -1,0 +1,94 @@
+name: P201 Original BYOK-B 23-Pin NTFS ADS Remediation Candidate — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p201-original-b-ads-remediation-candidate-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p201-genuine-windows-original-b:
+    name: P201 Original Full BYOK-B Legacy Gate vs HANDLE ADS Candidate
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout original exact GitHub event
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic predecessor signing test dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P201 previous synthetic signature fixture missing — HOLD'}
+      - name: Prove exact P200 source ancestry and four new safe candidate paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p201-original-b-ads-remediation-candidate-20261114'){
+            throw 'P201 source requires true hosted Windows authenticated Git event'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P201 Git event source SHA changed'}
+          $parent='e9f9a0a01d2c2615087a6183c27a8ab478d67c78'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P201 exact P200 parent mismatched'}
+          $expected=@(
+            '.github/workflows/p201-windows-original-b-ads-remediation.yml'
+            'docs/byok-c1-p201-original-B-ADS-remediation-integration-review.md'
+            'nayeon/brain/byok_b_ntfs_physical_admission_candidate.py'
+            'scripts/p201_windows_original_b_ads_remediation_candidate.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P201 unauthorized original historical test, product or frozen source edit'
+          }
+          $candidate='nayeon/brain/byok_b_ntfs_physical_admission_candidate.py'
+          $originalProductDiff=@(git diff --name-only $parent HEAD -- nayeon)
+          if($originalProductDiff.Count -ne 1 -or $originalProductDiff[0] -ne $candidate){
+            throw 'P201 original production files modified instead of isolated candidate'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P201 source diff invalid'}
+          Write-Output 'P201_EXACT_P200_PARENT_ONLY_FOUR_ADDITIVE_CANDIDATE_AND_AUDIT_PATHS=VERIFIED'
+      - name: Clean native source clone and run authentic legacy full B vs physical candidate
+        shell: pwsh
+        env:
+          P201_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p201-original-b-ads-remediation-candidate-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P201 disposable audited source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P201 audited source clone HEAD differs from original exact event'
+          }
+          Write-Output 'P201_WINDOWS_ORIGINAL_FULL_B_23_SOURCE_PIN_ADMISSION_NATIVE'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p201_windows_original_b_ads_remediation_candidate
+            if($LASTEXITCODE -ne 0){
+              throw 'P201 original full B vs 23 source HANDLE physical candidate native tests failed — HOLD'
+            }
+          } finally {Pop-Location}
+          Write-Output 'P201_LEGACY_B_FULL_ADS_GAP=UNCHANGED_IN_ORIGINAL_SOURCE'
+          Write-Output 'P201_NEW_ALL_23_PHYSICAL_HANDLE_CHECK=UNINTEGRATED_CANDIDATE_ONLY'
+          Write-Output 'P201_NON_ATOMIC_MULTI_SOURCE_AND_UNTRUSTED_GATE_CALLBACK=REVIEW_HOLD'
+          Write-Output 'P201_FULL_UNFILTERED_NATIVE_WINDOWS_PRODUCT_REGRESSIONS=0/3'
+          Write-Output 'P201_INDEPENDENT_GOV_SEC_REL=OPEN|PRIVILEGED_G0_G6=OPEN'
+          Write-Output 'P201_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve native Windows raw original-B cases and candidate HCR even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p201-authentic-Windows-original-B-ADS-remediation-candidate-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p201-b-ads-remediation/*.log
+            ${{ runner.temp }}/nayeon-p201-b-ads-remediation/*.json
+          if-no-files-found: warn
+          retention-days: 14
