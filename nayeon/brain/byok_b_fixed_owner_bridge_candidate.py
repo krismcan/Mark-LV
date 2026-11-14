@@ -25,10 +25,17 @@ def parse_original_gate_response(code:int, text:str)->str:
         raise PhysicalAdmissionDenied("P202_ORIGINAL_GATE_NATIVE_EXIT_NONZERO")
     if type(text) is not str or len(text)>4096:
         raise PhysicalAdmissionDenied("P202_GATE_OUTPUT_MALFORMED_OR_OVERSIZE")
-    # Only one unambiguous status; extra stdout cannot authorize a gate.
-    if text.count("\n")!=1 or not text.endswith("\n"):
+    # Accept exactly one native Windows CRLF or exact LF; never accept
+    # duplicate lines, mixed newlines, trailing output or a bare CR.
+    if text.endswith("\r\n") and text.count("\r\n")==1:
+        content=text[:-2]
+    elif text.endswith("\n") and "\r" not in text and text.count("\n")==1:
+        content=text[:-1]
+    else:
         raise PhysicalAdmissionDenied("P202_GATE_OUTPUT_UNEXPECTED_FRAMING")
-    m=STATE_LINE.fullmatch(text[:-1])
+    if "\r" in content or "\n" in content:
+        raise PhysicalAdmissionDenied("P202_GATE_OUTPUT_UNEXPECTED_FRAMING")
+    m=STATE_LINE.fullmatch(content)
     if m is None:
         raise PhysicalAdmissionDenied("P202_GATE_OUTPUT_NOT_EXACT_OR_AMBIGUOUS")
     return m.group(1)
