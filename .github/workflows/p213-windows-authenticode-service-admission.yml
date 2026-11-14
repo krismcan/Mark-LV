@@ -1,0 +1,58 @@
+name: P213 Genuine Windows Read-Only Signed Service Admission HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p213-readonly-windows-signed-service-admission-20261114
+permissions:
+  contents: read
+jobs:
+  actual-windows-authenticode:
+    name: P213 Signed Windows OS vs Unsigned Native C1 Readonly Verification
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact original source event and ancestry
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Actual hosted Windows Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing original focused Python/native test requirement
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P213 historical synthetic prerequisite missing: HOLD'}
+      - name: Authenticate actual Windows source and run original + signature negatives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p213-readonly-windows-signed-service-admission-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P213 exact Windows source event invalid: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p213_windows_signed_service_observation
+          if($LASTEXITCODE -ne 0) {
+            throw 'P213 actual Windows OS Authenticode comparison FAILED: HOLD'
+          }
+          Write-Output 'P213_GENUINE_AUTHENTICODE_WINDOWS_OS_REF=OBSERVED'
+          Write-Output 'P213_C1_SYNTHETIC_EXE=UNSIGNED_NOT_ADMITTED'
+          Write-Output 'P213_SIGNED_TRUSTED_NAYEON_SERVICE_INSTALLER=NOT_IMPLEMENTED'
+          Write-Output 'P213_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3'
+      - name: Preserve actual CSharp, Python, Windows signer and HCR source logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p213-real-Windows-Authenticode-service-admission-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p213-evidence/*.log
+            ${{ runner.temp }}/nayeon-p213-evidence/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
