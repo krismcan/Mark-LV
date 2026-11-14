@@ -22,6 +22,11 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Path 'p219-native-evidence' -Force | Out-Null
+          # Git native source checkouts were historically pinned with core.autocrlf=false.
+          # Re-materialize tracked Git blob bytes inside this disposable CI workspace only.
+          git config --local core.autocrlf false
+          git -c core.autocrlf=false checkout-index --force --all
+          if($LASTEXITCODE -ne 0){throw 'P219 source-safe Git blob materialisation failed'}
           $base='f16f5c2cd5ce6c6f58ace2bad053a7e98f59da1c'
           if($env:RUNNER_OS -ne 'Windows' -or $env:GITHUB_ACTIONS -ne 'true' -or
              $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
@@ -45,6 +50,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Original security source was modified'}
           $before=@{}
           foreach($path in $protected){$before[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+          ('ORIGINAL_P96_WORKTREE_SHA256='+$before[$txn]) | Add-Content 'p219-native-evidence/native-exits.log'
+          ('ORIGINAL_P95_LEDGER_WORKTREE_SHA256='+$before[$ledger]) | Add-Content 'p219-native-evidence/native-exits.log'
           if($before[$txn] -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
              $before[$ledger] -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
              throw 'Original P96 coordinator / P95 ledger SHA-256 mismatch'
