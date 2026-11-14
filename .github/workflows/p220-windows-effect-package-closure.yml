@@ -69,11 +69,18 @@ jobs:
           foreach($path in $protected){
             $before[$path]=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
           }
-          if($before['tests/p96_native_transaction_negative/PendingCustodyTransaction.cs'] -ne
-            'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
-             $before['tests/p95_native_custody_preflight/CustodyLedger.cs'] -ne
-            '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
-            throw 'Frozen original C1 race/ledger SHA-256 changed'
+          # Historical native SHA-256 pins bind exact Git BLOB bytes, not
+          # checkout-specific CRLF/LF transformations. The original files are
+          # separately hashed before/after execution and their tracked Git
+          # diff must stay empty. No assertion is disabled.
+          $gitBlobHash = 'import hashlib,subprocess,sys;print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:"+sys.argv[1]])).hexdigest().upper())'
+          $nativeP96Hash=(& python -B -c $gitBlobHash 'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Trim()
+          $nativeLedgerHash=(& python -B -c $gitBlobHash 'tests/p95_native_custody_preflight/CustodyLedger.cs').Trim()
+          ('ORIGINAL_P96_GIT_BLOB_SHA256='+$nativeP96Hash) | Add-Content 'p220-windows-evidence/native-exits.log'
+          ('ORIGINAL_P95_GIT_BLOB_SHA256='+$nativeLedgerHash) | Add-Content 'p220-windows-evidence/native-exits.log'
+          if($nativeP96Hash -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $nativeLedgerHash -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+            throw 'Frozen historical Git BLOB SHA-256 changed: HOLD'
           }
           $hostSource=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
           if($hostSource -notmatch 'throw new InvalidOperationException' -or
