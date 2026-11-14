@@ -39,10 +39,14 @@ class P213GenuineWindowsSignerReviewTests(unittest.TestCase):
     def test_01_all_nayeon_signer_release_and_code_policy_pins_absent(self):
         self.assertTrue(probe.source_pins_unissued())
 
-    def test_02_actual_windows_os_reference_signature_valid(self):
+    def test_02_actual_windows_os_reference_returns_definitive_native_policy(self):
         a=self.microsoft_result
-        self.assertEqual(a.status,probe.P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED)
+        self.assertIn(a.status,(
+            probe.P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED,
+            probe.P213SignatureStatus.OS_POLICY_REJECTED,
+        ))  # cache-only revocation can reject a real Microsoft-signed file
         self.assertRegex(a.file_sha256,r"^[0-9a-f]{64}$")
+        self.assertNotEqual(a.status,probe.P213SignatureStatus.UNKNOWN)
         self.assertIsNone(a.signer_cert_sha256) # P116 exposes policy status, no signer pin
 
     def test_03_actual_compiled_p210_native_executable_is_unsigned(self):
