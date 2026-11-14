@@ -25,7 +25,15 @@ class P220ActualArchiveClosureTests(unittest.TestCase):
     def write(self, files):
         with zipfile.ZipFile(self.path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
             for name, content in files:
-                bundle.writestr(name, content)
+                if "\\" in name:
+                    # ZipInfo normally normalises Windows backslashes during
+                    # construction. Set the raw ZIP member name *after* that
+                    # step so the negative test exercises real backslash bytes.
+                    member = zipfile.ZipInfo("placeholder")
+                    member.filename = name
+                    bundle.writestr(member, content)
+                else:
+                    bundle.writestr(name, content)
         return inspect_bounded_zip(self.path)
 
     def test_01_actual_original_P132_WinCred_source_is_rejected_as_a_shipped_member(self):
