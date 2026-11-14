@@ -45,6 +45,7 @@ CANDIDATE=[
  "ServiceBoundRequestIdentity.cs",
  "NativeJ2ProtectedReadOnlyPreflight.cs",
  "CandidateCredentialEffectHold.cs",
+ "IsolatedCandidateContracts.cs",
 ]
 ACTUAL_GATES={
  "real_key_input":"NO_GO",
