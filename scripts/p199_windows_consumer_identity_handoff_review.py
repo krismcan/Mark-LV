@@ -117,7 +117,7 @@ try:
     data=base64.b64decode(o["payload"],validate=True)
     if len(data)>MAX_DATA:
         reply("OVERSIZE",nonce,size=len(data));sys.exit(9)
-    reply("OBSERVED_UNTRUSTED_HASH",nonce,hashlib.sha256(data).hexdigest(),len(data))
+    reply("OBSERVED_UNTRUSTED_HASH",nonce,hashlib.sha256(data).hexdigest().upper(),len(data))
 except Exception:
     reply("MALFORMED_FRAME")
     sys.exit(9)
