@@ -212,11 +212,14 @@ def main()->int:
             "approved_installer_or_code_integrity_policy":False,
             "real_key_or_production_admission":False,
         }
-        if (signed.status is not P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED
+        if (signed.status is P213SignatureStatus.UNKNOWN
             or unsigned.status is not P213SignatureStatus.OS_POLICY_REJECTED
             or not signed.stable_stat_and_bytes_observed
             or not unsigned.stable_stat_and_bytes_observed):
-            raise RuntimeError("P213 actual Windows Authenticode read-only mismatch")
+            raise RuntimeError("P213 original Windows WinTrust OS observation unavailable")
+        # Native P116 uses cache-only revocation; even genuinely signed
+        # Microsoft system files may be OS POLICY REJECTED offline. The
+        # exact result above remains original evidence, NEVER a GO.
         for label,file,count in (
           ("p210_python_native_13","test_p210_python_native_synthetic_integration.py",13),
           ("p211_package_refusal_22","test_p211_high_assurance_package_quarantine.py",22),
