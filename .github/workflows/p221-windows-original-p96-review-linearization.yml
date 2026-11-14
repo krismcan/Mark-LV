@@ -92,8 +92,8 @@ jobs:
                                   '#error P221 original P96 review linearizer is NONDEPLOYABLE')){
              if(-not $newCode.Contains($required)){throw ('P221 test-only source flag missing '+$required)}
           }
-          $host=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
-          if($host -notmatch 'throw new InvalidOperationException' -or $host -match 'ServiceBase.Run\s*\('){
+          $hostSource=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
+          if($hostSource -notmatch 'throw new InvalidOperationException' -or $hostSource -match 'ServiceBase.Run\s*\('){
              throw 'Actual native C1 service denial-only hold broken'
           }
           foreach($arch in @('x64','x86')){
