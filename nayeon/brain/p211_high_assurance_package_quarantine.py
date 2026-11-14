@@ -92,7 +92,7 @@ def _source(root: Path, relative: str) -> str | None:
     handles and a machine-enforced image/installer authority.
     """
     try:
-        if type(root) is not Path or not root.is_absolute():
+        if not isinstance(root, Path) or not root.is_absolute():
             return None
         current = root
         if current.is_symlink() or not current.is_dir():
