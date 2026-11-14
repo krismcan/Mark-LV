@@ -1,0 +1,92 @@
+name: P204 Windows Read-Only Exact-Byte Source Set / Untrusted Pin Negative — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p204-readonly-windows-source-set-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p204-source-set:
+    name: P204 Authentic Current Source Ancestry and Native Windows FileId/ADS Read-Only Probe
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Original event/source Git SHA checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Actual native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Original inherited signer fixture test-only dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P204 historical inherited test dependency absent'}
+      - name: Source ownership exact P203 and one dormant candidate plus three audit paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p204-readonly-windows-source-set-20261114'){
+             throw 'P204 authenticated genuine hosted Windows event required'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P204 source SHA not exact authenticated original event'}
+          $parent='2ceac3142147f19707d858fa424b7dba1b02592a'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P204 exact parent mismatch'}
+          $expected=@(
+            '.github/workflows/p204-windows-readonly-source-set.yml'
+            'docs/byok-c1-p204-readonly-source-set-integration-review.md'
+            'nayeon/brain/byok_c1_readonly_source_set_candidate.py'
+            'scripts/p204_windows_readonly_source_set_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P204 existing public Phase10/B/native service/security test source changed'
+          }
+          $candidate=@(git diff --name-only $parent HEAD -- nayeon)
+          if($candidate.Count -ne 1 -or $candidate[0] -ne 'nayeon/brain/byok_c1_readonly_source_set_candidate.py'){
+             throw 'P204 existing product changed; only dormant source-set candidate allowed'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P204 source diff whitespace invalid'}
+          Write-Output 'P204_EXACT_P203_PARENT_ONE_DORMANT_SOURCE_CANDIDATE_THREE_AUDIT_PATHS=VERIFIED'
+      - name: Authenticated P203 original archive and real Windows two-file HANDLE source-set tests
+        shell: pwsh
+        env:
+          P204_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p204-readonly-windows-source-set-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P204 disposable source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P204 event branch advanced; refuse stale native source'
+          }
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p204_windows_readonly_source_set_review
+            if($LASTEXITCODE -ne 0){
+              throw 'P204 physical source-set review failed; preserve genuine Windows raw HOLD'
+            }
+          } finally {Pop-Location}
+          Write-Output 'P204_PHYSICAL_TWO_FILE_HANDLE_OBSERVATION=NOT_SOURCE_ADMISSION'
+          Write-Output 'P204_UNTRUSTED_PIN_REENROLLMENT=DELIBERATE_UNSAFE_NEGATIVE'
+          Write-Output 'P204_CURRENT_PHASE10_PUBLIC_GATE=UNMODIFIED'
+          Write-Output 'P204_NATIVE_WIN_CRED_EFFECT=DENIAL_ONLY'
+          Write-Output 'P204_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3|QUALIFIED_REVIEW_OPEN'
+          Write-Output 'P204_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve raw native Windows log plus HCR including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p204-native-Windows-two-source-handle-and-untrusted-pin-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p204-readonly-source-set/*.log
+            ${{ runner.temp }}/nayeon-p204-readonly-source-set/*.json
+          if-no-files-found: warn
+          retention-days: 14
