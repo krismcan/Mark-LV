@@ -172,12 +172,22 @@ class P211PackageIsolationTests(unittest.TestCase):
         self.assertEqual(receipt.manifest_entries,2)
 
     def test_22_actor_cannot_become_native_security_control_by_import(self):
+        # Inspect executable AST, not quoted detection strings used by
+        # the source scanner (which intentionally mentions ServiceBase.Run).
+        import ast
         source=(ROOT/"nayeon/brain/p211_high_assurance_package_quarantine.py").read_text("utf8")
-        self.assertNotIn("ctypes.WinDLL(",source)
-        self.assertNotIn("CredWriteW(",source)
-        self.assertNotIn("CredDeleteW(",source)
-        self.assertNotIn("ServiceBase.Run(",source)
-        self.assertNotIn("subprocess.run(",source)
+        tree=ast.parse(source)
+        imported={a.name.split(".")[0] for n in ast.walk(tree)
+                  if isinstance(n,ast.Import) for a in n.names}
+        imported.update(n.module.split(".")[0] for n in ast.walk(tree)
+                        if isinstance(n,ast.ImportFrom) and n.module)
+        self.assertFalse(imported.intersection({"ctypes","subprocess",
+                                                 "winreg","win32cred"}))
+        call_names={n.func.attr for n in ast.walk(tree)
+                    if isinstance(n,ast.Call)
+                    and isinstance(n.func,ast.Attribute)}
+        self.assertFalse(call_names.intersection(
+            {"WinDLL","CredWriteW","CredDeleteW","Run","Popen"}))
 
 
 if __name__=="__main__":
