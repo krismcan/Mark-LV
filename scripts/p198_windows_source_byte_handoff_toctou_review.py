@@ -145,8 +145,8 @@ class P198NativeByteCustodyReview(previous.P197NativeContinuityReview):
     def _child_env():
         env=os.environ.copy()
         for key in list(env):
-            if key in ("GH_TOKEN","GITHUB_TOKEN","P198_ARCHIVE_TOKEN") or
-                key.endswith(("_API_KEY","_SECRET")):
+            if (key in ("GH_TOKEN","GITHUB_TOKEN","P198_ARCHIVE_TOKEN") or
+                key.endswith(("_API_KEY","_SECRET"))):
                 env.pop(key,None)
         env["PYTHONDONTWRITEBYTECODE"]="1"
         return env
@@ -298,8 +298,8 @@ def main()->int:
             os.environ.get("P198_ARCHIVE_TOKEN",""))
         env=os.environ.copy()
         for k in list(env):
-            if k in ("GITHUB_TOKEN","GH_TOKEN","P198_ARCHIVE_TOKEN") or
-                k.endswith(("_SECRET","_API_KEY")):
+            if (k in ("GITHUB_TOKEN","GH_TOKEN","P198_ARCHIVE_TOKEN") or
+                k.endswith(("_SECRET","_API_KEY"))):
                 env.pop(k,None)
         env["PYTHONDONTWRITEBYTECODE"]="1"
         log=out/"p198_native_Windows_admission_consumer_50.log"
