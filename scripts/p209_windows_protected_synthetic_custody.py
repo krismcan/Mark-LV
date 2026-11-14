@@ -63,7 +63,7 @@ def p209_native(out:Path):
         raise RuntimeError("P209 native original source inclusion invalid")
     code=(candidate/"P209SyntheticDurableCustody.cs").read_text("utf8")
     if ("#if C1_SYNTHETIC_TEST" not in code or
-        any(x in code for x in ("CredWriteW(","CredDeleteW(","ServiceBase.Run(","DllImport(")))):
+        any(x in code for x in ("CredWriteW(","CredDeleteW(","ServiceBase.Run(","DllImport("))):
         raise RuntimeError("P209 real credential effect introduced: HOLD")
     exe=out/"p209_original_native_Dpapi.exe"
     args=[str(csc),"/nologo","/target:exe","/platform:x64",
