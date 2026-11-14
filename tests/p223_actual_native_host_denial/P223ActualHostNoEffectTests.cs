@@ -222,8 +222,8 @@ internal static class P223ActualHostNoEffectTests
                         "unexpected credential bytes or arbitrary callback");
                 }
             }
-            Assert(!CandidateCredentialEffectHold.NativeMutationAdmissionPending() == false,
-                "original hold must remain true");
+            Assert(CandidateCredentialEffectHold.NativeMutationAdmissionPending(),
+                "original native mutation admission hold must remain true");
         });
         Console.WriteLine("P223_ACTUAL_NATIVE_CUSTODYSERVICE_DENIAL_TESTS_PASSED="+passed);
         Console.WriteLine("P223_ACTUAL_NATIVE_CUSTODYSERVICE_DENIAL_TESTS_FAILED="+failed);
