@@ -190,10 +190,10 @@ def actual_tracked_python_effect_inventory()->dict:
     """
     p=subprocess.run(["git","ls-files","-z","--","nayeon","core"],cwd=ROOT,
         stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=45,check=False)
-    if p.returncode!=0 or p.stderr or not p.stdout.endswith(b"\\x00"):
+    if p.returncode!=0 or p.stderr or not p.stdout.endswith(b"\x00"):
         raise RuntimeError("P216 exact tracked Python source inventory unavailable")
     names=tuple(
-        name for name in p.stdout.decode("utf8").strip("\\x00").split("\\x00")
+        name for name in p.stdout.decode("utf8").strip("\x00").split("\x00")
         if name.endswith(".py")
     )
     review=review_proposed_service_store(ROOT,names)
