@@ -1,108 +1,124 @@
-# P213 — Actual Windows Signed-Service and Installer Admission: Read-Only Proof
+# P213 — Genuine Windows WinVerifyTrust Signed Service Admission (Read-only)
 
-**14 November 2026 · OM v2.1 · exact P212 parent
-`e5d8f5f92a21d7314bf7ef6a7e9b2f9a95bc658f`.**
+**14 November 2026 | OM v2.1 | exact P212 parent
+`e5d8f5f92a21d7314bf7ef6a7e9b2f9a95bc658f`**
 
-**Classification:** Engineering read-only Windows Authenticode/source observation
-candidate. NOT a signed service, protected installed image, actual UI consent
-or code-integrity policy admission. **R0–R4 real-key NO-GO, P0–P5
-production HOLD, G0–G6 OPEN, seven independent GOV/SEC/REL decisions OPEN,
-0/3 full accepted Windows product regressions.**
+**Classification: ISOLATED engineering/source observation, not trusted
+Windows service, consent UI, real-key admission or production release.**
+R0–R4 real-key **NO-GO**; P0–P5 production **HOLD**; G0–G6 **OPEN**;
+seven GOV/SEC/REL independent decisions **OPEN**; full accepted
+unfiltered Windows product regressions **0/3**.
 
-## What is materially new compared with P212
+## Why the first Windows observation attempts failed
 
-P212 genuinely refused a high-assurance build through an isolated test
-pipeline. P213 probes the **actual Windows Authenticode OS implementation**,
-not a simulated signer. Its `p213_readonly_windows_signer_observer.py`
-runs built-in `Get-AuthenticodeSignature -LiteralPath` inside a known
-Windows PowerShell system executable with one separately passed path,
-no shell interpolation or profile loading, a restricted environment and
-bounded timeout. It re-observes ordinary file metadata and SHA-256
-before/after the signature call. These are **observations**, not
-TOCTOU-resistant loaded-image binding or Windows Code Integrity evidence.
+The original P213 candidate attempted `Get-AuthenticodeSignature`
+inside a narrowly sanitised Windows PowerShell environment.
+Actual hosted Windows runs **43608172462** and **43608628638**
+returned a real OS probe error: the `Microsoft.PowerShell.Security`
+module could not be loaded. The second run preserved the exact bounded
+stderr excerpt. The first two runs FAILED; they were not declared
+passing, and no frozen/native source test was weakened.
 
-Genuine hosted Windows compares:
-- the **real Microsoft-signed Windows PowerShell system binary** (the
-  *reference*: valid OS-issued Authenticode status, SHA and public signer
-  certificate thumbprint) with
-- the **real native C# P210 C1 test-only executable** rebuilt from original
-  historical/native sources (unsigned Authenticode status, SHA, no signer).
+Rather than relaxing execution security, installing modules, bypassing
+policy or suppressing the failed evidence, the final P213 source uses the
+**pre-existing P116 native Windows WinVerifyTrust implementation**,
+already written and historically tested in the real C1 programme.
+It directly invokes the Windows `wintrust.dll` OS with a read-only
+opened file HANDLE, no UI, `WTD_CACHE_ONLY_URL_RETRIEVAL`
+and explicit provider-state cleanup. This remains a **file-policy
+inspection only**. It does not attest a running signed process image,
+independent authenticated publisher trust root or human approval.
 
-Even a valid signature **does not prove it belongs to an independently
-enrolled Nayeon publisher** or an installer/consent broker; this reference
-must NEVER be adopted as a future authorised Nayeon trust root.
-The named release-time pins for service, local consent UI, installer
-and Windows Code Integrity policy are all deliberately blank. No
-runtime values, flags or fake signer claims can set authority.
-The observation receipt is immutable, with all release/service/
-real-key/Code Integrity authority flags permanently false.
+## Actual P213 native execution path
 
-This is grounded in Microsoft's documented distinction between file
-Authenticode signature inspection (which can use catalog signatures)
-and App Control for Business policy enforcement of user-mode executables,
-DLLs and scripts. Signature success is not a proof of an exact Windows
-process loaded-image section, independent human presence, protected
-installer ACL, or protected credential effect owner. A future signed
-native service requires all those controls plus a qualified reviewer.
+The `scripts/p213_windows_signed_service_observation.py` evidence
+driver compiles an unprivileged test-only `P213NativeWintrustObservation.cs`
+entrypoint under `C1_REVIEW_ISOLATED_ASSEMBLY`, using the exact
+original P116 native Windows trust source and its original P113/P114/P115
+OS peer dependencies, plus the unchanged P49 original strictly
+read-only subset and reviewed native C1 candidate dependencies.
+The original P116 source is not edited.
 
-References:
-- Microsoft Get-AuthenticodeSignature:
-  https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature
-- Microsoft App Control for Business file/policy rules:
-  https://learn.microsoft.com/en-us/windows/security/application-security/application-control/windows-defender-application-control/feature-availability
-- Microsoft App Control installer caveats:
-  https://learn.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/configure-authorized-apps-deployed-with-a-managed-installer
+The resulting Windows C# executable accepts only one **absolute
+nonsecret local file path**, calls the original P116 WinVerifyTrust
+read-only file inspector, prints bounded native policy state and
+explicitly refuses publisher, trusted process image, human consent,
+real-key and release authority. The P213 Python observer launches
+this actual native executable as a separate OS process, verifies exact
+fixed output, and reads unprivileged file SHA-256 and filesystem metadata
+before/after the native inspection. It observes, on genuine hosted
+Windows:
 
-## Trusted architecture candidate: authority boundaries required
+- the existing Microsoft-signed Windows system PowerShell executable
+  as a **reference only**. A native policy acceptance is an OS file
+  signature observation, not approval to use Microsoft's certificate
+  as Nayeon's release identity;
+- the actual unsigned P210 test-only C1 native executable compiled
+  from current source as the **negative**.
 
-| Layer | Actual required verified authority | Current P213 result |
-| --- | --- | --- |
-| Release signing | approved independent publisher/certificate, revocation and rotation, exact service/UI/installer binary pins | NONE: Nayeon pins blank |
-| Protected install | signed staged MSI/installer, machine-owned protected directory, no user-writable DLLs or symlink/junction substitution | NONE |
-| Service admission | installed signed service image, dedicated OS principal, verified loaded image, OS-protected startup and upgrade | NO deployable service Main; denial only |
-| Broker consent | signed installed interactive broker, exact user-presence mechanism and operation challenge, authenticated OS peer and IPC | NONE |
-| Credential effect | single trusted service-owned WinCred/store effect, P132 Python legacy route genuinely eliminated or isolated by OS policy | NO; P132 still source-reachable |
-| Durable state | independently protected antirollback/counter/witness, same-owner effect lock, restart reconciliation | P209 synthetic user DPAPI only |
-| Machine policy | actual WDAC/SAC/App Control UMCI enforced machine-specific signed load admission | NO policy owner GO |
-| Independent reviews | GOV-01/02, SEC-03/04, REL-05/06/07 positive source-bound decisions, G0–G6 | SEVEN OPEN |
+No production signing, installer, credential, service Main, Windows
+credential storage or provider API access occurs. Native file-policy
+rejection can also indicate unavailable revocation cache or other
+non-authenticating conditions; it is NOT equivalent to an independent
+publisher identity finding. The P213 observer reports no signer-certificate
+thumbprint or enrolled Nayeon publisher, even if Windows accepts a
+Microsoft binary. All seven new source-level release identity pins
+remain empty and the Code Integrity machine policy owner GO remains false.
 
-Do not confuse a Microsoft-signed `powershell.exe` with an authorised
-Nayeon `CustodyService.exe`; nor the compiled P210 unsigned C# test
-executable with a deployable Windows Service. Windows policy and signer
-decisions require a real human authority and actual authorised machine.
-The P132 reduced user-scope model has *separate* U1–U6 acceptance; its
-direct Python WinCred capability cannot be silently incorporated into
-this high-assurance model.
+## Why WinTrust status cannot unlock BYOK C1
 
-## Genuine Windows evidence and repository custody
+P116 native `NativePolicyAcceptedButUnpinned` means only
+that OS signature policy accepted the inspected **file** in this
+environment. It is not a binding between the inspected file HANDLE
+and a peer's **loaded process image section**. Nor is it an approved
+code-signing chain, protected Windows installer, protected service image,
+actual consent broker, trusted user presence or monotonic no-retry
+credential effect record.
 
-P213 adds exactly five additive paths:
-1. `nayeon/brain/p213_readonly_windows_signer_observer.py`;
-2. `tests/test_p213_real_windows_authenticode_service_admission.py`
-   (20 actual signed OS vs unsigned native candidate tests);
-3. `scripts/p213_windows_signed_service_observation.py`;
-4. this document;
-5. `.github/workflows/p213-windows-authenticode-service-admission.yml`.
+The release architecture needs independently approved immutable
+service/main/UI/installer certificate and binary pins, a signed protected
+installation with no same-user writeable/side-loaded executable
+dependencies, machine Code Integrity/WDAC/SAC enforcement, authenticated
+service/client OS identity and transaction-bound consent, and one
+service-owned native effect dispatcher with independent antirollback
+custody. In particular, the real source-mode P132/P133
+`WindowsCredentialBackend` route to Windows CredWriteW/DeleteW is
+**still reachable** and not governed by a native C1 denial-only
+service. A Python preflight cannot stop same-user independent
+Credential Manager calls.
 
-Authentic GitHub-hosted `windows-2025` push CI requires exact
-`GITHUB_SHA`, P212 ancestor, original source pin readback, exactly five
-additive paths and unchanged original source identity before/after.
-It compiles actual historical P49/current C1 native sources into
-test-only executable, actually queries Windows Authenticode twice,
-persists public status/file hashes to H/C/R, runs the same 199 selected
-P132–P212 security tests plus the new **20 P213 cases**,
-and archives original native compiler OS exits and log SHA-256.
+The qualified security and policy owner must first decide between
+independently reviewing the reduced user-scope P132 U1–U6 model
+and a high-assurance native C1 R0–R4 service/store architecture.
+Do not merge their threat models or fabricate signer, reviewer or
+Windows policy owner acceptance.
 
-A **219/219 selected PASS** means only focused source/native signing
-observation. It is **not** any of the three complete unfiltered Windows
-product regressions (0/3). The old P135/P175/P178/P179/PERF-P187-01
-issues remain unwaived and historical P96 old race remains frozen.
-Kristian's original worktree remains untouched. No signing key,
-real credential, native effect, installer build, service install,
-WDAC/SAC setting or provider C2 validation is used.
+## Test scope and source custody
 
-**Next P214:** source-bound Windows signed service/consent IPC
-and installer threat-model review decision, then implement an actual
-non-deployable native integration candidate only after independent
-architecture choice; do not interpret another deny-only proof as real
-service authorisation.
+P213 has exactly **six additive files** (the native entrypoint is the
+sixth), while original P49/P96/P132/P133/P140, the P116 WinTrust
+implementation, existing native service and prior P208–P212 remain
+unchanged. Authentic `windows-2025` push CI verifies exact SHA/event,
+P212 parent and six paths, historical P49/P205 pins, original WinTrust
+source Git objects, and identical before/after source custody.
+
+The selected inventory is previous **199** original P132–P212 Windows
+security tests plus new **20** P213 cases, expected **219/219 selected**
+only if the actual hosted native OS run and real signer observations
+succeed. These are not full-product Windows regressions (still 0/3).
+Retain authentic native compiler/OS exits, raw log SHA-256 and H/C/R
+on success or failure; never hide the first failed PowerShell probe runs.
+
+No real credentials, service installation, modified Windows Code Integrity
+policy, protected secrets, provider validation, merge/tag/release or
+Google Drive MASTER production release record update is authorised.
+
+## Microsoft references
+
+- WinVerifyTrust API: https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-winverifytrust
+- WINTRUST_DATA: https://learn.microsoft.com/en-us/windows/win32/api/wintrust/ns-wintrust-wintrust_data
+- App Control for Business code policy: https://learn.microsoft.com/en-us/windows/security/application-security/application-control/windows-defender-application-control/feature-availability
+- Managed Installer limitations: https://learn.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/configure-authorized-apps-deployed-with-a-managed-installer
+
+**P213 can close only as a real native WinTrust review observation. No
+real-key or production GO can be created by a passing test.**
