@@ -1,0 +1,123 @@
+name: P219 Actual Windows Original P96 Race Negative and G0 R3 HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p219-qualified-owner-response-and-original-p96-native-proof-20261114
+permissions:
+  contents: read
+jobs:
+  p96-original-native-negative:
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Original P96 native Windows x64 and x86 negative with full evidence HOLD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path 'p219-native-evidence' -Force | Out-Null
+          # Git native source checkouts were historically pinned with core.autocrlf=false.
+          # Re-materialize tracked Git blob bytes inside this disposable CI workspace only.
+          git config --local core.autocrlf false
+          git -c core.autocrlf=false checkout-index --force --all
+          if($LASTEXITCODE -ne 0){throw 'P219 source-safe Git blob materialisation failed'}
+          $base='f16f5c2cd5ce6c6f58ace2bad053a7e98f59da1c'
+          if($env:RUNNER_OS -ne 'Windows' -or $env:GITHUB_ACTIONS -ne 'true' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p219-qualified-owner-response-and-original-p96-native-proof-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P219 exact source/Windows provenance missing: HOLD'}
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P218 parent absent: HOLD'}
+          $expected=@('.github/workflows/p219-windows-original-p96-race-and-owner-hold.yml','docs/byok-c1-p219-original-p96-race-and-independent-owner-review.md') | Sort-Object
+          $changed=@(git diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){throw 'Only 2 additive paths allowed'}
+          $txn='tests/p96_native_transaction_negative/PendingCustodyTransaction.cs'
+          $ledger='tests/p95_native_custody_preflight/CustodyLedger.cs'
+          $driver='tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs'
+          $protected=@($txn,$ledger,$driver,'native_c1_candidate/CustodyService.cs',
+             'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs',
+             'native_c1_candidate/CandidateCredentialEffectHold.cs',
+             'nayeon/secrets/windows_credential.py','nayeon/brain/local_byok_user_scope.py',
+             'nayeon/desktop_alpha/local_byok_window.py',
+             'nayeon/desktop_alpha/local_byok_launch_bridge.py')
+          git diff --quiet $base HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Original security source was modified'}
+          $before=@{}
+          foreach($path in $protected){$before[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+          ('ORIGINAL_P96_WORKTREE_SHA256='+$before[$txn]) | Add-Content 'p219-native-evidence/native-exits.log'
+          ('ORIGINAL_P95_LEDGER_WORKTREE_SHA256='+$before[$ledger]) | Add-Content 'p219-native-evidence/native-exits.log'
+          if($before[$txn] -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $before[$ledger] -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+             throw 'Original P96 coordinator / P95 ledger SHA-256 mismatch'
+          }
+          $fake=Get-Content -Raw -LiteralPath $driver
+          if($fake -match 'DllImport|CredRead|CredWrite|CredDelete|WindowsIdentity|RegistryKey|System.Runtime.InteropServices'){
+             throw 'P96 original harness not fake-only'
+          }
+          $hostSource=Get-Content -Raw 'native_c1_candidate/CustodyService.cs'
+          if($hostSource -notmatch 'throw new InvalidOperationException' -or $hostSource -match 'ServiceBase.Run\s*\('){
+             throw 'Original native service denial no longer intact'
+          }
+          foreach($arch in @('x64','x86')){
+             $csc=if($arch -eq 'x64'){'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'}else{'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'}
+             if(-not (Test-Path $csc)){throw ('Native compiler unavailable '+$arch)}
+             $exe=Join-Path 'p219-native-evidence' ('original-P96-'+$arch+'.exe')
+             $compileLog=Join-Path 'p219-native-evidence' ('p96-'+$arch+'-compiler.log')
+             $runLog=Join-Path 'p219-native-evidence' ('p96-'+$arch+'-original-negative.log')
+             $ledgerNative=(Resolve-Path -LiteralPath $ledger).Path
+             $txnNative=(Resolve-Path -LiteralPath $txn).Path
+             $driverNative=(Resolve-Path -LiteralPath $driver).Path
+             $exeNative=Join-Path (Get-Location).Path $exe
+             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$exeNative) $ledgerNative $txnNative $driverNative *> $compileLog
+             $compileExit=$LASTEXITCODE
+             ('P219_'+$arch+'_COMPILER_EXIT='+$compileExit) | Add-Content 'p219-native-evidence/native-exits.log'
+             if($compileExit -ne 0){throw ('Original compiler failed '+$arch)}
+             & $exe *> $runLog
+             $nativeExit=$LASTEXITCODE
+             ('P219_'+$arch+'_NATIVE_PROCESS_EXIT='+$nativeExit) | Add-Content 'p219-native-evidence/native-exits.log'
+             if($nativeExit -ne 0){throw ('Original P96 native process failed '+$arch)}
+             $result=Get-Content -Raw -LiteralPath $runLog
+             foreach($marker in @('P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15',
+               'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_FAILED=0',
+               'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY',
+               'P96_REAL_NATIVE_EFFECTS=NONE','P96_C1_PRODUCTION_RELEASE=HOLD')){
+                if(-not $result.Contains($marker)){throw ('Missing original negative marker '+$arch+': '+$marker)}
+             }
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          & python -B -m unittest -v tests.test_p216_service_store_decision_inventory *> 'p219-native-evidence/original-p216-focused.log'
+          $pythonExit=$LASTEXITCODE
+          ('P219_ORIGINAL_P216_PYTHON_PROCESS_EXIT='+$pythonExit) | Add-Content 'p219-native-evidence/native-exits.log'
+          if($pythonExit -ne 0){throw 'Original P216 source negative test failed'}
+          $log=Get-Content -Raw -LiteralPath 'p219-native-evidence/original-p216-focused.log'
+          if($log -notmatch 'Ran 18 tests' -or $log -notmatch '(?m)^OK\r?$'){throw 'Original 18 P216 cases not established'}
+          foreach($path in $protected){
+             $sha=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+             if($before[$path] -ne $sha){throw ('Historical protected source changed '+$path)}
+             ($sha+'  '+$path) | Add-Content 'p219-native-evidence/protected-source-sha256.txt'
+          }
+          ('HEAD='+$env:GITHUB_SHA) | Add-Content 'p219-native-evidence/native-exits.log'
+          ('BASELINE='+$base) | Add-Content 'p219-native-evidence/native-exits.log'
+          'INDEPENDENT_G0_R3_WINDOWS_OWNER_APPROVAL=NOT_RECEIVED' | Add-Content 'p219-native-evidence/native-exits.log'
+          'P96_ORIGINAL_EFFECT_RACE=CONFIRMED_NOT_FIXED|REAL_KEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3' | Add-Content 'p219-native-evidence/native-exits.log'
+          foreach($file in @(Get-ChildItem -LiteralPath 'p219-native-evidence' -File | Where-Object {$_.Extension -ne '.exe'})){
+             $sha=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+             ($sha+'  '+$file.Name) | Add-Content 'p219-native-evidence/evidence-log-sha256.txt'
+          }
+          Write-Output 'P219 WINDOWS native P96 original race reproduced in fake only x64/x86; C1 real-key NO-GO, production HOLD.'
+      - name: Retain native failure and success evidence unchanged
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p219-Windows-original-P96-negative-and-external-G0R3-HOLD
+          path: |
+            p219-native-evidence/*.log
+            p219-native-evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 14
