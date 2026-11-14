@@ -136,7 +136,7 @@ def _powershell_probe(path:Path)->tuple[P213SignatureStatus,str | None]:
         return (P213SignatureStatus.UNKNOWN,None)
     permitted=frozenset({
         "SYSTEMROOT","WINDIR","PATH","TEMP","TMP","USERPROFILE",
-        "APPDATA","LOCALAPPDATA",
+        "APPDATA","LOCALAPPDATA","PSMODULEPATH","PROGRAMFILES",
     })
     env={k:v for k,v in os.environ.items()
          if k.upper() in permitted and type(v) is str}
@@ -149,15 +149,26 @@ def _powershell_probe(path:Path)->tuple[P213SignatureStatus,str | None]:
             stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,timeout=20,check=False)
         if p.returncode!=0 or p.stderr or len(p.stdout)>512:
+            # Only on a disposable hosted Windows test runner; diagnostics
+            # are public output shape, never credential or environment dump.
+            if os.environ.get("GITHUB_ACTIONS")=="true":
+                print("P213_READONLY_OS_DIAG exit="+str(p.returncode)+
+                      " stdout_sample="+repr(p.stdout[:160])+
+                      " stderr_sample="+repr(p.stderr[:240]),flush=True)
             return (P213SignatureStatus.UNKNOWN,None)
         output=p.stdout.decode("ascii","strict").strip()
         if output.count("|")!=1:
+            if os.environ.get("GITHUB_ACTIONS")=="true":
+                print("P213_READONLY_FORMAT_DIAG "+repr(output[:160]),flush=True)
             return (P213SignatureStatus.UNKNOWN,None)
         status,thumb=output.split("|")
         if status=="Valid" and _64HEX.fullmatch(thumb.lower()) is not None:
             return (P213SignatureStatus.VALID,thumb.lower())
         if status=="NotSigned" and thumb=="":
             return (P213SignatureStatus.NOT_SIGNED,None)
+        if os.environ.get("GITHUB_ACTIONS")=="true":
+            print("P213_READONLY_STATUS_DIAG status="+repr(status)+
+                  " thumb_length="+str(len(thumb)),flush=True)
     except (OSError,UnicodeError,subprocess.SubprocessError,ValueError):
         return (P213SignatureStatus.UNKNOWN,None)
     return (P213SignatureStatus.UNKNOWN,None)
