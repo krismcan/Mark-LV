@@ -76,9 +76,39 @@ jobs:
           foreach($path in $protected){
              $before[$path]=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
           }
-          if($before[$p96] -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
-             $before[$ledger] -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
-             throw 'Exact source identity of historical C# coordinator/ledger mismatch: HOLD'
+          # Exact original bytes come from HEAD's immutable Git blob objects,
+          # not the checkout, whose CRLF conversion depends on Windows runner.
+          # Python writes original raw blobs ONLY to isolated CI evidence paths.
+          $rawCode=@'
+import pathlib, subprocess, sys
+dest=pathlib.Path("p221-native-evidence/raw-p96-git-blob")
+dest.mkdir(parents=True,exist_ok=True)
+sources=[
+  "tests/p95_native_custody_preflight/CustodyLedger.cs",
+  "tests/p96_native_transaction_negative/PendingCustodyTransaction.cs",
+  "tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs",
+]
+for source in sources:
+    binary=subprocess.check_output(["git","show","HEAD:"+source],stderr=subprocess.PIPE)
+    (dest / pathlib.Path(source).name).write_bytes(binary)
+print("P221_ORIGINAL_GIT_BLOBS_EXTRACTED=3")
+'@
+          & python -B -c $rawCode *> 'p221-native-evidence/original-git-blob-materialisation.log'
+          $rawExit=$LASTEXITCODE
+          ('P221_GIT_BLOB_MATERIALISATION_EXIT='+$rawExit) | Add-Content 'p221-native-evidence/native-exits.log'
+          if($rawExit -ne 0){throw 'Raw historical Git object materialisation failed: HOLD'}
+          $exactLedger=Join-Path (Get-Location).Path 'p221-native-evidence/raw-p96-git-blob/CustodyLedger.cs'
+          $exactP96=Join-Path (Get-Location).Path 'p221-native-evidence/raw-p96-git-blob/PendingCustodyTransaction.cs'
+          $exactOldFixture=Join-Path (Get-Location).Path 'p221-native-evidence/raw-p96-git-blob/NativeTransactionRaceProof.cs'
+          $rawP96Hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $exactP96).Hash
+          $rawLedgerHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $exactLedger).Hash
+          ('P221_RAW_GIT_P96_SHA256='+$rawP96Hash) | Add-Content 'p221-native-evidence/native-exits.log'
+          ('P221_RAW_GIT_LEDGER_SHA256='+$rawLedgerHash) | Add-Content 'p221-native-evidence/native-exits.log'
+          ('P221_CHECKOUT_P96_SHA256='+$before[$p96]) | Add-Content 'p221-native-evidence/native-exits.log'
+          ('P221_CHECKOUT_LEDGER_SHA256='+$before[$ledger]) | Add-Content 'p221-native-evidence/native-exits.log'
+          if($rawP96Hash -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $rawLedgerHash -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+             throw 'Original P96/P95 Git blob SHA-256 does not match frozen source pins: HOLD'
           }
           $oldCode=Get-Content -Raw -LiteralPath $oldFixture
           $newCode=Get-Content -Raw -LiteralPath $newActor
@@ -99,9 +129,9 @@ jobs:
           foreach($arch in @('x64','x86')){
              $csc=if($arch -eq 'x64'){'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'}else{'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'}
              if(-not (Test-Path -LiteralPath $csc)){throw ('Native Windows CSharp compiler missing '+$arch)}
-             $ledgerPath=(Resolve-Path $ledger).Path
-             $p96Path=(Resolve-Path $p96).Path
-             $originalPath=(Resolve-Path $oldFixture).Path
+             $ledgerPath=$exactLedger
+             $p96Path=$exactP96
+             $originalPath=$exactOldFixture
              $actorPath=(Resolve-Path $newActor).Path
              $fixturePath=(Resolve-Path $newFixture).Path
              $originalExe=Join-Path (Get-Location).Path ('p221-native-evidence/original-p96-'+$arch+'.exe')
@@ -172,8 +202,11 @@ jobs:
           }
           # The ONLY ignored status path here is this job's own ephemeral
           # evidence output; all historic source hashes are already verified.
-          git diff --quiet HEAD --
-          if($LASTEXITCODE -ne 0){throw 'P221 tracked source changed during Windows tests'}
+          # The exact HEAD and per-file before/after hashes prove source
+          # custody without conflating Windows checkout EOL materialisation.
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P221 original Git HEAD changed during native tests'
+          }
           $untracked=@(git ls-files --others --exclude-standard)
           if($LASTEXITCODE -ne 0){throw 'P221 cannot attest untracked source inventory'}
           $unexpected=@($untracked | Where-Object { -not $_.StartsWith('p221-native-evidence/', [StringComparison]::Ordinal) })
