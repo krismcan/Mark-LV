@@ -1,6 +1,6 @@
 """P213 actual read-only Windows Authenticode / unsigned candidate tests.
 
-The OS Microsoft-signed PowerShell host serves ONLY as a calibration reference:
+The OS Microsoft-signed PowerShell file is only a calibration reference:
 a valid Microsoft signature does not authorise Nayeon service/UI/installer.
 The P210 C1 test executable is genuinely unsigned and not installed.
 """
@@ -41,13 +41,13 @@ class P213GenuineWindowsSignerReviewTests(unittest.TestCase):
 
     def test_02_actual_windows_os_reference_signature_valid(self):
         a=self.microsoft_result
-        self.assertEqual(a.status,probe.P213SignatureStatus.VALID)
+        self.assertEqual(a.status,probe.P213SignatureStatus.OS_POLICY_ACCEPTED_UNPINNED)
         self.assertRegex(a.file_sha256,r"^[0-9a-f]{64}$")
-        self.assertRegex(a.signer_cert_sha256,r"^[0-9a-f]{64}$")
+        self.assertIsNone(a.signer_cert_sha256) # P116 exposes policy status, no signer pin
 
     def test_03_actual_compiled_p210_native_executable_is_unsigned(self):
         a=self.unsigned_result
-        self.assertEqual(a.status,probe.P213SignatureStatus.NOT_SIGNED)
+        self.assertEqual(a.status,probe.P213SignatureStatus.OS_POLICY_REJECTED)
         self.assertIsNone(a.signer_cert_sha256)
 
     def test_04_Microsoft_valid_signature_does_not_enroll_nayeon(self):
