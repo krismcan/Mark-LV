@@ -171,11 +171,11 @@ class P200NativeExecutableContentBinding(previous.P199NativeConsumerProvenanceRe
         self.script=self.root/"p200-disposable-exec-content.py"
         self.script.write_bytes(APPROVED_CODE.encode("utf8"))
         self.claim=payload(APPROVED_CODE,self.image,self.sealed,self.script)
-        self.record=signed(self.claim,self.lab_signer)
+        self.p200_lab_content_record=signed(self.claim,self.lab_signer)
 
     def verify_lab(self,blob=None,public=None,minimum_epoch=11):
         trusted=self.lab_public if public is None else public
-        return verify_manifest(self.record if blob is None else blob,
+        return verify_manifest(self.p200_lab_content_record if blob is None else blob,
                                trusted,self.claim,minimum_epoch)
 
     def guard_path(self):
