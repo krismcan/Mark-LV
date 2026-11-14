@@ -1,0 +1,112 @@
+name: P218 Actual Windows Read-Only Service Owner and Code Integrity Preflight HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p218-external-owner-decision-intake-and-readonly-preflight-20261114
+permissions:
+  contents: read
+jobs:
+  genuine-windows-nonprivileged-observation:
+    name: Source-pinned P218 OS read-only policy/service observation plus original P216 security regressions
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Original Windows Python interpreter
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capture genuine OS exit, source custody, isolated Windows preflight and HOLD receipts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path 'p218-review-evidence' -Force | Out-Null
+          $baseline = 'f9da67040141f242b2132ad545a13f85e0bf3cb7'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p218-external-owner-decision-intake-and-readonly-preflight-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P218 OS runner and exact source authority not verified: HOLD'
+          }
+          git merge-base --is-ancestor $baseline HEAD
+          if($LASTEXITCODE -ne 0){throw 'P217 is not source ancestor: HOLD'}
+          $actual = @((git diff --name-only $baseline HEAD | Sort-Object))
+          $expected = @(
+            '.github/workflows/p218-windows-store-owner-readonly.yml'
+            'docs/byok-c1-p218-qualified-owner-review-and-readonly-platform-evidence.md'
+            'scripts/p218_windows_readonly_store_owner_preflight.ps1'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P218 touched files outside approved additive source scope: HOLD'
+          }
+          $protected = @(
+            'nayeon/secrets/windows_credential.py',
+            'nayeon/brain/local_byok_user_scope.py',
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py',
+            'nayeon/desktop_alpha/frozen_signed_byok_companion.py',
+            'native_c1_candidate/CustodyService.cs',
+            'nayeon/brain/p216_service_store_decision.py',
+            'tests/test_p216_service_store_decision_inventory.py',
+            'docs/byok-c1-p216-service-owned-store-r3-external-decision.md',
+            'docs/byok-c1-p217-independent-windows-store-ci-decision.md'
+          )
+          git diff --quiet $baseline HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Protected historical source changed: HOLD'}
+          $before = @{}
+          foreach($path in $protected){
+            $before[$path] = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+          }
+          & pwsh -NoProfile -NonInteractive -File 'scripts/p218_windows_readonly_store_owner_preflight.ps1' > 'p218-review-evidence/windows-readonly-platform.json'
+          $nativeExit = $LASTEXITCODE
+          "P218_WINDOWS_NATIVE_PREFLIGHT_PROCESS_EXIT=$nativeExit" | Set-Content 'p218-review-evidence/native-exits.log'
+          if($nativeExit -ne 0){throw 'Original native read-only Windows command failed: HOLD'}
+          $report = Get-Content -Raw -LiteralPath 'p218-review-evidence/windows-readonly-platform.json' | ConvertFrom-Json -ErrorAction Stop
+          if($report.schema -ne 'P218-WindowsReadOnlyObservation-v1' -or
+             $report.runner_scope -ne 'GITHUB_HOSTED_RUNNER' -or
+             $report.observation_only -ne $true -or
+             $report.status -ne 'G0_R3_HOLD' -or
+             $report.independent_G0_R3_decision_received -ne $false -or
+             $report.service_user_dpapi_verified -ne $false -or
+             $report.credential_effect_executed -ne $false -or
+             $report.real_key_authorised -ne $false -or
+             $report.production_release_authorised -ne $false){
+            throw 'P218 OS report falsely claims independent trust or service credential admission: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          & python -B -m unittest -v tests.test_p216_service_store_decision_inventory *> 'p218-review-evidence/p216-original-security-tests.log'
+          $testExit = $LASTEXITCODE
+          "P218_ORIGINAL_P216_FOCUSED_SECURITY_TEST_EXIT=$testExit" | Add-Content 'p218-review-evidence/native-exits.log'
+          if($testExit -ne 0){throw 'Original source-bound P216 tests failed on Windows: HOLD'}
+          $testText=Get-Content -Raw -LiteralPath 'p218-review-evidence/p216-original-security-tests.log'
+          if($testText -notmatch 'Ran 18 tests' -or $testText -notmatch '(?m)^OK\r?$'){
+            throw 'P218 cannot prove 18 original focused passes: HOLD'
+          }
+          foreach($path in $protected){
+            $after = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+            if($before[$path] -ne $after){throw "P218 source custody changed: $path"}
+            "$after  $path" | Add-Content 'p218-review-evidence/source-sha256.txt'
+          }
+          "P218_HEAD=$env:GITHUB_SHA" | Add-Content 'p218-review-evidence/native-exits.log'
+          "P218_PARENT=$baseline" | Add-Content 'p218-review-evidence/native-exits.log'
+          "P218_CI_POLICY_RESULTS_ARE_NOT_KRISTIAN_APPROVAL=true" | Add-Content 'p218-review-evidence/native-exits.log'
+          "P218_G0_R3_INDEPENDENT_SIGNOFF=NOT_RECEIVED" | Add-Content 'p218-review-evidence/native-exits.log'
+          "P218_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_PRODUCT_WINDOWS=0/3" | Add-Content 'p218-review-evidence/native-exits.log'
+          foreach($path in @('windows-readonly-platform.json','p216-original-security-tests.log')){
+            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath "p218-review-evidence/$path").Hash
+            "$sha  $path" | Add-Content 'p218-review-evidence/evidence-sha256.txt'
+          }
+          Write-Output 'P218 actual Windows read-only OS preflight, original 18 tests and protected source hashes PASS; independent external GO NOT RECEIVED; production HOLD.'
+      - name: Retain original OS logs and SHA receipts even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p218-real-Windows-readonly-service-ci-G0-R3-HOLD
+          path: p218-review-evidence/
+          if-no-files-found: warn
+          retention-days: 14
