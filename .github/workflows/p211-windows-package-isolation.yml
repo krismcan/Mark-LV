@@ -1,0 +1,55 @@
+name: P211 Real Windows High-Assurance Package Isolation HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p211-high-assurance-package-isolation-20261114
+permissions:
+  contents: read
+jobs:
+  source-package-quarantine:
+    name: P211 Original Python/direct WinCred and Native C1 Source-Deny Witness
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact trusted GitHub source event
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing original synthetic native source dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P211 original synthetic fixture unavailable: HOLD'}
+      - name: Execute real Windows source-checked package refusal and security baselines
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p211-high-assurance-package-isolation-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P211 original Windows GitHub event identity invalid'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p211_windows_package_quarantine_evidence
+          if($LASTEXITCODE -ne 0){throw 'P211 genuine native Windows package isolation FAILED: HOLD'}
+          Write-Output 'P211_HIGH_ASSURANCE_PACKAGE_PREVIEW=DENY_ONLY'
+          Write-Output 'P211_REAL_PACKAGE_CODE_SIGNED_SERVICE=NOT_IMPLEMENTED'
+          Write-Output 'P211_REALKEY_R0_R4=NO_GO|PRODUCTION_P0_P5=HOLD|FULL_WINDOWS=0/3'
+      - name: Preserve original compiler, native, Python and source custody artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p211-Windows-high-assurance-package-isolation-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p211-isolation/*.log
+            ${{ runner.temp }}/nayeon-p211-isolation/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
