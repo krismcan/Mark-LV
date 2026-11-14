@@ -1,0 +1,59 @@
+name: P212 Genuine Windows Mandatory High-Assurance Build Refusal HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p212-build-pipeline-denial-integration-20261114
+permissions:
+  contents: read
+jobs:
+  executable-high-assurance-build-gate:
+    name: P212 Real Build Entry Denies Unsafe Product, Preserves HCR
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact event-bound repository source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select native Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing source-bound Python/native synthetic dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P212 historical synthetic dependency unavailable'}
+      - name: Execute actual P212 build refusal and preserved security tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p212-build-pipeline-denial-integration-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P212 source event untrusted: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p212_windows_build_pipeline_evidence
+          if($LASTEXITCODE -ne 0) {
+            throw 'P212 real Windows denial-only build pipeline evidence failed'
+          }
+          Write-Output 'P212_REAL_PRODUCT_BUILD=ACTUALLY_REFUSED_WITH_OS_EXIT_41'
+          Write-Output 'P212_REVIEW_TEXT_ONLY=NONEXECUTABLE'
+          Write-Output 'P212_REAL_SIGNER_SERVICE_OS_ENFORCEMENT=NOT_IMPLEMENTED'
+          Write-Output 'P212_REAL_KEY_R0_R4=NO_GO|PRODUCTION_P0_P5=HOLD|FULL_WINDOWS=0/3'
+      - name: Archive original Windows OS/compiler/test logs and text receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p212-actual-Windows-denied-product-build-HCR-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p212-evidence/*.log
+            ${{ runner.temp }}/nayeon-p212-evidence/*.json
+            ${{ runner.temp }}/nayeon-p212-build-preflight/*.txt
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
