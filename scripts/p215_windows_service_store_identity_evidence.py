@@ -69,24 +69,24 @@ def custody()->dict:
         or os.getenv("GITHUB_EVENT_NAME")!="push"
         or os.getenv("GITHUB_REPOSITORY")!="krismcan/Mark-LV"
         or os.getenv("GITHUB_REF_NAME")!=BRANCH):
-        raise RuntimeError("P214 requires authentic hosted Windows GitHub push")
+        raise RuntimeError("P215 requires authentic hosted Windows GitHub push")
     head=git("rev-parse","HEAD")
     if head!=os.getenv("GITHUB_SHA") or git("merge-base",P214,"HEAD")!=P214:
         raise RuntimeError("P215 exact current event/P214 source baseline mismatch")
     if set(git("diff","--name-only",P214,"HEAD").splitlines())!=ADDED:
-        raise RuntimeError("P214 historical source drift/not precisely 5 additions")
+        raise RuntimeError("P215 historical source drift/not precisely 5 additions")
     if git("status","--porcelain=v1","-uall"):
         raise RuntimeError("P215 checkout dirty")
     pins={}
     for p,expected in PRIOR_BLOBS.items():
         if git("rev-parse","HEAD:"+p)!=expected or git(
-            "rev-parse",P213+":"+p)!=expected:
+            "rev-parse",P214+":"+p)!=expected:
             raise RuntimeError("P215 frozen P205 original source modified "+p)
         pins[p]={"git_blob":expected,"disk_SHA256":sha256((ROOT/p).read_bytes())}
     for p in ORIGINAL_PRESERVE:
         old=git("rev-parse",P214+":"+p)
         if old!=git("rev-parse","HEAD:"+p):
-            raise RuntimeError("P214 original P49/P113-116/P132/C1 source changed "+p)
+            raise RuntimeError("P215 original P49/P113-116/P132/C1 source changed "+p)
         pins[p]={"git_blob":old,"disk_SHA256":sha256((ROOT/p).read_bytes())}
     return {"head":head,"exact_P214_ancestor":P214,
             "five_additive_paths":sorted(ADDED),
@@ -114,7 +114,7 @@ def native_p215_integration(out:Path)->dict:
         peer/"WindowsPipeClientProcessProvenance.cs",
         peer/"WindowsPipeClientSessionIntegrity.cs",
         peer/"WindowsWintrustFilePolicyReview.cs",
-        candidate/"P215ActualWindowsHostReadOnlyIntegration.cs",
+        candidate/"P214ActualWindowsHostReadOnlyIntegration.cs",
         candidate/"P215WindowsStorePrincipalReadOnlyAdmission.cs",
         ROOT/"tests/p215_native_store_principal/P215RealWindowsStorePrincipalTests.cs",
     ]
@@ -122,7 +122,7 @@ def native_p215_integration(out:Path)->dict:
         raise RuntimeError("P215 original P113-P116 + service C1 source inventory invalid")
     for f in src[:-2]:
         path=f.relative_to(ROOT).as_posix()
-        if git("rev-parse","HEAD:"+path)!=git("rev-parse",P213+":"+path):
+        if git("rev-parse","HEAD:"+path)!=git("rev-parse",P214+":"+path):
             raise RuntimeError("P215 native baseline drift "+path)
     for f in src[-2:]:
         code=f.read_text("utf8")
@@ -132,7 +132,7 @@ def native_p215_integration(out:Path)->dict:
                         "SetNamedSecurityInfo(","WindowsCredentialBackend("):
             if pattern in code:
                 raise RuntimeError("P215 forbidden production effect in test bridge "+pattern)
-    exe=out/"p214_native_real_OS_peer_to_C1_refusal.exe"
+    exe=out/"p215_native_real_OS_store_principal_refusal.exe"
     args=[str(compiler),"/nologo","/target:exe","/platform:x64",
         "/define:C1_REVIEW_ISOLATED_ASSEMBLY",
         "/r:System.ServiceProcess.dll","/r:System.Core.dll",
@@ -141,7 +141,7 @@ def native_p215_integration(out:Path)->dict:
     c=subprocess.run(args,cwd=ROOT,stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
         timeout=90,check=False)
-    clog=out/"p214_native_real_OS_compiler.log"
+    clog=out/"p215_native_store_principal_compiler.log"
     clog.write_bytes(c.stdout)
     if c.returncode!=0 or c.stdout.strip():
         raise RuntimeError("P215 native compiler failed/diagnostics emitted")
@@ -149,7 +149,7 @@ def native_p215_integration(out:Path)->dict:
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
         timeout=90,check=False)
-    nlog=out/"p214_native_OS_peer_to_CustodyService_14.log"
+    nlog=out/"p215_native_OS_store_principal_to_C1_host_16.log"
     nlog.write_bytes(p.stdout)
     raw=p.stdout.decode("utf8","replace").replace("\r\n","\n")
     count=sum(line.startswith("PASS ") for line in raw.splitlines())
