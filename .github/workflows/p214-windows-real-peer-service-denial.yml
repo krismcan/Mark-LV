@@ -1,0 +1,57 @@
+name: P214 Genuine Windows OS Peer to Native C1 Host Denial and G0 HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p214-real-windows-peer-to-service-denial-20261114
+permissions:
+  contents: read
+jobs:
+  real-native-windows-peer-admission:
+    name: P214 Real OS Named Pipe Identity to Original CustodyService Denial
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - name: Checkout source/ancestor and exact Git event
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Real native hosted Windows Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing synthetic test dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P214 existing Python/native fixture dependency unavailable: HOLD'}
+      - name: Source-custodied actual Windows OS peer and service refusal tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p214-real-windows-peer-to-service-denial-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P214 real Windows source event invalid: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p214_windows_real_peer_service_admission
+          if($LASTEXITCODE -ne 0){
+            throw 'P214 actual Windows peer-to-current CustodyService native integration failed'
+          }
+          Write-Output 'P214_REAL_OS_PEER_PROCESS_SESSION_WINTRUST_SERVICE_DENIAL=VERIFIED'
+          Write-Output 'P214_SIGNED_INSTALLED_CONSENT_BROKER_OR_SERVICE=ABSENT'
+          Write-Output 'P214_REAL_KEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS_PRODUCT=0/3'
+      - name: Preserve original CSharp compiler/native process, Python, HCR and SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p214-genuine-Windows-peer-to-CustodyService-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p214-evidence/*.log
+            ${{ runner.temp }}/nayeon-p214-evidence/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
