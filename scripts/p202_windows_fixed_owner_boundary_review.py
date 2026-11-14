@@ -176,6 +176,11 @@ class P202RealWindowsFixedOwnerBoundary(unittest.TestCase):
                 parse_original_gate_response(rc,raw)
         self.assertEqual(parse_original_gate_response(
            0,"P202_ORIGINAL_B_GATE_STATE=COMPLETE_UNSTAGED\n"),"COMPLETE_UNSTAGED")
+        self.assertEqual(parse_original_gate_response(
+           0,"P202_ORIGINAL_B_GATE_STATE=COMPLETE_UNSTAGED\r\n"),"COMPLETE_UNSTAGED")
+        with self.assertRaises(PhysicalAdmissionDenied):
+            parse_original_gate_response(0,"P202_ORIGINAL_B_GATE_STATE=COMPLETE_UNSTAGED\r\n\n")
+        print("P202_CANONICAL_WINDOWS_CRLF_AND_LF_GATE_RESPONSE=ACCEPTED_SINGLE_LINE_ONLY",flush=True)
         print("P202_UNTRUSTED_OR_MALFORMED_SUBPROCESS_GATE_REPLY=FAIL_CLOSED",flush=True)
 
     def test_07_wrong_original_git_branch_or_head_denied_before_child(self):
