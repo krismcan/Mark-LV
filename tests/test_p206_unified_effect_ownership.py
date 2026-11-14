@@ -198,7 +198,7 @@ class P206SyntheticEffectEntryTests(unittest.TestCase):
                              for node in ast.walk(tree)))
         self.assertNotIn("WindowsCredentialBackend", code.split('"""', 2)[-1])
         self.assertTrue(any(isinstance(x, ast.ClassDef) and
-                            x.name == "P206LegacyEffectHoldCandidate" for x in tree))
+                            x.name == "P206LegacyEffectHoldCandidate" for x in tree.body))
 
 
 if __name__ == "__main__":
