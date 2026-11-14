@@ -137,7 +137,10 @@ def inspect_bounded_zip(archive: Path) -> P220InventoryReceipt:
             for member in records:
                 if member.is_dir() or member.flag_bits & 0x1:
                     return _invalid("directory or encrypted ZIP member")
-                parts = _name_parts(member.filename)
+                # On Windows, ZipInfo.filename may normalise raw '\\' to '/'.
+                # orig_filename preserves the untrusted central-directory
+                # spelling, which must be rejected before normalisation.
+                parts = _name_parts(member.orig_filename)
                 if parts is None or parts in seen:
                     return _invalid("unsafe or casefold-colliding ZIP member")
                 seen.add(parts)
