@@ -9,6 +9,8 @@
 | Entry/edge | Actual source function | Capability and classification | Trust gap / disposition |
 | --- | --- | --- | --- |
 | Direct Python WinCred storage | `nayeon/secrets/windows_credential.py::_Advapi32Adapter.write/delete` calls `CredWriteW/CredDeleteW`; `WindowsCredentialBackend.put/delete` | Real OS effects when an actual native adapter is lazily created | **Bypass-capable** without native C1 admission; backend accepts any syntactically valid `SecretIdentifier` under its Nayeon prefix. No trusted native owner; **HIGH, HOLD** |
+| **P132 reachable user-scope effect owner** | `nayeon/brain/local_byok_user_scope.py::compose_user_scope_local_byok/LocalByokController.approve` | Exact fixed `openai.api_key` current-user WinCred, human-clicked manual review and local mutex, directly calls `backend.put/delete` | **Real source-reachable on deliberate setup**, reduced threat model, no signed native service, no durable approval/recovery; **NOT RELEASED, U1–U6 OPEN** |
+| **P133 desktop launcher** | `nayeon/desktop_alpha/application.py::_open_local_byok`, `local_byok_launch_bridge.py::launch`, `local_byok_window.py::main/approve_from_button` | Explicit Connection-page button → fixed Python child → P132 controller | No automatic startup effect or provider validation; source-mode launch lacks signed production identity |
 | Direct Python storage observation/read | same module `_Advapi32Adapter.read/contains`, `WindowsCredentialBackend.get/is_available` | Real local OS retrieval/availability, not a signed read-only authority | Key bytes can enter the Python process; future protected-read gating needed |
 | Lifecycle mutation | `nayeon/secrets/lifecycle.py::BoundCredentialLifecycle.connect/replace/_put/remove` | Calls arbitrary injected `SecretBackend.put/delete` | `_approval_live=None` is expressly accepted for direct legacy callers. Presence rechecks not an atomic compare-and-swap. **HIGH if real WinCred is injected** |
 | Onboarding wrapper | `nayeon/brain/credential_onboarding.py::OpenAICredentialOnboarding.connect/replace/remove` | Delegates to lifecycle, fixed `openai.api_key` | Fixed credential ID at this layer does not constrain direct backend callers or grant service provenance |
@@ -21,9 +23,22 @@
 | Native candidate | `native_c1_candidate/CustodyService.cs`, `ServiceOwnedAdmissionBoundary.cs`, `CandidateCredentialEffectHold.cs` | Denial-only; no trusted WinCred effect adapter; no installable service `Main` | Cannot prevent separately invoked Python DLL calls; **no production GO** |
 | Historical original P49 | `tests/p99_original_native_c1_denial/*` | Frozen native effect/service denial baseline | Preserve untouched and SHA-pinned. Never enable legacy disabled flags |
 
-### Observed reachability, not assumed reachability
+### Observed reachability and two distinct security models
 
-A source AST inventory of the `nayeon/` product tree at P205 found no executable product-side constructors of `WindowsCredentialBackend`, `compose_openai_credential_onboarding`, `TrustedCredentialOperationHost`, `CooperativeOnboardingCoordinator` or `FirstRunCredentialManagementWindow`. The functions/classes exist, and test harnesses instantiate them with injected fakes. Separate `first_run_connection_window.py` constructs `TrustedFirstRunConnectionOwner` with an injected coordinator; this does **not** demonstrate production composition of a real credential store. A future dynamic installer/runtime authority inventory must repeat this assessment. AST non-reachability is **not** isolation from arbitrary Python imports, plugins, reflection or a malicious process.
+**Corrected by genuine P206 Windows source evidence:** an initially negative product constructor search was **false** because the older Kristian original branch did not include the newer P132 user-scope implementation. The P205 source has an executable factory at `nayeon/brain/local_byok_user_scope.py:207`: `compose_user_scope_local_byok() -> LocalByokController(WindowsCredentialBackend())`. A real Windows Credential Manager backend is therefore reachable after deliberate human launch; this path is **not merely test-only**.
+
+The source-grounded user-scope chain is:
+`nayeon/desktop_alpha/workspace_window.py:1034–1039` explicit Connection page button →
+`nayeon/desktop_alpha/application.py:638–675` `_open_local_byok` →
+`nayeon/desktop_alpha/local_byok_launch_bridge.py::LocalByokLaunchBridge.launch` → fixed Python child module `nayeon.desktop_alpha.local_byok_window` →
+`local_byok_window.py::main/approve_from_button` → `local_byok_user_scope.py::compose_user_scope_local_byok/LocalByokController.approve` →
+`WindowsCredentialBackend.put/delete` → `CredWriteW/CredDeleteW` when an actual Windows adapter is used.
+
+P132/P133 implement an **explicit, reduced current-user offline setup route**, not the high-assurance privileged native C1 service. It has an exact fixed `openai.api_key` identifier at its controller, manual Review/Confirm/Approve, cooperative mutex, local in-process uncertainty state and no provider validation. But a same-user process can call this controller directly or instantiate the more general backend, it has no signed UI/service binding or durable service-owned approval, and its in-process uncertainty state is not durable after restart. Source-mode child launch is not a signed final installer. Existing P132/P133 docs explicitly describe this scope as DRAFT and not released.
+
+**This changes the P206 risk classification:** direct legacy WinCred mutation is not merely dormant historical ability; a deliberate user-facing local setup path can reach the same backend, although it is not invoked automatically on import/startup and is not proven to have been run with real keys. The P206 dormant holding adapter does not govern that route. Do not merge the P132 user-scope threat model into privileged C1 R0–R4 by implication. To proceed, either converge all credential effects into a reviewed single signed native owner for the high-assurance path, **or** explicitly separately approve and complete P132 user-scope U1–U6 (including signing, real synthetic Windows acceptance, risk owner and 3 regressions) as a narrower release. Neither is currently a GO.
+
+The older `first_run_connection_window.py` uses `TrustedFirstRunConnectionOwner` with an injected coordinator; this is a separate synthetic/legacy path and not proof that it creates the real WinCred backend. A current product AST inventory finds the single P132 direct backend constructor, while a static chain traces the explicit button launcher. This cannot prove runtime provenance, actual install trust, or that arbitrary same-user code cannot directly import the backend.
 
 ### Synthetic negative comparator
 
