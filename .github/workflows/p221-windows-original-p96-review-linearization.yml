@@ -170,8 +170,11 @@ jobs:
              if($after -ne $before[$path]){throw ('Historical source custody changed '+$path)}
              ($after+'  '+$path) | Add-Content 'p221-native-evidence/historical-source-sha256.txt'
           }
-          if(@(git status --porcelain=v1 --untracked-files=all).Count -ne 0){
-             throw 'P221 runner checkout dirty outside git-ignored temporary evidence'
+          # The ONLY ignored status path here is this job's own ephemeral
+          # evidence output; all historic source hashes are already verified.
+          $unexpected=@(git status --porcelain=v1 --untracked-files=all -- . ':(exclude)p221-native-evidence')
+          if($LASTEXITCODE -ne 0 -or $unexpected.Count -ne 0){
+             throw 'P221 source checkout contains unrelated modifications'
           }
           ('P221_HEAD='+$env:GITHUB_SHA) | Add-Content 'p221-native-evidence/native-exits.log'
           ('P221_SOURCE_PARENT='+$baseline) | Add-Content 'p221-native-evidence/native-exits.log'
