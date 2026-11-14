@@ -1,0 +1,88 @@
+name: P200 Windows Script Content Binding vs After-Approval Execution TOCTOU — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p200-executable-content-binding-loader-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p200-native-content:
+    name: P200 Authenticated Original Security + Native Windows Benign Script Execution
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Preserve original GitHub event Git metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Hosted actual Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic predecessor signer test dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P200 synthetic signer fixture dependency unavailable — HOLD'}
+      - name: Exact P199 source ancestry and only three additive audit files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p200-executable-content-binding-loader-20261114'){
+             throw 'P200 authenticated original Windows Git event identity refused'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P200 event source HEAD mismatched'}
+          $parent='c42ecd83b5277acf5cd42b22fa140600665b0943'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P200 exact P199 parent ancestry mismatch'}
+          $expected=@(
+            '.github/workflows/p200-windows-executable-content-binding.yml'
+            'docs/byok-c1-p200-executable-content-binding-loader-security-review.md'
+            'scripts/p200_windows_executable_content_binding_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P200 unexpected production, historical source or security test write'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P200 original Git source diff invalid'}
+          Write-Output 'P200_EXACT_AUTHENTIC_P199_ANCESTRY_ONLY_THREE_AUDIT_PATHS=VERIFIED'
+      - name: Actual Windows interpreter status read-only and P199-authenticated P200 selected native tests
+        shell: pwsh
+        env:
+          P200_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p200-executable-content-binding-loader-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P200 disposable exact-Git source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P200 actual Windows source checkout HEAD mismatch'
+          }
+          $pythonexe=(python -c "import sys; print(sys.executable)").Trim()
+          $sig=Get-AuthenticodeSignature -LiteralPath $pythonexe
+          Write-Output ('P200_WINDOWS_PYTHON_INTERPRETER_AUTHENTICODE_OBSERVED_ONLY='+[string]$sig.Status)
+          Write-Output 'P200_INTERPRETER_SIGNATURE_DOES_NOT_ATTEST_EXECUTED_SCRIPT_BYTES'
+          Push-Location reviewed
+          try {
+            python -B -m scripts.p200_windows_executable_content_binding_review
+            if($LASTEXITCODE -ne 0){throw 'P200 native Windows executable-content security review failed; preserve raw evidence and HOLD'}
+          } finally {Pop-Location}
+          Write-Output 'P200_SIGNED_RELEASE_ROOT_OS_ENFORCED_CUSTOM_LOADER=NOT_ESTABLISHED'
+          Write-Output 'P200_HISTORICAL_FULL_PRIVATE_B_ADS_GAP=UNPATCHED'
+          Write-Output 'P200_FULL_NATIVE_WINDOWS_PRODUCT_REGRESSIONS_ACCEPTED=0/3'
+          Write-Output 'P200_INDEPENDENT_GOV_SEC_REL=OPEN|PRIVILEGED_G0_G6=OPEN'
+          Write-Output 'P200_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve actual native Windows raw logs and HCR on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p200-native-windows-content-toctou-execution-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p200-executable-content/*.log
+            ${{ runner.temp }}/nayeon-p200-executable-content/*.json
+          if-no-files-found: warn
+          retention-days: 14
