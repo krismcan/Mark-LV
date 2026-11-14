@@ -1,0 +1,56 @@
+name: P208 Genuine Windows Native Synthetic Terminal Actor HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p208-synthetic-terminal-actor-20261114
+permissions:
+  contents: read
+jobs:
+  native-synthetic-terminal:
+    name: P208 frozen P49/C1 and one-use synthetic 20 native Windows
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Authenticated GitHub source event checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing P205 native Python test dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0) { throw 'P208 original source dependency unavailable: HOLD' }
+      - name: Execute exact P208 source-bound original Python and native Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p208-synthetic-terminal-actor-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P208 actual Windows event source custody invalid'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p208_windows_synthetic_terminal_owner
+          if($LASTEXITCODE -ne 0) { throw 'P208 native synthetic terminal candidate FAILED: HOLD' }
+          Write-Output 'P208_REAL_WINCRED_EFFECTS=ZERO'
+          Write-Output 'P208_REALKEY_R0_R4=NO_GO'
+          Write-Output 'P208_PRODUCTION_P0_P5=HOLD'
+          Write-Output 'P208_FULL_PRODUCT_WINDOWS_REGRESSIONS=0/3'
+      - name: Preserve native compiler, 20 fake, frozen P49/C1 and HCR source logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p208-genuine-Windows-native-synthetic-terminal-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p208-terminal/*.log
+            ${{ runner.temp }}/nayeon-p208-terminal/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
