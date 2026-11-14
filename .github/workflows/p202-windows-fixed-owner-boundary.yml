@@ -1,0 +1,90 @@
+name: P202 Windows Fixed B Gate Owner and Phase10 Boundary — RELEASE HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p202-fixed-owner-trust-boundary-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    name: P202 Native Windows Original B Fixed Owner, 23-Source ADS and No Phase10 Downgrade
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Exact original event Git source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Original inherited signature fixture dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P202 inherited test signing fixture missing; HOLD'}
+      - name: Authenticate P201 exact Git ancestry and four additive paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p202-fixed-owner-trust-boundary-20261114'){
+             throw 'P202 requires original hosted Windows trusted event metadata'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P202 original event HEAD invalid'}
+          $parent='97edba1dd4f7a1ed518e8007e9708ecc426598c5'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P202 exact P201 ancestry invalid'}
+          $expected=@(
+            '.github/workflows/p202-windows-fixed-owner-boundary.yml'
+            'docs/byok-c1-p202-fixed-owner-phase10-boundary-review.md'
+            'nayeon/brain/byok_b_fixed_owner_bridge_candidate.py'
+            'scripts/p202_windows_fixed_owner_boundary_review.py'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P202 old product/historical test/source modified; hold'
+          }
+          $product=@(git diff --name-only $parent HEAD -- nayeon)
+          if($product.Count -ne 1 -or $product[0] -ne 'nayeon/brain/byok_b_fixed_owner_bridge_candidate.py'){
+             throw 'P202 original production source not preserved'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P202 whitespace/source custody failure'}
+          Write-Output 'P202_SOURCE_EXACT_P201_PARENT_FOUR_ADDITIVE_ONLY=VERIFIED'
+      - name: Authenticated P201 archive and P202 genuine native Windows tests
+        shell: pwsh
+        env:
+          P202_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p202-fixed-owner-trust-boundary-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P202 disposable audited source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P202 cloned branch advanced beyond authenticated original Git event; refuse stale run'
+          }
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p202_windows_fixed_owner_boundary_review
+             if($LASTEXITCODE -ne 0){throw 'P202 original fixed owner native Windows test failure; HOLD'}
+          } finally {Pop-Location}
+          Write-Output 'P202_CURRENT_PHASE10_PUBLIC_ADMISSION=UNCHANGED'
+          Write-Output 'P202_FIXED_OWNER_SUBPROCESS_IS_NOT_TRUSTED_SIGNED_LOADER'
+          Write-Output 'P202_23_SOURCE_CUSTODY_NOT_ATOMIC|TRUE_OS_PROCESS_AUTHORITY_OPEN'
+          Write-Output 'P202_PRIOR_FULL_BYOK_B_NAMED_ADS_GAP=NOT_PATCHED_IN_LEGACY'
+          Write-Output 'P202_COMPLETE_PRODUCT_NATIVE_WINDOWS=0/3|INDEPENDENT_REVIEW_OPEN'
+          Write-Output 'P202_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve raw original native Windows logs and HCR including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p202-real-Windows-fixed-owner-original-B-boundary-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p202-fixed-owner/*.log
+            ${{ runner.temp }}/nayeon-p202-fixed-owner/*.json
+          if-no-files-found: warn
+          retention-days: 14
