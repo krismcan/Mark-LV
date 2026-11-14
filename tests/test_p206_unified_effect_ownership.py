@@ -160,7 +160,23 @@ class P206SyntheticEffectEntryTests(unittest.TestCase):
                             f.attr if isinstance(f, ast.Attribute) else "")
                     if name in names:
                         hits.append((str(path.relative_to(ROOT)), obj.lineno, name))
-        self.assertEqual(hits, [], "A product constructor appeared; redo reachability review")
+        normalized = [(p.replace("\\\\", "/"), n, name) for p, n, name in hits]
+        self.assertEqual(
+            normalized,
+            [("nayeon/brain/local_byok_user_scope.py", 207, "WindowsCredentialBackend")],
+            "P132 actual local-user Windows backend factory inventory changed")
+        # The P133 human-clicked route can reach P132 despite no default-start
+        # WinCred access. This is user-scope, NOT privileged native C1.
+        application = (ROOT / "nayeon/desktop_alpha/application.py").read_text("utf-8")
+        bridge = (ROOT / "nayeon/desktop_alpha/local_byok_launch_bridge.py").read_text("utf-8")
+        window = (ROOT / "nayeon/desktop_alpha/local_byok_window.py").read_text("utf-8")
+        controller = (ROOT / "nayeon/brain/local_byok_user_scope.py").read_text("utf-8")
+        self.assertIn("self._local_byok_launcher.launch()", application)
+        self.assertIn("nayeon.desktop_alpha.local_byok_window", bridge)
+        self.assertIn("controller=compose_user_scope_local_byok()", window)
+        self.assertIn("return LocalByokController(WindowsCredentialBackend())", controller)
+        self.assertIn("self._backend.put(_FIXED_IDENTIFIER, candidate)", controller)
+        self.assertIn("self._backend.delete(_FIXED_IDENTIFIER)", controller)
 
     def test_11_original_native_and_Python_denial_scopes_are_disjoint(self):
         original = (ROOT / "nayeon/secrets/windows_credential.py").read_text("utf-8")
@@ -176,7 +192,10 @@ class P206SyntheticEffectEntryTests(unittest.TestCase):
         tree = ast.parse(code)
         self.assertNotIn("ctypes", code)
         self.assertNotIn("WinDLL(", code)
-        self.assertNotIn(".reveal(", code)
+        self.assertFalse(any(isinstance(node, ast.Call) and
+                             isinstance(node.func, ast.Attribute) and
+                             node.func.attr == "reveal"
+                             for node in ast.walk(tree)))
         self.assertNotIn("WindowsCredentialBackend", code.split('"""', 2)[-1])
         self.assertTrue(any(isinstance(x, ast.ClassDef) and
                             x.name == "P206LegacyEffectHoldCandidate" for x in tree))
