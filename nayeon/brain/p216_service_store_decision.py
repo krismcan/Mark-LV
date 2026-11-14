@@ -121,7 +121,7 @@ def _safe_tracked_path(root:Path, relative:str)->Path|None:
         meta=current.lstat()
         if (not stat.S_ISREG(meta.st_mode) or current.is_symlink()
             or getattr(meta,"st_file_attributes",0)&0x400
-            or not 0<meta.st_size<=MAX_SOURCE_BYTES):
+            or not 0<=meta.st_size<=MAX_SOURCE_BYTES):
             return None
         return current
     except (OSError,ValueError):
