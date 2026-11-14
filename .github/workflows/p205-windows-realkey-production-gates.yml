@@ -1,0 +1,89 @@
+name: P205 Real-Key vs Production Gates — Real Native Windows Denial Evidence HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p205-realkey-production-gate-evidence-20261114
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native-x64-realkey-and-production:
+    name: P205 Frozen P49 and Current C1 Native Host Denial / Dual Gate NO-GO
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Authenticate exact GitHub event source SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Genuine Windows Python 3.12 test compiler orchestration
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic predecessor ZIP validation dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P205 prior synthetic fixture library unavailable; HOLD'}
+      - name: Exact P204 parent and no original product/native source modifications
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p205-realkey-production-gate-evidence-20261114'){
+             throw 'P205 must be from real original hosted Windows GitHub event'
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'P205 exact event HEAD mismatch'}
+          $parent='3d91358aa49b31b76db1bb130cf6fef22a800ac6'
+          if((git merge-base $parent HEAD).Trim() -ne $parent){throw 'P205 exact P204 ancestor missing'}
+          $expected=@(
+             '.github/workflows/p205-windows-realkey-production-gates.yml'
+             'docs/byok-c1-p205-realkey-production-gate-decision-package.md'
+             'scripts/p205_windows_realkey_production_gate_evidence.py'
+          )|Sort-Object
+          $actual=@(git diff --name-only $parent HEAD|Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P205 original Phase10, native C1 service or product unexpectedly changed'
+          }
+          git diff --check $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'P205 changed source whitespace invalid'}
+          Write-Output 'P205_EXACT_P204_PARENT_AND_ONLY_THREE_REVIEW_PATHS=VERIFIED'
+      - name: Actual Windows x64 frozen P49 20 and current candidate C1 host 24 + no-GO
+        shell: pwsh
+        env:
+          P205_ARCHIVE_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p205-realkey-production-gate-evidence-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P205 source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P205 branch changed after event; stale native run refused'
+          }
+          $ident=[Security.Principal.WindowsIdentity]::GetCurrent()
+          if($null -eq $ident -or $null -eq $ident.User -or
+             $ident.User.IsWellKnown([Security.Principal.WellKnownSidType]::LocalSystemSid)){
+             throw 'P205 native original denial tests must NOT execute as privileged LocalSystem'
+          }
+          Push-Location reviewed
+          try {
+             python -B -m scripts.p205_windows_realkey_production_gate_evidence
+             if($LASTEXITCODE -ne 0){throw 'P205 real-key and production NO-GO evidence native source failed'}
+          } finally {Pop-Location}
+          Write-Output 'P205_REALKEY_GATE=NO_GO_EXTERNAL_SECURITY_APPROVAL_REQUIRED'
+          Write-Output 'P205_RELEASE_GATE=HOLD_THREE_FULL_WINDOWS=0/3'
+          Write-Output 'P205_NATIVE_EFFECTS_OR_WINCRED_WRITES_PERFORMED=ZERO'
+          Write-Output 'P205_KRISTIAN_SYSTEM_SIGNING_CODE_INTEGRITY=UNCHANGED'
+          Write-Output 'P205_BYOK_C1_PRODUCTION_RELEASE=HOLD'
+      - name: Preserve original Windows native CSharp compiler, 20, 24, audit and HCR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p205-Windows-realkey-production-dual-gate-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.json
+          if-no-files-found: warn
+          retention-days: 14
