@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Materialize exact Git object bytes on isolated ephemeral Windows checkout
+      - name: Clone exact source in independent raw-byte Windows fixture worktree
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -24,16 +24,19 @@ jobs:
              $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
              $env:GITHUB_REF_NAME -ne 'byok-c1-p226-windows-native-regression-recovery-20261114' -or
              (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
-            throw 'P226 ephemeral Windows checkout identity refused'
+            throw 'P226 original disposable Windows event identity refused'
           }
-          git config --local core.autocrlf false
-          if($LASTEXITCODE -ne 0){throw 'P226 failed exact Git blob checkout configuration'}
-          git checkout-index --all --force
-          if($LASTEXITCODE -ne 0){throw 'P226 failed exact Git blob worktree materialization'}
-          if(git status --porcelain=v1 -uall){
-            throw 'P226 original Windows checkout not pristine after Git blob materialization'
+          if(Test-Path -LiteralPath reviewed){throw 'P226 independent fixture checkout already exists: HOLD'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p226-windows-native-regression-recovery-20261114 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P226 independent source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P226 clone HEAD not equal to original signed event'
           }
-          Write-Output 'P226_EPHEMERAL_WINDOWS_RAW_GIT_BLOB_CHECKOUT=COMPLETE'
+          if(git -C reviewed status --porcelain=v1 -uall){
+            throw 'P226 independent exact-source clone not pristine'
+          }
+          Write-Output 'P226_INDEPENDENT_EXACT_BYTES_CLONE=READY'
       - name: Native hosted Windows CPython 3.12
         uses: actions/setup-python@v5
         with:
@@ -51,7 +54,10 @@ jobs:
           $ErrorActionPreference='Stop'
           $out=Join-Path $env:RUNNER_TEMP 'p226-original-Windows-fixture-recovery'
           New-Item -Path $out -ItemType Directory -Force | Out-Null
-          & python -B -m scripts.p226_windows_native_fixture_recovery *> (Join-Path $out 'p226-original-native-runner.log')
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p226_windows_native_fixture_recovery *> (Join-Path $out 'p226-original-native-runner.log')
+          } finally { Pop-Location }
           $nativeExit=$LASTEXITCODE
           ('P226_EVENT_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'p226-runner-native-exit.log')
           ('P226_NATIVE_PROCESS_EXIT='+$nativeExit) | Add-Content (Join-Path $out 'p226-runner-native-exit.log')
