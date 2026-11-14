@@ -254,14 +254,14 @@ def main()->int:
                 cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=f,
                 stderr=subprocess.STDOUT,timeout=310,check=False)
         raw=log.read_bytes();txt=raw.decode("utf8","replace").replace("\r\n","\n")
-        events=re.findall(r"^P201_[^\r\n]+",txt,re.M)
+        events=re.findall(r"P201_[^\r\n]+",txt)
         ledger["current_P201_native"]={
           "raw_log":log.name,"raw_log_SHA256":sha(raw),
           "actual_OS_exit":process.returncode,
           "test_footer":re.findall(r"^Ran (\d+) tests? in [0-9.]+s$",txt,re.M),
           "complete_OK":bool(re.search(r"^OK\s*$",txt,re.M)),
           "P201_events":events,
-          "historic_actual_original_B_events":re.findall(r"^P189_ACTUAL_ORIGINAL_FULL_B_[^\r\n]+",txt,re.M),
+          "historic_actual_original_B_events":re.findall(r"P189_ACTUAL_ORIGINAL_FULL_B_[^\r\n]+",txt),
           "fail_errors":re.findall(r"^(?:FAIL|ERROR): .+$",txt,re.M)}
         if (process.returncode!=0 or ledger["current_P201_native"]["test_footer"]!=["13"] or
             not ledger["current_P201_native"]["complete_OK"]):
