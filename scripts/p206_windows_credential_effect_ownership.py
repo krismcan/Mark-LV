@@ -93,7 +93,7 @@ def run_suite(label: str, args: list[str], target: Path) -> dict:
             env.pop(key, None)
     with target.open("wb") as output:
         result = subprocess.run(
-            [sys.executable, "-B", "-m", "unittest", "-v", *args],
+            [sys.executable, "-B", "-m", "unittest", *args],
             cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=output,
             stderr=subprocess.STDOUT, timeout=180, check=False,
         )
@@ -129,7 +129,7 @@ def main() -> int:
         python = run_suite(
             "P206_original_Python_and_dormant_hold",
             ["discover", "-s", "tests", "-p",
-             "test_p206_unified_effect_ownership.py"],
+             "test_p206_unified_effect_ownership.py", "-v"],
             out / "p206_windows_original_Python_12.log",
         )
         evidence["Python"] = python
@@ -138,6 +138,7 @@ def main() -> int:
         native = run_suite(
             "P206_original_P49_and_current_C1",
             [
+                "-v",
                 "scripts.p205_windows_realkey_production_gate_evidence.P205NativeRealKeyAndReleaseGates.test_02_original_full_P49_native_release_and_WinCred_denial_20_cases",
                 "scripts.p205_windows_realkey_production_gate_evidence.P205NativeRealKeyAndReleaseGates.test_03_current_candidate_service_host_remains_denial_24_cases",
             ],
