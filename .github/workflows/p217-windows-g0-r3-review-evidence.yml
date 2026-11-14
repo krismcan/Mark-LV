@@ -1,0 +1,100 @@
+name: P217 Windows Source-Bound Independent G0 R3 Review Packet HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p217-independent-store-ci-decision-20261114
+permissions:
+  contents: read
+jobs:
+  readonly-review-intake:
+    name: Windows P217 immutable source, original P216 focused negatives and HOLD evidence
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact review branch without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set Python 3.12 for original P216 focused security tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Native Windows source and no-authority review evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path 'p217-review-evidence' -Force | Out-Null
+          $baseline = '7fae895ee4b91849e1f572a60b8db5d740878579'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p217-independent-store-ci-decision-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P217 exact Windows runner/repo/branch/commit provenance absent: HOLD'
+          }
+          git merge-base --is-ancestor $baseline HEAD
+          if($LASTEXITCODE -ne 0){throw 'Original P216 is not P217 ancestor: HOLD'}
+          $actual = @((git diff --name-only $baseline HEAD | Sort-Object))
+          $expected = @(
+            '.github/workflows/p217-windows-g0-r3-review-evidence.yml'
+            'docs/byok-c1-p217-independent-windows-store-ci-decision.md'
+          ) | Sort-Object
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+            throw 'P217 changed outside the exactly authorised review-only paths: HOLD'
+          }
+          $protected = @(
+            'nayeon/secrets/windows_credential.py',
+            'nayeon/brain/local_byok_user_scope.py',
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py',
+            'nayeon/desktop_alpha/frozen_signed_byok_companion.py',
+            'native_c1_candidate/CustodyService.cs',
+            'nayeon/brain/p216_service_store_decision.py',
+            'tests/test_p216_service_store_decision_inventory.py',
+            'docs/byok-c1-p216-service-owned-store-r3-external-decision.md'
+          )
+          git diff --quiet $baseline HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Original P216/legacy Windows sources changed: HOLD'}
+          $doc = Get-Content -Raw -LiteralPath 'docs/byok-c1-p217-independent-windows-store-ci-decision.md'
+          foreach($word in @('G0', 'R3', 'UNISSUED', '0/3', 'P96',
+             'CredWriteW', 'LocalSystem', 'Code Integrity', 'NO-GO',
+             'byok-c1-p217-independent-store-ci-decision-20261114')){
+             if(-not $doc.Contains($word) -and
+                 $word -eq 'byok-c1-p217-independent-store-ci-decision-20261114'){
+                 # Branch ID must be authenticated by git, not embedded in review text.
+                 continue
+             }
+             if($word -ne 'byok-c1-p217-independent-store-ci-decision-20261114' -and
+                -not $doc.Contains($word)){
+                throw 'Review packet unexpectedly missing required decision term: HOLD'
+             }
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          & python -B -m unittest -v tests.test_p216_service_store_decision_inventory *> 'p217-review-evidence/p216-original-focus-tests.log'
+          $testExit = $LASTEXITCODE
+          "P217_GENUINE_WINDOWS_FOCUSED_P216_TEST_EXIT=$testExit" | Set-Content 'p217-review-evidence/native-exit.log'
+          if($testExit -ne 0){throw 'Existing P216 focused security negative tests failed: HOLD'}
+          "OS=$([Environment]::OSVersion.VersionString)" | Add-Content 'p217-review-evidence/native-exit.log'
+          "COMMIT=$env:GITHUB_SHA" | Add-Content 'p217-review-evidence/native-exit.log'
+          "BASELINE=$baseline" | Add-Content 'p217-review-evidence/native-exit.log'
+          "G0_R3_EXTERNAL_QUALIFIED_DECISION=NOT_RECEIVED" | Add-Content 'p217-review-evidence/native-exit.log'
+          "REAL_KEY=NO_GO; PRODUCTION=HOLD; FULL_UNFILTERED_WINDOWS_REGRESSIONS=0/3" | Add-Content 'p217-review-evidence/native-exit.log'
+          "NO_SERVICE_INSTALL_OR_CREDENTIAL_API_EFFECT_EXECUTED_BY_P217" | Add-Content 'p217-review-evidence/native-exit.log'
+          git diff --exit-code $baseline HEAD -- $protected *> 'p217-review-evidence/original-source-diff.log'
+          if($LASTEXITCODE -ne 0){throw 'Source custody changed during Windows review: HOLD'}
+          $all = @('docs/byok-c1-p217-independent-windows-store-ci-decision.md') + $protected
+          foreach($path in $all){
+            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+            "$sha  $path" | Add-Content 'p217-review-evidence/source-sha256.txt'
+          }
+          $testSha = (Get-FileHash -Algorithm SHA256 -LiteralPath 'p217-review-evidence/p216-original-focus-tests.log').Hash
+          "P216_FOCUSED_TEST_LOG_SHA256=$testSha" | Add-Content 'p217-review-evidence/native-exit.log'
+          Write-Output 'P217 review intake evidence completed; external Windows decision NOT RECEIVED; all admission gates HOLD.'
+      - name: Preserve genuine Windows evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p217-windows-review-packet-intake-HOLD
+          path: p217-review-evidence/
+          if-no-files-found: warn
+          retention-days: 14
