@@ -46,6 +46,7 @@ CANDIDATE=[
  "NativeJ2ProtectedReadOnlyPreflight.cs",
  "CandidateCredentialEffectHold.cs",
  "IsolatedCandidateContracts.cs",
+ "CandidateProtectedReadOnlySnapshot.cs",
 ]
 ACTUAL_GATES={
  "real_key_input":"NO_GO",
