@@ -202,7 +202,7 @@ class P203NativeCurrentAuthorityReadiness(unittest.TestCase):
         candidate=(ROOT/"nayeon/brain/byok_b_fixed_owner_bridge_candidate.py").read_text()
         self.assertIn("Not the production gate",candidate)
         self.assertIn("admit_isolated_fixed_owner_original_b",candidate)
-        self.assertIn("not OS-attested",candidate)
+        self.assertIn("NOT OS-attested",candidate)
         p76=(ROOT/"tests/phase8_byok_c1_p76_scope.py").read_text()
         self.assertIn("not release authority",p76)
         native=(ROOT/"native_c1_candidate/ServiceOwnedAdmissionBoundary.cs").read_text()
