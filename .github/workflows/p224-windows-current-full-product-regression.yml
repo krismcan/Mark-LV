@@ -1,0 +1,89 @@
+name: P224 Genuine Windows Complete Unfiltered Product Regression Rebaseline — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p224-full-windows-product-regression-rebaseline-20261114
+permissions:
+  contents: read
+jobs:
+  complete-current-windows-source-tests:
+    name: One exact-current-SHA full unittest discovery, original failures preserved
+    runs-on: windows-2025
+    timeout-minutes: 17
+    steps:
+      - name: Checkout exact source, no persisted credential
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin Python 3.12 on disposable hosted Windows
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Authoritative original source scope and frozen race witness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base='7083432a3e751d76f1e7d8824bd11903c5c54156'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p224-full-windows-product-regression-rebaseline-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P224 actual hosted Windows source/branch identity not established'
+          }
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P224 exact P223 parent missing'}
+          $expected=@(
+             '.github/workflows/p224-windows-current-full-product-regression.yml'
+             'docs/byok-c1-p224-real-unfiltered-current-windows-regression-and-owner-block.md'
+             'scripts/p224_current_windows_full_regression.py'
+          ) | Sort-Object
+          $changed=@(git diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+             throw 'P224 test or product source delta not allowed; exact three audit files only'
+          }
+          git diff --quiet $base HEAD -- nayeon tests native_c1_candidate tests/p96_native_transaction_negative
+          if($LASTEXITCODE -ne 0){throw 'Original product/tests/security native source modified'}
+          $rawSha='import hashlib,subprocess,sys;print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:"+sys.argv[1]],stderr=subprocess.PIPE)).hexdigest().upper())'
+          $p96=(& python -B -c $rawSha 'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' | Out-String).Trim()
+          if($LASTEXITCODE -ne 0){throw 'Original raw P96 Git object not readable'}
+          $ledger=(& python -B -c $rawSha 'tests/p95_native_custody_preflight/CustodyLedger.cs' | Out-String).Trim()
+          if($LASTEXITCODE -ne 0){throw 'Original raw ledger Git object not readable'}
+          if($p96 -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $ledger -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+             throw 'P224 historical original P95/P96 SHA-256 changed'
+          }
+          $reportDir=Join-Path $env:RUNNER_TEMP 'p224-full-Windows-unfiltered'
+          New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+          ('P224_EXACT_HEAD='+$env:GITHUB_SHA) | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          ('P224_EXACT_PARENT='+$base) | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          ('P224_FROZEN_P96_SHA256='+$p96) | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          ('P224_FROZEN_P95_SHA256='+$ledger) | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          'P224_SCOPE=THREE_ADDITIVE_FILES|PRODUCT_AND_TESTS_UNCHANGED' | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          Write-Output 'P224 original product source and historic P96/P95 git objects verified; no security authority.'
+      - name: One genuine complete Windows full unfiltered test discovery
+        shell: pwsh
+        env:
+          P134_NATIVE_WINCRED_EPHEMERAL_AUTH: EPHEMERAL_GITHUB_WINDOWS_ONLY
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $reportDir=Join-Path $env:RUNNER_TEMP 'p224-full-Windows-unfiltered'
+          $summary=Join-Path $reportDir 'p224-current-product-regression-result.log'
+          & python -B scripts/p224_current_windows_full_regression.py *> $summary
+          $suiteExit=$LASTEXITCODE
+          ('P224_FULL_UNFILTERED_EXIT='+$suiteExit) | Add-Content (Join-Path $reportDir 'source-and-native-exits.log')
+          Get-Content -LiteralPath $summary | ForEach-Object{Write-Output $_}
+          if($suiteExit -ne 0){
+             throw 'P224 FULL UNFILTERED Windows product test failed/incomplete: HOLD; unmodified original source and complete logs retained'
+          }
+          Write-Output 'P224 first unfiltered current-source PASS is functional only; 3/3 RELEASE AND SECURITY APPROVAL STILL HOLD.'
+      - name: Preserve exact original full-suite stdout/stderr and SHA-256 on ALL outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p224-current-full-Windows-unfiltered-historical-failure-HOLD
+          path: ${{ runner.temp }}/p224-full-Windows-unfiltered/*
+          if-no-files-found: warn
+          retention-days: 14
