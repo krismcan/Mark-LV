@@ -169,14 +169,14 @@ internal static class P208SyntheticTerminalOwnerTests
             var gate=new ManualResetEvent(false);
             var first=CustodyOutcome.Denied;
             var second=CustodyOutcome.Denied;
-            var t1=new Thread(delegate {
+            var t1=new Thread(new ThreadStart(delegate {
                 gate.WaitOne();
                 first=h.AttemptForTestOnly(review,LedgerOperation.Save,false);
-            });
-            var t2=new Thread(delegate {
+            }));
+            var t2=new Thread(new ThreadStart(delegate {
                 gate.WaitOne();
                 second=h.AttemptForTestOnly(review,LedgerOperation.Save,false);
-            });
+            }));
             t1.Start();t2.Start();gate.Set();
             Check(t1.Join(3000) && t2.Join(3000),"thread completion");
             Check(first==CustodyOutcome.RecoveryRequired &&
