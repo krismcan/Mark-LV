@@ -115,9 +115,12 @@ def compile_native_wintrust_probe(out:Path)->dict:
     if len(sources)!=15 or any(not p.is_file() for p in sources):
         raise RuntimeError("P213 original native P116 source set invalid")
     for p in sources:
-        if git("rev-parse","HEAD:"+str(p.relative_to(ROOT)).replace("\\","/"))!=git(
-            "rev-parse",P212+":"+str(p.relative_to(ROOT)).replace("\\","/")
-        ) and p.name!="P213NativeWintrustObservation.cs":
+        if p.name=="P213NativeWintrustObservation.cs":
+            continue  # this exact new test-only entrypoint has no P212 ancestor
+        relative=str(p.relative_to(ROOT)).replace("\\","/")
+        if git("rev-parse","HEAD:"+relative)!=git(
+            "rev-parse",P212+":"+relative
+        ):
             raise RuntimeError("P213 original native P116 source drift "+p.name)
     gate=(c1/"P213NativeWintrustObservation.cs").read_text("utf8")
     if ("#if C1_REVIEW_ISOLATED_ASSEMBLY" not in gate or
