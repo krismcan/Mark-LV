@@ -159,7 +159,7 @@ class P198NativeByteCustodyReview(previous.P197NativeContinuityReview):
         args=[sys.executable,"-I","-B","-c",CHILD_HASH_ONLY,mode,expected]
         if mode=="path":args.append(str(path))
         p=subprocess.run(args,input=data if mode=="stdin" else None,
-            stdin=subprocess.PIPE if mode=="stdin" else subprocess.DEVNULL,
+            stdin=None if mode=="stdin" else subprocess.DEVNULL,
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=self.root,
             env=self._child_env(),timeout=15,check=False)
         if p.returncode not in (0,8):
