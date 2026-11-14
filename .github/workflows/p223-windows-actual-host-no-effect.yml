@@ -1,0 +1,159 @@
+name: P223 Native Windows Actual CustodyService Denial Integration HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p223-actual-custodyservice-no-effect-port-and-owner-hold-20261114
+permissions:
+  contents: read
+jobs:
+  actual-custody-service-refusal:
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Genuine native Windows actual-host source-bound denial and original security tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $evidence=Join-Path $env:RUNNER_TEMP 'p223-actual-host-native-evidence'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $parent='4cd6878394efe2a8a6e3e5f719edca566360a700'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p223-actual-custodyservice-no-effect-port-and-owner-hold-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P223 authentic Windows runner/source identity missing'
+          }
+          git merge-base --is-ancestor $parent HEAD
+          if($LASTEXITCODE -ne 0){throw 'Exact P222 parent source missing'}
+          $expected=@(
+            '.github/workflows/p223-windows-actual-host-no-effect.yml'
+            'docs/byok-c1-p223-actual-host-no-effect-integration-and-owner-block.md'
+            'native_c1_candidate/P223ActualHostNoEffectPort.cs'
+            'tests/p223_actual_native_host_denial/P223ActualHostNoEffectTests.cs'
+          ) | Sort-Object
+          $actual=@(git diff --name-only $parent HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0){
+             throw 'P223 original source scope violation'
+          }
+          $protected=@(
+            'native_c1_candidate/CustodyService.cs'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'
+            'native_c1_candidate/CandidateCredentialEffectHold.cs'
+            'native_c1_candidate/ServiceBoundRequestIdentity.cs'
+            'native_c1_candidate/NativeJ2ProtectedReadOnlyPreflight.cs'
+            'native_c1_candidate/CandidateProtectedReadOnlySnapshot.cs'
+            'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs'
+            'tests/p95_native_custody_preflight/CustodyLedger.cs'
+            'nayeon/secrets/windows_credential.py'
+            'nayeon/brain/local_byok_user_scope.py'
+            'nayeon/desktop_alpha/local_byok_window.py'
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py'
+          )
+          git diff --quiet $parent HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Original candidate or P96/P132 security source altered'}
+          $before=@{}
+          foreach($path in $protected){$before[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+          $rawHash='import hashlib,subprocess,sys;print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:"+sys.argv[1]],stderr=subprocess.PIPE)).hexdigest().upper())'
+          $p96=(& python -B -c $rawHash 'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' | Out-String).Trim()
+          if($LASTEXITCODE -ne 0){throw 'Raw P96 Git object unreadable'}
+          $ledger=(& python -B -c $rawHash 'tests/p95_native_custody_preflight/CustodyLedger.cs' | Out-String).Trim()
+          if($LASTEXITCODE -ne 0){throw 'Raw P95 Git object unreadable'}
+          ('P223_ORIGINAL_P96_GIT_SHA256='+$p96) | Add-Content (Join-Path $evidence 'native-exits.log')
+          ('P223_ORIGINAL_P95_GIT_SHA256='+$ledger) | Add-Content (Join-Path $evidence 'native-exits.log')
+          if($p96 -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $ledger -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+             throw 'Frozen original Git source SHA-256 custody failed'
+          }
+          $port=Get-Content -Raw -LiteralPath 'native_c1_candidate/P223ActualHostNoEffectPort.cs'
+          $actualHost=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
+          if($port -notmatch '#error P223 exact-host denial port is review-only' -or
+             $port -notmatch 'actualHost.RefuseBoundPendingOperation' -or
+             $port -notmatch 'actualHost.RefuseUnreviewedTerminalEffect' -or
+             $port -match 'DllImport|CredWriteW|CredDeleteW|ServiceBase.Run|SaveOrReplace' -or
+             $actualHost -match 'ServiceBase.Run\s*\(' -or
+             $actualHost -notmatch 'throw new InvalidOperationException'){
+             throw 'Actual host and new no-effect source contract violated'
+          }
+          $original=@('ServiceGate.cs','ProtectedAcl.cs','CustodyLedger.cs') |
+             ForEach-Object{(Resolve-Path (Join-Path 'tests/p99_original_native_c1_denial' $_)).Path}
+          $candidate=@('CustodyService.cs','ServiceOwnedAdmissionBoundary.cs',
+             'ServiceBoundRequestIdentity.cs','NativeJ2ProtectedReadOnlyPreflight.cs',
+             'CandidateCredentialEffectHold.cs','IsolatedCandidateContracts.cs',
+             'CandidateProtectedReadOnlySnapshot.cs','P223ActualHostNoEffectPort.cs') |
+             ForEach-Object{(Resolve-Path (Join-Path 'native_c1_candidate' $_)).Path}
+          $driver=(Resolve-Path 'tests/p223_actual_native_host_denial/P223ActualHostNoEffectTests.cs').Path
+          foreach($arch in @('x64','x86')){
+             $csc=if($arch -eq 'x64'){'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'}else{'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'}
+             if(-not (Test-Path -LiteralPath $csc)){throw ('Windows C# compiler missing '+$arch)}
+             $refusedExe=Join-Path $evidence ('p223-no-flags-'+$arch+'.dll')
+             $refusedLog=Join-Path $evidence ('p223-'+$arch+'-no-flags-compile.log')
+             & $csc /nologo /target:library ("/platform:"+$arch) ("/out:"+$refusedExe) $candidate[-1] *> $refusedLog
+             $noFlagsExit=$LASTEXITCODE
+             ('P223_'+$arch+'_NO_FLAGS_COMPILE_EXIT='+$noFlagsExit) | Add-Content (Join-Path $evidence 'native-exits.log')
+             if($noFlagsExit -eq 0 -or
+                (Get-Content -Raw -LiteralPath $refusedLog) -notmatch 'P223 exact-host denial port is review-only'){
+                throw ('P223 normal build no-flags refusal missing '+$arch)
+             }
+             $exe=Join-Path $evidence ('p223-real-host-'+$arch+'.exe')
+             $compileLog=Join-Path $evidence ('p223-'+$arch+'-compile.log')
+             $runLog=Join-Path $evidence ('p223-'+$arch+'-native-test.log')
+             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$exe) '/define:C1_REVIEW_ISOLATED_ASSEMBLY' '/r:System.ServiceProcess.dll' '/main:P223ActualHostNoEffectTests' @($original+$candidate+@($driver)) *> $compileLog
+             $compileExit=$LASTEXITCODE
+             ('P223_'+$arch+'_NATIVE_CSC_EXIT='+$compileExit) | Add-Content (Join-Path $evidence 'native-exits.log')
+             if($compileExit -ne 0){throw ('P223 actual Windows native host compile failed '+$arch)}
+             & $exe *> $runLog
+             $runExit=$LASTEXITCODE
+             ('P223_'+$arch+'_NATIVE_RUN_EXIT='+$runExit) | Add-Content (Join-Path $evidence 'native-exits.log')
+             if($runExit -ne 0){throw ('P223 actual Windows native host tests failed '+$arch)}
+             $text=Get-Content -Raw -LiteralPath $runLog
+             foreach($marker in @('P223_ACTUAL_NATIVE_CUSTODYSERVICE_DENIAL_TESTS_PASSED=12',
+                'P223_ACTUAL_NATIVE_CUSTODYSERVICE_DENIAL_TESTS_FAILED=0',
+                'P223_ACTUAL_HOST_USED=YES_DENIAL_ONLY',
+                'P223_ORIGINAL_P96_RACE=OPEN_NOT_FIXED',
+                'P223_NATIVE_WINCRED_EFFECTS=NONE',
+                'P223_EXTERNAL_SEC03_SEC04_OWNER_DECISION=NOT_RECEIVED',
+                'P223_REAL_KEY=NO_GO','P223_PRODUCTION_RELEASE=HOLD')){
+                if(-not $text.Contains($marker)){throw ('P223 native result missing '+$arch+': '+$marker)}
+             }
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          & python -B -m unittest -v tests.test_p216_service_store_decision_inventory tests.test_p220_actual_artifact_effect_closure *> (Join-Path $evidence 'original-P216-P220-security-tests.log')
+          $pyExit=$LASTEXITCODE
+          ('P223_PYTHON_ORIGINAL_SECURITY_EXIT='+$pyExit) | Add-Content (Join-Path $evidence 'native-exits.log')
+          if($pyExit -ne 0){throw 'Original P216/P220 source-security tests failed'}
+          $pyText=Get-Content -Raw -LiteralPath (Join-Path $evidence 'original-P216-P220-security-tests.log')
+          if($pyText -notmatch 'Ran 33 tests' -or $pyText -notmatch '(?m)^OK\r?$'){
+             throw 'Original 33 focused Python security cases not proven'
+          }
+          foreach($path in $protected){
+             $now=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+             if($now -ne $before[$path]){throw ('Frozen source mutated '+$path)}
+             ($now+'  '+$path) | Add-Content (Join-Path $evidence 'protected-source-sha256.txt')
+          }
+          if((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){throw 'Windows run source HEAD changed'}
+          ('P223_HEAD='+$env:GITHUB_SHA) | Add-Content (Join-Path $evidence 'native-exits.log')
+          ('P223_BASE='+$parent) | Add-Content (Join-Path $evidence 'native-exits.log')
+          'P223_ACTUAL_SERVICE=DENIAL_ONLY|P96_DEFECT=OPEN|SEC03_SEC04=NOT_ISSUED' | Add-Content (Join-Path $evidence 'native-exits.log')
+          'P223_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3|REVIEWS=0/7' | Add-Content (Join-Path $evidence 'native-exits.log')
+          foreach($f in @(Get-ChildItem -LiteralPath $evidence -File | Where-Object {$_.Extension -ne '.exe' -and $_.Extension -ne '.dll' -and $_.Name -ne 'evidence-sha256.txt'})){
+             $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $f.FullName).Hash
+             ($hash+'  '+$f.Name) | Add-Content (Join-Path $evidence 'evidence-sha256.txt')
+          }
+          Write-Output 'P223 source-linked actual CustodyService Windows denial tests passed x64/x86, original 33 Python security tests. No credential effects; G0/R3 independent owners NOT RECEIVED; HOLD.'
+      - name: Preserve all Windows native logs on passing or failing outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p223-windows-actual-CustodyService-denial-HOLD
+          path: |
+            ${{ runner.temp }}/p223-actual-host-native-evidence/*.log
+            ${{ runner.temp }}/p223-actual-host-native-evidence/*.txt
+          retention-days: 14
+          if-no-files-found: warn
