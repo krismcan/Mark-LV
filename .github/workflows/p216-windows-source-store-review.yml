@@ -1,0 +1,58 @@
+name: P216 Real Windows Service-Store R3 Decision and P132 Effect Inventory HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p216-service-store-decision-and-python-effect-inventory-20261114
+permissions:
+  contents: read
+jobs:
+  source-bound-external-r3-decision:
+    name: P216 Exact Git Windows Source, User-vs-Service Account Store, Legacy WinCred HOLD
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact P215 ancestor and source custody
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Original Windows Python interpreter
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install original synthetic DPAPI suite prerequisite only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P216 historical requirement not met: HOLD'}
+      - name: Execute source-bound P216 original Windows and independent R3 decision negatives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p216-service-store-decision-and-python-effect-inventory-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P216 authenticated Windows source mismatch: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p216_windows_service_store_review_evidence
+          if($LASTEXITCODE -ne 0){
+            throw 'P216 original Windows source or service-store decision test failed: HOLD'
+          }
+          Write-Output 'P216_P132_DIRECT_WINCRED_SOURCE_AND_LAUNCH_ROUTE=STILL_REACHABLE'
+          Write-Output 'P216_SERVICE_OWNED_SECRET_AND_MACHINE_WDAC=NOT_ENROLLED'
+          Write-Output 'P216_INDEPENDENT_G0_R3_SOURCE_REVIEW=NOT_ISSUED'
+          Write-Output 'P216_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS_PRODUCT=0/3'
+      - name: Preserve actual native compiler/OS process, Python source scan and HCR
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p216-genuine-Windows-service-store-effect-owner-G0-R3-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p216-evidence/*.log
+            ${{ runner.temp }}/nayeon-p216-evidence/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
