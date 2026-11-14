@@ -3,7 +3,7 @@
 # Supported PowerShell: 5.1+ on Windows. Output: minimal, non-secret JSON only.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'P218 requires native Windows: no simulated pass'
 }
 $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
