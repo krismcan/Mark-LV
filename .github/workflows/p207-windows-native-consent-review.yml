@@ -1,0 +1,55 @@
+name: P207 Genuine Windows P132/native Consent Design Review HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p207-native-consent-design-acceptance-20261114
+permissions:
+  contents: read
+jobs:
+  original-user-scope-native-review:
+    name: P207 P132/P206 original fake controls and P49/C1 native HOLD
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact event source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Original native fixture library only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if ($LASTEXITCODE -ne 0) { throw 'P207 dependency unavailable: HOLD' }
+      - name: Run original-source P207 Windows negative tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+              $env:GITHUB_EVENT_NAME -ne 'push' -or
+              $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+              $env:GITHUB_REF_NAME -ne 'byok-c1-p207-native-consent-design-acceptance-20261114' -or
+              (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+            throw 'P207 real Windows source-event custody refused'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p207_windows_native_consent_acceptance_prep
+          if ($LASTEXITCODE -ne 0) { throw 'P207 original-source Windows review tests FAILED: HOLD' }
+          Write-Output 'P207_NONPRIVILEGED_WINDOWS_DESIGN_PACKAGE=TESTED'
+          Write-Output 'P207_QUALIFIED_INDEPENDENT_REVIEW=OPEN'
+          Write-Output 'P207_REALKEY=NO_GO|PRODUCTION=HOLD|FULL_PRODUCT_WINDOWS=0/3'
+      - name: Preserve original P207 Windows failures and SHA-256 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p207-actual-Windows-native-consent-HCR-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p207-native-consent/*.log
+            ${{ runner.temp }}/nayeon-p207-native-consent/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
