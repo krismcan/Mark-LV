@@ -26,6 +26,11 @@ ADDED = {
 }
 PRIOR_BLOBS = {
     "nayeon/secrets/windows_credential.py": "ac061e629539a070ff9a67417dc5176812f4e368",
+    "nayeon/brain/local_byok_user_scope.py": "e355061156119de2f0e8ee27a827f0ac83afa0ad",
+    "nayeon/desktop_alpha/local_byok_launch_bridge.py": "450c75aae69821eae62095595a2252d2f0de7894",
+    "nayeon/desktop_alpha/local_byok_window.py": "84457832351c033b44c70bbca7e22a48183ecb8c",
+    "nayeon/desktop_alpha/application.py": "042c010a24f28e912214cde5f5b59b1943f4cf50",
+    "nayeon/desktop_alpha/workspace_window.py": "4f7b5ecd790bd68e32cfe89da31c7b9e2ff52e7c",
     "nayeon/secrets/lifecycle.py": "106d443e500fc1db2f3599d6ec64dfb027f31837",
     "nayeon/brain/credential_operation_host.py": "cbb18036bace4e83d12908250977583b88d96489",
     "nayeon/brain/onboarding_coordination.py": "b97e9d710bfd9cc7a31d8ec97525b9449700c228",
