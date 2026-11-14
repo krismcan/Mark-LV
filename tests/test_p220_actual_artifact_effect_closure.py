@@ -34,6 +34,21 @@ class P220ActualArchiveClosureTests(unittest.TestCase):
                     bundle.writestr(member, content)
                 else:
                     bundle.writestr(name, content)
+        # zipfile normalises backslashes to "/" on Windows even when a
+        # ZipInfo entry was supplied. Change the *same-length* local and
+        # central ZIP filename bytes, preserving CRC and offsets, so this
+        # test exercises an actual malicious ZIP member, not the API alias.
+        for name, _content in files:
+            if "\\" in name:
+                data = self.path.read_bytes()
+                original = name.encode("utf-8")
+                canonical = name.replace("\\", "/").encode("utf-8")
+                if original not in data:
+                    if data.count(canonical) != 2:
+                        raise AssertionError("cannot prove both ZIP filename records")
+                    self.path.write_bytes(data.replace(canonical, original))
+                if original not in self.path.read_bytes():
+                    raise AssertionError("raw backslash ZIP fixture is not genuine")
         return inspect_bounded_zip(self.path)
 
     def test_01_actual_original_P132_WinCred_source_is_rejected_as_a_shipped_member(self):
