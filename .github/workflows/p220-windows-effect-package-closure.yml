@@ -1,0 +1,135 @@
+name: P220 Genuine Windows Actual-Artifact Credential Effect Closure Negative — NO GO
+on:
+  push:
+    branches:
+      - byok-c1-p220-native-effect-package-closure-and-owner-hold-20261114
+permissions:
+  contents: read
+jobs:
+  p220-original-package-closure:
+    name: Original P132 code in actual ZIP, Windows excluded/opaque states and security HOLD
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute source-pinned P220 actual ZIP exclusions, original P216 source regression and custody receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path 'p220-windows-evidence' -Force | Out-Null
+          $base='d05d2373d9e4fc8c96b6c09d201086dff9afecdc'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p220-native-effect-package-closure-and-owner-hold-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P220 Windows runner/source identity not genuine: HOLD'
+          }
+          # Only the isolated ephemeral hosted runner is materialised to
+          # exact Git blob LF bytes. No user or Kristian worktree is changed.
+          git config --local core.autocrlf false
+          git -c core.autocrlf=false checkout-index --force --all
+          if($LASTEXITCODE -ne 0){throw 'Source byte materialisation failed'}
+          git merge-base --is-ancestor $base HEAD
+          if($LASTEXITCODE -ne 0){throw 'P220 P219 parent not proven'}
+          $expected=@(
+            '.github/workflows/p220-windows-effect-package-closure.yml'
+            'docs/byok-c1-p220-actual-effect-package-closure-and-native-service-architecture.md'
+            'nayeon/brain/p220_artifact_effect_closure.py'
+            'tests/test_p220_actual_artifact_effect_closure.py'
+          ) | Sort-Object
+          $changed=@(git diff --name-only $base HEAD | Sort-Object)
+          if(@(Compare-Object -ReferenceObject $expected -DifferenceObject $changed).Count -ne 0){
+             throw 'P220 source outside four additive paths: HOLD'
+          }
+          $protected=@(
+            'nayeon/secrets/windows_credential.py'
+            'nayeon/brain/local_byok_user_scope.py'
+            'nayeon/desktop_alpha/local_byok_window.py'
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py'
+            'nayeon/desktop_alpha/frozen_signed_byok_companion.py'
+            'native_c1_candidate/CustodyService.cs'
+            'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs'
+            'native_c1_candidate/CandidateCredentialEffectHold.cs'
+            'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs'
+            'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs'
+            'tests/p95_native_custody_preflight/CustodyLedger.cs'
+            'nayeon/brain/p216_service_store_decision.py'
+            'tests/test_p216_service_store_decision_inventory.py'
+          )
+          git diff --quiet $base HEAD -- $protected
+          if($LASTEXITCODE -ne 0){throw 'Original effect/security source changed'}
+          $before=@{}
+          foreach($path in $protected){
+            $before[$path]=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+          }
+          # Historical native SHA-256 pins bind exact Git BLOB bytes, not
+          # checkout-specific CRLF/LF transformations. The original files are
+          # separately hashed before/after execution and their tracked Git
+          # diff must stay empty. No assertion is disabled.
+          $gitBlobHash = 'import hashlib,subprocess,sys;print(hashlib.sha256(subprocess.check_output(["git","show","HEAD:"+sys.argv[1]])).hexdigest().upper())'
+          $nativeP96Hash=(& python -B -c $gitBlobHash 'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs').Trim()
+          $nativeLedgerHash=(& python -B -c $gitBlobHash 'tests/p95_native_custody_preflight/CustodyLedger.cs').Trim()
+          ('ORIGINAL_P96_GIT_BLOB_SHA256='+$nativeP96Hash) | Add-Content 'p220-windows-evidence/native-exits.log'
+          ('ORIGINAL_P95_GIT_BLOB_SHA256='+$nativeLedgerHash) | Add-Content 'p220-windows-evidence/native-exits.log'
+          if($nativeP96Hash -ne 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB' -or
+             $nativeLedgerHash -ne '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'){
+            throw 'Frozen historical Git BLOB SHA-256 changed: HOLD'
+          }
+          $hostSource=Get-Content -Raw -LiteralPath 'native_c1_candidate/CustodyService.cs'
+          if($hostSource -notmatch 'throw new InvalidOperationException' -or
+             $hostSource -match 'ServiceBase.Run\s*\('){
+             throw 'Current native C1 service unexpectedly able to start'
+          }
+          $doc=Get-Content -Raw -LiteralPath 'docs/byok-c1-p220-actual-effect-package-closure-and-native-service-architecture.md'
+          foreach($expectedWord in @('SEC-03','SEC-04','P96','P132','P133','0/3','NO-GO','PRODUCTION HOLD')){
+            if(-not $doc.Contains($expectedWord)){throw ('Missing qualification HOLD '+$expectedWord)}
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          & python -B -m unittest -v tests.test_p220_actual_artifact_effect_closure tests.test_p216_service_store_decision_inventory *> 'p220-windows-evidence/original-source-and-ZIP-tests.log'
+          $testExit=$LASTEXITCODE
+          ('P220_ACTUAL_WINDOWS_PYTHON_EXIT='+$testExit) | Add-Content 'p220-windows-evidence/native-exits.log'
+          if($testExit -ne 0){throw 'Actual original source ZIP negative test failed'}
+          $result=Get-Content -Raw -LiteralPath 'p220-windows-evidence/original-source-and-ZIP-tests.log'
+          if($result -notmatch 'Ran 33 tests' -or $result -notmatch '(?m)^OK\r?$'){
+            throw 'P220 15 true ZIP plus 18 original P216 Windows cases not proven'
+          }
+          foreach($path in $protected){
+            $now=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
+            if($now -ne $before[$path]){throw ('Historical source custody mutated '+$path)}
+            ($now+'  '+$path) | Add-Content 'p220-windows-evidence/original-source-sha256.txt'
+          }
+          # Evidence files deliberately live in the isolated checkout, so
+          # only that exact output prefix is allowed to be untracked. All
+          # tracked source is required to remain byte-for-byte unchanged.
+          $trackedDirty=@(git diff --name-only HEAD)
+          $unexpectedUntracked=@(git ls-files --others --exclude-standard | Where-Object {
+            -not $_.StartsWith('p220-windows-evidence/',[StringComparison]::Ordinal)
+          })
+          if($trackedDirty.Count -ne 0 -or $unexpectedUntracked.Count -ne 0){
+            throw 'Source checkout or unrelated files mutated during P220 Windows tests'
+          }
+          ('P220_EXACT_HEAD='+$env:GITHUB_SHA) | Add-Content 'p220-windows-evidence/native-exits.log'
+          ('P220_EXACT_PARENT='+$base) | Add-Content 'p220-windows-evidence/native-exits.log'
+          'P220_LEGACY_ORIGINAL_P132_WINCRED_ROUTE=STILL_SOURCE_REACHABLE' | Add-Content 'p220-windows-evidence/native-exits.log'
+          'P220_PRODUCTION_SIGNED_INSTALLER=NOT_BUILT|SIGNED_IMAGE_PROOF=NOT_ISSUED' | Add-Content 'p220-windows-evidence/native-exits.log'
+          'P220_EXTERNAL_G0_R3_SECURITY_APPROVAL=NOT_RECEIVED|REALKEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS=0/3' | Add-Content 'p220-windows-evidence/native-exits.log'
+          foreach($item in @(Get-ChildItem -LiteralPath 'p220-windows-evidence' -File | Where-Object {$_.Name -ne 'evidence-log-sha256.txt'})){
+            $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $item.FullName).Hash
+            ($sha+'  '+$item.Name) | Add-Content 'p220-windows-evidence/evidence-log-sha256.txt'
+          }
+          Write-Output 'P220 real Windows source archive review, known P132 source ZIP detection, 18 original source tests PASS; NO signature/OS reviewer authority; REAL-KEY NO-GO and production HOLD.'
+      - name: Archive original logs for both passing and failing outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p220-genuine-Windows-real-ZIP-legacy-effect-exclusion-HOLD
+          path: p220-windows-evidence/
+          retention-days: 14
+          if-no-files-found: warn
