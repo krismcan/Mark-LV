@@ -10,13 +10,13 @@ Exact P203 final commit 2ceac3142147f19707d858fa424b7dba1b02592a and genuine nat
 
 The current Phase 10/P76 public source authority is not the historical B private verifier; P201/P202's legacy 23-pin gate is not connected. P203 verified the actual public route and denial-only native C1 service. P204 begins a modern-facing generic read-only source-set component without claiming signed production authority.
 
-**New dormant code:** nayeon/brain/byok_c1_readonly_source_set_candidate.py implements WindowsReadOnlySourceSetProbe. It operates on an absolute Windows root and a bounded supplied relative-path-to-SHA256 map, rejecting noncanonical aliases, ADS/traversal paths, malformed pins, missing metadata, extra hardlinks, NTFS named ADS, reparse root/parent/leaf and source pin mismatches through the P190 real Win32 HANDLE observation helpers. It reads exact bytes and real FileId identity from the same per-file HANDLE, compares before/after handle and observed parent metadata, closes the HANDLE, and returns immutable observation records. A partial set cannot return after a later source failure.
+**New dormant code:** nayeon/brain/byok_c1_readonly_source_set_candidate.py implements WindowsReadOnlySourceSetProbe. It operates on an absolute Windows root and a bounded supplied relative-path-to-SHA256 map, rejecting noncanonical aliases, reserved DOS device filenames, ADS/traversal paths, malformed pins and manifests longer than 23 entries **before materialization**, missing metadata, mixed-volume FileId sets, extra hardlinks, NTFS named ADS, reparse root/parent/leaf and source pin mismatches through the P190 real Win32 HANDLE observation helpers. It reads exact bytes and real FileId identity from the same per-file HANDLE, compares before/after handle and observed parent metadata, closes the HANDLE, and returns immutable observation records. A partial set cannot return after a later source failure.
 
 **Trust classification deliberately does not say ADMITTED:** results are NONATOMIC_SEQUENTIAL_READ_ONLY_OBSERVATION_NOT_ADMISSION; the caller's SHA map is UNTRUSTED. An attacker controlling both file data and its claimed digest can still make a successful physical observation. This is the exact P198/P199 content-claim limitation in another form; P204 retains an explicit real Windows negative example showing such untrusted self-repinning is UNSAFE. A later reopened source path can also change after the HANDLE closes, so returned raw exact bytes do not prove source set remains constant or that a signed trusted consumer executes those bytes.
 
 **Source scope:** exactly one new dormant product candidate plus three audit-only files (script, this review, genuine Windows Action), based on the exact original P203 HEAD. Existing P76/Phase10 public route, private historical B, P201/P202 candidates, native service and frozen tests remain untouched. Kristian original D:\Nayeon\BYOK_C1_PRODUCT_20261028 remains at original HEAD e3612279cb972e68e2487702183d5bf5b8f6c4a1 with all 17 pre-existing changes preserved.
 
-## Eight genuine native Windows selected cases
+## Nine genuine native Windows selected cases
 
 On a self-owned disposable hosted Windows test root with TWO harmless synthetic files and **no credential material**, test:
 1. Two pinned originals return exact bytes + real 16-byte Win32 FileIds in records explicitly marked NOT_ADMITTED.
@@ -27,8 +27,9 @@ On a self-owned disposable hosted Windows test root with TWO harmless synthetic 
 6. Physical source path replacement AFTER successful HANDLE-based observation leaves returned original bytes intact, but another read against original pinned SHA refuses: no post-return “lease”.
 7. Controlled modified bytes plus attacker-controlled recomputed SHA are observed as apparently valid **UNSAFE**: this proves no signed trusted manifest/root has been established, not successful source admission.
 8. Source HANDLE stream-enumeration error refuses without returning a partially inspected set.
+9. Inconsistent FileId volume identities across two separate Windows source handles refuse; synthetic identity substitution test, not proof of a true cross-volume production namespace.
 
-Authenticate predecessor P203 genuine Windows ZIP/CRC/member hashes, source/Git HEAD, its public P76 gate refusal and H/C/R before tests. Record actual OS exit, unittest footer, raw member hash and source-before/after in H/C/R. Eight cases are selected, not any full Windows product regression.
+Authenticate predecessor P203 genuine Windows ZIP/CRC/member hashes, source/Git HEAD, its public P76 gate refusal and H/C/R before tests. Record actual OS exit, unittest footer, raw member hash and source-before/after in H/C/R. Nine cases are selected, not any full Windows product regression.
 
 ## What remains before BYOK C1 implementation is truly safe
 
