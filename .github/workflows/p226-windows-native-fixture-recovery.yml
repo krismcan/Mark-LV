@@ -1,0 +1,53 @@
+name: P226 Actual Windows Original FS + P210/P213 Native Fixture Recovery — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p226-windows-native-regression-recovery-20261114
+permissions:
+  contents: read
+jobs:
+  unchanged-original-native-tests:
+    name: Real Windows strict filesystem root, authentic synthetic native executable and signer tests
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact event source, full immutable historical Git ancestry
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Native hosted Windows CPython 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing exact P210 and P213 Windows fixture prerequisite
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P226 original cryptography dependency unavailable: HOLD'}
+      - name: Run unchanged original seven native FS + 13 Python native + 20 Authenticode tests
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'p226-original-Windows-fixture-recovery'
+          New-Item -Path $out -ItemType Directory -Force | Out-Null
+          & python -B -m scripts.p226_windows_native_fixture_recovery *> (Join-Path $out 'p226-original-native-runner.log')
+          $nativeExit=$LASTEXITCODE
+          ('P226_EVENT_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'p226-runner-native-exit.log')
+          ('P226_NATIVE_PROCESS_EXIT='+$nativeExit) | Add-Content (Join-Path $out 'p226-runner-native-exit.log')
+          Get-Content -LiteralPath (Join-Path $out 'p226-original-native-runner.log') | ForEach-Object { Write-Output $_ }
+          if($nativeExit -ne 0){throw 'P226 original native tests or prerequisites failed; preserve originals, HOLD'}
+          Write-Output 'P226_TARGETED_ORIGINAL_NATIVE_TESTS=PASS_ONLY_IF_ALL_REAL_TESTS_PASS'
+          Write-Output 'P226_FULL_UNFILTERED_WINDOWS=0/3|REAL_KEY=NO_GO|PRODUCTION=HOLD'
+      - name: Preserve original Windows logs, compiler receipt and native SHA-256 evidence on any outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p226-Windows-original-FS-P210-P213-native-fixtures-HOLD
+          path: |
+            ${{ runner.temp }}/p226-original-Windows-fixture-recovery/*
+            ${{ runner.temp }}/nayeon-p139-safe-root-regression/*.log
+          if-no-files-found: warn
+          retention-days: 14
