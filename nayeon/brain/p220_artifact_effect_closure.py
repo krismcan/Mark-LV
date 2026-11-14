@@ -113,7 +113,7 @@ def inspect_bounded_zip(archive: Path) -> P220InventoryReceipt:
     Results are *review* diagnostics. No value is positive signer, service,
     native-effect, key migration, Windows policy or release authority.
     """
-    if type(archive) is not Path or not archive.is_absolute():
+    if not isinstance(archive, Path) or not archive.is_absolute():
         return _invalid("ZIP path must be exact absolute Path")
     try:
         metadata = archive.lstat()
