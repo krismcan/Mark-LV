@@ -48,3 +48,19 @@ Do not weaken or delete historical negative cases to reach green. Successful tes
 6. Independent qualified review: GOV-01, GOV-02, SEC-03, SEC-04, REL-05, REL-06, REL-07 are all OPEN. P135, P175, P178, P179 and PERF-P187-01 actual Windows product test failures/timeouts remain UNWAIVED. Native full unfiltered full-product regression acceptance remains **0/3**.
 
 The preparatory review authored here is **not an independent security sign-off**. No actual production signer, credentials, real provider validation, Windows Credential Manager write, privileged operation, main/helper/installer release, merge/tag/release, or Google Drive MASTER/dashboard production release reconciliation is authorised. H/C/R remains **HOLD / isolated signed-fixture and native process experiment / HOLD**.
+
+
+## Authenticated initial native Windows evidence — 14 November 2026
+
+**Initial P199 test source HEAD:** aaaa709caf4a6da7b8ba3e7483f6b38db46ad2ee.
+Genuine Windows Actions run **43571789945**, artifact **14105010422**, original ZIP SHA-256 **0446F87C67517A1B10600DF9A812F7FC4D37D0FA42849B4A28832E344B263814**, exactly two original members with valid CRC.
+- p199_native_Windows_consumer_provenance_60.log SHA-256 **7541DC054019952F65E7B5DB2567DA3795B1BA0A16C5548BDA875644F9C50B32**.
+- p199_process_provenance_HCR_ledger.json SHA-256 **ED39CEB85D6E967A1ADFB444A56192E878F349AA515AE83A190D441145B377A6**.
+
+**Native selected tests:** 60/60 PASS, actual Windows process exit 0, complete unittest footer OK, total selected test duration 5.262 seconds (NOT a full-product performance benchmark); source_before == source_after; original P198 ZIP and prior 50 selected native cases authenticated before this run; H and R production release both HOLD, original full product 0/3.
+
+**Actual hosted Windows Authenticode observation:** Get-AuthenticodeSignature on sys.executable returned **Valid**. This is genuine OS evidence for the interpreter binary only, not evidence of independently signed or pinned source-consuming inline code. Test 60 conclusively demonstrates the danger: the same signed interpreter.exe launched a different static inline script which did not inspect the delivered source but fabricated plausible PID/parent/nonce/digest fields. The lab parent **incorrectly admitted the forged receipt**, a deliberate unsafe negative test. An independently signed and enforced loader/content policy remains entirely unimplemented.
+
+Original failed P199 Windows run **43571680392** is retained with artifact **14105005223**, ZIP SHA-256 **26E2B7EB807BC858848C4F9DC422E69A8819D6506E6AF587C6270C652272C4AA**. It ran 60 selected Windows cases, 58 passed and two new cases failed solely because the hash-only child returned lowercase hex SHA-256 while its strict parent protocol expected uppercase. The fix changed child output to uppercase, **without relaxing any original or new security refusal assertions**. Original failures remain in the raw log and H/C/R HOLD ledger.
+
+This is **source identity and test-only signing research**, not a production signed loader, independent root CA, production authenticated process, actual safe privileged handoff, product fix, original historical BYOK-B ADS repair, all-Phase10 integration or external security acceptance. Source is audit-only. Independent qualified reviews and G0–G6 privileged admission remain OPEN. A new documentation-inclusive commit must be proven by its own source-matched genuine Windows run before experimental closure.
