@@ -70,7 +70,11 @@ jobs:
              $exe=Join-Path 'p219-native-evidence' ('original-P96-'+$arch+'.exe')
              $compileLog=Join-Path 'p219-native-evidence' ('p96-'+$arch+'-compiler.log')
              $runLog=Join-Path 'p219-native-evidence' ('p96-'+$arch+'-original-negative.log')
-             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$exe) $ledger $txn $driver *> $compileLog
+             $ledgerNative=(Resolve-Path -LiteralPath $ledger).Path
+             $txnNative=(Resolve-Path -LiteralPath $txn).Path
+             $driverNative=(Resolve-Path -LiteralPath $driver).Path
+             $exeNative=Join-Path (Get-Location).Path $exe
+             & $csc /nologo /target:exe ("/platform:"+$arch) ("/out:"+$exeNative) $ledgerNative $txnNative $driverNative *> $compileLog
              $compileExit=$LASTEXITCODE
              ('P219_'+$arch+'_COMPILER_EXIT='+$compileExit) | Add-Content 'p219-native-evidence/native-exits.log'
              if($compileExit -ne 0){throw ('Original compiler failed '+$arch)}
