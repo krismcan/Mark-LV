@@ -16,6 +16,24 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize exact Git object bytes on isolated ephemeral Windows checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p226-windows-native-regression-recovery-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P226 ephemeral Windows checkout identity refused'
+          }
+          git config --local core.autocrlf false
+          if($LASTEXITCODE -ne 0){throw 'P226 failed exact Git blob checkout configuration'}
+          git checkout-index --all --force
+          if($LASTEXITCODE -ne 0){throw 'P226 failed exact Git blob worktree materialization'}
+          if(git status --porcelain=v1 -uall){
+            throw 'P226 original Windows checkout not pristine after Git blob materialization'
+          }
+          Write-Output 'P226_EPHEMERAL_WINDOWS_RAW_GIT_BLOB_CHECKOUT=COMPLETE'
       - name: Native hosted Windows CPython 3.12
         uses: actions/setup-python@v5
         with:
