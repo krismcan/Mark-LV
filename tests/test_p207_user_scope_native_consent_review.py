@@ -17,7 +17,7 @@ from nayeon.brain.local_byok_user_scope import (
 )
 from nayeon.brain.windows_onboarding_mutex import MutexAdmission
 from nayeon.brain.p206_legacy_effect_hold_candidate import P206LegacyEffectHoldCandidate
-from nayeon.secrets.contracts import SecretIdentifier, SecretValue
+from nayeon.secrets.contracts import SecretIdentifier, SecretValue, SecretStorageError
 from nayeon.secrets.windows_credential import WindowsCredentialBackend
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,7 +174,8 @@ class P207RealSourceOwnershipTests(unittest.TestCase):
     def test_11_direct_backend_can_mutate_other_syntax_valid_target_fake_only(self):
         native = FakeNative()
         backend = WindowsCredentialBackend(_native=native)
-        backend.put(SecretIdentifier("another.valid_key"), SecretValue(FAKE))
+        with self.assertRaises(SecretStorageError):
+            backend.put(SecretIdentifier("another.valid_key"), SecretValue(FAKE))
         self.assertEqual(native.events[-1],
                          ("write", "nayeon-v1/secret/another.valid_key"))
         # FakeNative refuses nonfixed target so this should be isolated
