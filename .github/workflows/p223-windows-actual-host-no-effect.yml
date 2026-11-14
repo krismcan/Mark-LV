@@ -120,7 +120,7 @@ jobs:
                 'P223_NATIVE_WINCRED_EFFECTS=NONE',
                 'P223_EXTERNAL_SEC03_SEC04_OWNER_DECISION=NOT_RECEIVED',
                 'P223_REAL_KEY=NO_GO','P223_PRODUCTION_RELEASE=HOLD')){
-                if(-not $text.Contains($marker)){throw ('P223 native result missing '+arch+': '+$marker)}
+                if(-not $text.Contains($marker)){throw ('P223 native result missing '+$arch+': '+$marker)}
              }
           }
           $env:PYTHONDONTWRITEBYTECODE='1'
