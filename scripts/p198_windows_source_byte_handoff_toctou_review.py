@@ -123,7 +123,7 @@ try:
     print(json.dumps({"status":status,"source":mode,"sha256":actual,
                       "byte_count":len(data)}))
     sys.exit(0 if status=="MATCHES_CALLER_SUPPLIED_SHA_ONLY" else 8)
-except BaseException as e:
+except Exception as e:
     print(json.dumps({"status":"CHILD_IO_EXCEPTION","class":type(e).__name__}))
     sys.exit(9)
 """
