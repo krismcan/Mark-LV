@@ -47,3 +47,26 @@ SEC-P198-HISTORICAL-05: original historical full private BYOK-B ADS admission ga
 Original P135, P175, P178, P179 and PERF-P187-01 failures/timeouts remain UNWAIVED. External qualified GOV-01, GOV-02, SEC-03, SEC-04, REL-05, REL-06, REL-07 reviewer decisions OPEN; privileged G0–G6 OPEN; full original Windows acceptance 0/3. Do not label assistant-prepared review an independent qualified signoff.
 
 No actual credentials, live provider network validation, Credential Manager production writes, privileged admission, PR merge/tag/release or Google Drive MASTER/dashboard release reconciliation. H/C/R remains HOLD / isolated synthetic Windows process custody experiment / HOLD.
+
+
+## Authenticated initial P198 Windows outcome — 14 November 2026
+
+**Source SHA** 5343bd95b7d46ba8fff28902a011dfd8188deb5e. Actual hosted native Windows Actions run 43570270939, artifact 14103897827; ZIP SHA-256 **249D467ECC6CB3EE45D219481A6BCA671180369C0569A91AF0045A0610B8E361**, member inventory exactly two, ZIP CRC passed:
+- p198_native_Windows_admission_consumer_50.log, SHA-256 **DEE6F0F5217EDB827A5332CC594948354D41985A42A948710DCFC5C8CD492C49**.
+- p198_source_consumer_HCR_ledger.json, SHA-256 **4A7D81591F6056A8E3946B6AF67E39BCC627A354A8B78A7559F81BCF920DF3DA**.
+
+Actual Windows selected test outcome **50/50 PASS**, native OS exit 0, complete 4.700s unittest OK footer; source_before == source_after; original genuine P197 ZIP and inherited 40 selected source-era cases reauthenticated. H/C/R = HOLD / experimental source-to-consumer bytes review / HOLD; accepted complete genuine full-product regression count 0/3. The 4.700s is a **narrow test duration, not a production performance measurement**.
+
+**Original failed P198 runs preserved, not rewritten:** Run 43570128344 source-custody/workflow setup completed but audit script had a Python line-continuation syntax error before tests; no raw test files were uploaded. Run 43570223941 (archived artifact 14103736928, SHA **0AB19DD33F02B346A85EC6726F13BB1B9D2E069DDC44364229FF4359C5B5E49B**) ran 50 actual Windows tests and failed 9 new consumer cases because the static hash-only child caught its own normal SystemExit via BaseException; native log and HOLD ledger were retained. The child exception contract was corrected, not any historical test or security expectation. These diagnostic failures do not count toward accepted regressions.
+
+Native success demonstrated the security issue:
+- Real independent Windows child replaced a disposable C: test-source path after earlier pre-bound validation ended and the HANDLE was closed.
+- Another independent child reopened that original path and saw changed bytes. Given the **original** expected approved source hash, it refused.
+- The original approved byte content held in memory was still correctly transferred through standard input to a new hash-only child after the path replacement.
+- **Critically unsafe control:** if a caller can change both the replacement path file and the hash presented to the consumer, the consumer admits the substituted bytes. This is not safe admission and must not be mistaken for signer/authority trust.
+- Fresh original pre-bound P194 source revalidation after the path replacement refused the changed leaf FileId.
+- Separate-process tamper, truncation, missing/malformed digest and oversize cases all refused. Two fresh subprocesses observed identical prevalidated byte payloads.
+
+**Important claim limit:** The validated source was never executed. No trusted code loader, process signing, real Windows HANDLE transfer, protected parent-child IPC, trusted independent digest authority, code signing, dynamic import, service launch or production BYOK admission was demonstrated. Source-byte transfer between ordinary Python processes with untrusted caller-supplied digest is a diagnostic, not a production execution-security mechanism. The historical full private BYOK-B ADS gate remains unpatched. Qualified independent security reviews, actual original full product native Windows regressions and signed installer/helper/main process admission remain OPEN.
+
+**Experimental closure:** A final documentation-inclusive source commit requires its own real Windows run before P198 can close as an experimental checkpoint. All original product and historical code remain unchanged; PR remains DRAFT and UNMERGED, production release HOLD. No authoritative Google Drive release workbook/dashboard reconciliation is appropriate without an actual release.
