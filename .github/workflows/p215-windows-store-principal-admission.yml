@@ -1,0 +1,58 @@
+name: P215 Genuine Windows Store Principal and Native C1 Credential Ownership HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p215-windows-store-principal-ownership-20261114
+permissions:
+  contents: read
+jobs:
+  native-current-user-vs-service-principal:
+    name: P215 Real Win32 CredGetSessionTypes + Current Token to Existing C1 Host Denial
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - name: Read exact source SHA and P214 baseline
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use genuine Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Existing synthetic DPAPI test dependency only
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==46.0.4
+          if($LASTEXITCODE -ne 0){throw 'P215 prior native synthetic fixture missing: HOLD'}
+      - name: Authenticate exact P215 source and execute native principal tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p215-windows-store-principal-ownership-20261114' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+            throw 'P215 wrong exact source or hosted Windows event: HOLD'
+          }
+          $env:PYTHONDONTWRITEBYTECODE='1'
+          python -B -m scripts.p215_windows_service_store_identity_evidence
+          if($LASTEXITCODE -ne 0){
+            throw 'P215 genuine Windows OS principal/read-only WinCred capability fail closed'
+          }
+          Write-Output 'P215_GENUINE_WINDOWS_USER_TOKEN=OBSERVED_NO_SIDS_LOGGED'
+          Write-Output 'P215_WIN32_CREDGETSESSIONTYPES=READONLY_NO_KEY_VAULT_ACCESS'
+          Write-Output 'P215_ACTUAL_C1_HOST=DENIED_NO_SERVICE_INSTALL'
+          Write-Output 'P215_REAL_KEY=NO_GO|PRODUCTION=HOLD|FULL_WINDOWS_PRODUCT=0/3'
+      - name: Preserve original real native process, compiler, OS and HCR receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p215-real-Windows-credential-store-principal-HOLD
+          path: |
+            ${{ runner.temp }}/nayeon-p215-evidence/*.log
+            ${{ runner.temp }}/nayeon-p215-evidence/*.json
+            ${{ runner.temp }}/nayeon-p205-key-gates/*.log
+          if-no-files-found: warn
+          retention-days: 14
