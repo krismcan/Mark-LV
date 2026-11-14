@@ -51,7 +51,7 @@ class FixedHistoricalBGateOwner:
     def __init__(self, root:Path):
         if os.name!="nt" or sys.platform!="win32":
             raise PhysicalAdmissionDenied("P202_NATIVE_WINDOWS_REQUIRED")
-        if type(root) is not Path or not root.is_absolute():
+        if not isinstance(root,Path) or not root.is_absolute():
             raise PhysicalAdmissionDenied("P202_ABSOLUTE_ORIGINAL_ROOT_REQUIRED")
         runner=os.environ.get("RUNNER_TEMP")
         if not runner or not root.resolve().is_relative_to(Path(runner).resolve()):
