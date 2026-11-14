@@ -1,0 +1,47 @@
+name: P225 Genuine Windows Original BYOK-B Stalled Test and Native Error Root-Cause Isolation — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p225-windows-historical-stall-root-cause-20261114
+permissions:
+  contents: read
+jobs:
+  original-windows-isolation:
+    name: Isolate exact original P224 stall and six historical error groups
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact P224 parent and isolate P225 additive diagnostics
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Original source CPython 3.12 Windows diagnostic runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute seven bounded original native Windows test processes, never production effects
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'p225-original-Windows-failure-evidence'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          & python -B -m scripts.p225_windows_original_failure_isolation *> (Join-Path $dir 'p225-seven-original-tests-diagnostic-run.log')
+          $nativeExit=$LASTEXITCODE
+          ('P225_EXACT_HEAD='+$env:GITHUB_SHA) | Set-Content (Join-Path $dir 'p225-native-exit.log')
+          ('P225_ISOLATED_DIAGNOSTIC_PROCESS_EXIT='+$nativeExit) | Add-Content (Join-Path $dir 'p225-native-exit.log')
+          Get-Content -LiteralPath (Join-Path $dir 'p225-seven-original-tests-diagnostic-run.log') | ForEach-Object { Write-Output $_ }
+          if($nativeExit -ne 0){throw 'P225 isolation evidence collection failed; original evidence retained, no test waiver'}
+          if(-not (Test-Path -LiteralPath (Join-Path $dir 'p225-isolation-manifest.json'))){throw 'P225 missing original Windows test exit manifest'}
+          if(-not (Test-Path -LiteralPath (Join-Path $dir 'p225-evidence-sha256.txt'))){throw 'P225 missing raw original Windows evidence hashes'}
+          Write-Output 'P225 SEVEN ORIGINAL WINDOWS TEST CASES OBSERVED, no original failure waived; G0/R3 independent reviews absent, production HOLD.'
+      - name: Preserve original Windows test stderr, faulthandler, native exits and SHA256 evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p225-Windows-original-BYOKB-stall-and-native-errors-HOLD
+          path: ${{ runner.temp }}/p225-original-Windows-failure-evidence/*
+          if-no-files-found: warn
+          retention-days: 14
