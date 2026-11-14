@@ -95,7 +95,8 @@ def _known_legacy(parts: tuple[str, ...]) -> bool:
     if not parts:
         return False
     filename = parts[-1]
-    stem, suffix = __import__("os").path.splitext(filename)
+    stem, dot, extension = filename.rpartition(".")
+    suffix = "." + extension if dot else ""
     if suffix not in _PYTHON_SUFFIXES:
         return False
     stem = stem.split(".")[0]  # Python cached bytecode name/module stem
