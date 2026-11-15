@@ -1,0 +1,81 @@
+name: P245 P76 genuine current-source candidate - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p245-p76-current-source-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  source-era-candidate:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONHASHSEED: '0'
+    steps:
+      - name: Establish raw Git checkout
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p245-public" -Force | Out-Null
+      - uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fresh complete proof before and after all P245 native tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = "$env:RUNNER_TEMP/p245-public"
+          $log = "$evidence/bracket-runner.log"
+          $LASTEXITCODE = $null
+          python -B -m scripts.p245_p76_current_source --hosted-suite $evidence *> $log
+          $runnerExit = $LASTEXITCODE
+          $passed = $false
+          if (Test-Path -LiteralPath "$evidence/suite-receipt.json") {
+            $receipt = Get-Content -LiteralPath "$evidence/suite-receipt.json" -Raw | ConvertFrom-Json
+            $passed = ($runnerExit -eq 0 -and $null -ne $runnerExit -and
+              $receipt.candidate_suite_pass -eq $true -and
+              $receipt.fixture.native_policy_verified -eq $true -and
+              $receipt.fixture.cleanup_confirmed -eq $true -and
+              $receipt.process_cleanup_confirmed -eq $true -and
+              $receipt.suites.'pure-negative'.expected_tests -eq 52 -and
+              $receipt.suites.'pure-negative'.native_exit -eq 0 -and
+              $receipt.suites.'pure-negative'.complete -eq $true -and
+              $receipt.suites.'live-candidate'.expected_tests -eq 7 -and
+              $receipt.suites.'live-candidate'.native_exit -eq 0 -and
+              $receipt.suites.'live-candidate'.complete -eq $true -and
+              $receipt.before.attempted -eq $true -and $receipt.before.complete -eq $true -and
+              $receipt.after.attempted -eq $true -and $receipt.after.complete -eq $true -and
+              $receipt.before.witness_sha256 -eq $receipt.after.witness_sha256)
+          }
+          [ordered]@{
+            schema = 'P245-WORKFLOW-V3'; runner_native_exit = $runnerExit
+            runner_log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
+            candidate_suite_pass = $passed
+            intentional_workflow_exit = $(if ($passed) { 3 } else { 1 })
+            source = 'da9c436a177b3ec68db0eff2b610180b745bfb2b'
+            event_sha = "$env:GITHUB_SHA"
+            historical_failures = '4 ORIGINAL FAIL REMAIN UNWAIVED'
+            qualified_approvals = '0/7'; full_unfiltered_regressions = '0/3'
+            real_key = 'NO-GO'; production = 'HOLD'
+          } | ConvertTo-Json | Set-Content "$evidence/workflow-receipt.json" -Encoding utf8
+          if (-not $passed) { throw 'P245 complete source proofs or native suite receipts failed' }
+          Write-Output 'P245 BRACKETED CANDIDATE PASSED -- RELEASE AND HISTORICAL GATES REMAIN HOLD'
+          exit 3
+      - name: Preserve authentic public evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p245-candidate-source-era-HOLD
+          path: ${{ runner.temp }}/p245-public/
+          if-no-files-found: error
+          retention-days: 30
