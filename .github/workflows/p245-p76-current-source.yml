@@ -1,0 +1,69 @@
+name: P245 P76 genuine current-source candidate - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p245-p76-current-source-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  source-era-candidate:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONHASHSEED: '0'
+    steps:
+      - name: Establish raw Git checkout
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Git raw checkout configuration failed' }
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p245-public" -Force | Out-Null
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pure negative controls (not production authority)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p245-public/pure-negative.log"
+          python -B -m unittest -v tests.test_p245_p76_current_source.P245PureNegativeTests *> $log
+          $childExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 'P245-V1'; test_scope = 'PURE NEGATIVE'; native_exit = $childExit
+            log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
+            real_key = 'NO-GO'; production = 'HOLD'
+          } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/p245-public/pure-negative.json" -Encoding utf8
+          if ($childExit -ne 0) { throw "Original negative controls failed, native exit $childExit" }
+      - name: Genuine live signed-event current-source and hostile negatives
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p245-public/live-candidate.log"
+          python -B -m unittest -v tests.test_p245_p76_current_source.P245GenuineHostedWindowsCandidateTests *> $log
+          $childExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 'P245-V1'; test_scope = 'GITHUB WINDOWS CURRENT-CANDIDATE'
+            native_exit = $childExit; log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
+            source = 'da9c436a177b3ec68db0eff2b610180b745bfb2b'
+            event_sha = "$env:GITHUB_SHA"
+            historical_failures = '4 ORIGINAL FAIL REMAIN UNWAIVED'
+            qualified_approvals = '0/7'; full_unfiltered_regressions = '0/3'
+            real_key = 'NO-GO'; production = 'HOLD'
+          } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/p245-public/live-candidate.json" -Encoding utf8
+          if ($childExit -ne 0) { throw "P245 hosted candidate failed native exit $childExit" }
+          Write-Output 'P245 LIVE CANDIDATE PASSED -- RELEASE AND HISTORICAL GATES REMAIN HOLD'
+          exit 3
+      - name: Preserve authentic public evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p245-candidate-source-era-HOLD
+          path: ${{ runner.temp }}/p245-public/
+          if-no-files-found: warn
+          retention-days: 30
