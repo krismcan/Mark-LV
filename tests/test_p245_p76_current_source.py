@@ -11,6 +11,7 @@ import subprocess
 import struct
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 from scripts import p245_p76_current_source as candidate
@@ -263,6 +264,9 @@ class P245CompleteProofTests(unittest.TestCase):
             candidate.complete_source()
 
     def test_live_verifier_cannot_accept_synthetic_clean_status_with_bad_bytes(self):
+        # This must be a real canonical fixture before exercising the byte route.
+        self.assertEqual(self.raw_git("rev-parse", "--show-toplevel").decode().strip().casefold(),
+                         self.root.as_posix().casefold())
         (self.root / "ordinary.txt").write_bytes(b"synthetic false-green bytes\n")
         real_git = candidate.git
 
@@ -483,9 +487,23 @@ class P245SuiteReceiptTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.output = Path(self.temporary.name) / "evidence"
         self.proof = synthetic_complete_witness()
+        # Only these orchestration synthetics replace fixture admission. The
+        # genuine hosted runner always calls the original P139 native policy.
+        fixture_path = mock.patch.object(candidate, "hosted_fixture_path", side_effect=lambda:
+                                        Path(self.temporary.name) / ("owned-" + uuid.uuid4().hex))
+        self.fixture_path = fixture_path.start()
+        self.addCleanup(fixture_path.stop)
+        policy = mock.patch.object(candidate, "verify_hosted_fixture")
+        self.native_policy = policy.start()
+        self.addCleanup(policy.stop)
 
     def run_synthetic(self, proofs=None, *, native_exit=0, log=b"Ran 1 test in 0.001s\n\nOK\n"):
         def child(*args, **kwargs):
+            fixture = Path(kwargs["env"]["TMPDIR"])
+            self.assertTrue(fixture.is_dir())
+            self.assertEqual([kwargs["env"][name] for name in ("TEMP", "TMP")],
+                             [str(fixture), str(fixture)])
+            self.assertEqual(kwargs["env"]["GIT_NO_REPLACE_OBJECTS"], "1")
             kwargs["stdout"].write(log)
             return subprocess.CompletedProcess(args[0], native_exit)
 
@@ -500,6 +518,7 @@ class P245SuiteReceiptTests(unittest.TestCase):
         return result, receipt, verifier.call_count
 
     def test_matching_complete_proofs_and_native_receipts(self):
+        original_env = dict(os.environ)
         result, receipt, calls = self.run_synthetic()
         self.assertEqual((result, calls), (0, 2))
         self.assertTrue(receipt["candidate_suite_pass"])
@@ -509,6 +528,57 @@ class P245SuiteReceiptTests(unittest.TestCase):
             self.assertEqual(receipt["suites"][label]["log_sha256"],
                              candidate.digest((self.output / (label + ".log")).read_bytes()))
         self.assertNotIn("workflow_exit", receipt["suites"]["live-candidate"])
+        self.assertTrue(receipt["fixture"]["native_policy_verified"])
+        self.assertTrue(receipt["fixture"]["cleanup_confirmed"])
+        self.assertTrue(receipt["process_cleanup_confirmed"])
+        self.assertFalse(os.path.lexists(receipt["fixture"]["path"]))
+        self.assertEqual(dict(os.environ), original_env)
+        self.assertEqual(self.native_policy.call_count, 2)
+
+        # A substituted path, different inode, or nonempty root must never
+        # result in recursive deletion or a successful cleanup receipt.
+        fixture = Path(self.temporary.name) / "cleanup-negative"
+        fixture.mkdir()
+        meta = fixture.lstat()
+        identity = (meta.st_dev, meta.st_ino)
+        with mock.patch.object(candidate, "checked_node", side_effect=
+                               candidate.CurrentSourceRefused("linked or reparse source path")), \
+                mock.patch.object(candidate.os, "rmdir") as remove:
+            with self.assertRaisesRegex(candidate.CurrentSourceRefused, "reparse"):
+                candidate.cleanup_hosted_fixture(fixture, identity)
+            remove.assert_not_called()
+        with self.assertRaisesRegex(candidate.CurrentSourceRefused, "identity changed"):
+            candidate.cleanup_hosted_fixture(fixture, (meta.st_dev, meta.st_ino + 1))
+        (fixture / "residue").write_bytes(b"owned synthetic residue")
+        with self.assertRaises(OSError):
+            candidate.cleanup_hosted_fixture(fixture, identity)
+        self.assertTrue((fixture / "residue").is_file())
+        with mock.patch.object(candidate, "hosted_fixture_path", return_value=fixture):
+            result, receipt, calls = self.run_synthetic()
+            self.assertEqual((result, calls), (1, 2))
+            self.assertFalse(receipt["fixture"]["created"])
+            self.assertFalse(receipt["fixture"]["cleanup_confirmed"])
+            self.assertEqual(receipt["suites"], {})
+            self.assertTrue((fixture / "residue").is_file())
+
+        for failure in (candidate.CurrentSourceRefused("aliased source path"),
+                        RuntimeError("original native policy refused"),
+                        OSError("fixture cleanup unavailable")):
+            with self.subTest(failure=type(failure).__name__), mock.patch.object(
+                    candidate, "cleanup_hosted_fixture", side_effect=failure):
+                result, receipt, calls = self.run_synthetic()
+                self.assertEqual((result, calls), (1, 2))
+                self.assertFalse(receipt["fixture"]["cleanup_confirmed"])
+                self.assertFalse(receipt["candidate_suite_pass"])
+                self.assertEqual(receipt["suites"]["pure-negative"]["native_exit"], 0)
+
+        with mock.patch.object(candidate, "verify_hosted_fixture",
+                               side_effect=RuntimeError("original native policy refused")):
+            result, receipt, calls = self.run_synthetic()
+            self.assertEqual((result, calls), (1, 2))
+            self.assertFalse(receipt["fixture"]["native_policy_verified"])
+            self.assertFalse(receipt["candidate_suite_pass"])
+            self.assertEqual(receipt["suites"], {})
 
     def test_before_after_candidate_bytes_mismatch_refused(self):
         after = copy.deepcopy(self.proof)
@@ -596,6 +666,7 @@ class P245SuiteReceiptTests(unittest.TestCase):
         receipt = json.loads((self.output / "suite-receipt.json").read_text(encoding="utf-8"))
         self.assertFalse(receipt["candidate_suite_pass"])
         self.assertIsNone(receipt["suites"]["live-candidate"]["native_exit"])
+        self.assertFalse(receipt["process_cleanup_confirmed"])
 
     def test_missing_second_suite_attempt_refused(self):
         def child(*args, **kwargs):

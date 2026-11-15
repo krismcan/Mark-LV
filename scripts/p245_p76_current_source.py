@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import uuid
 
 ROOT = Path(os.path.abspath(__file__)).parents[1]
 BASE = "da9c436a177b3ec68db0eff2b610180b745bfb2b"
@@ -565,6 +566,30 @@ def suite_log_complete(raw: bytes, count: int) -> bool:
             and re.search(rb"\r?\nOK\r?\n?\Z", raw) is not None)
 
 
+def hosted_fixture_path() -> Path:
+    # Validate the disposable host before any C: filesystem mutation.
+    validate_event(branch=BRANCH, head=os.environ.get("GITHUB_SHA", ""))
+    from scripts import p139_native_fs_verified_local_temp_root as p139
+    p139._guard_runner()
+    return Path("C:\\NayeonP139_" + uuid.uuid4().hex)
+
+
+def verify_hosted_fixture(fixture: Path) -> None:
+    from scripts import p139_native_fs_verified_local_temp_root as p139
+    p139._verify_original_handle_policy(str(fixture))
+
+
+def cleanup_hosted_fixture(fixture: Path, identity: tuple[int, int]) -> None:
+    # Empty-only removal avoids recursive traversal of any test leftovers.
+    meta = checked_node(fixture)
+    if not stat.S_ISDIR(meta.st_mode) or (meta.st_dev, meta.st_ino) != identity:
+        refuse("owned fixture identity changed before cleanup")
+    verify_hosted_fixture(fixture)
+    os.rmdir(fixture)
+    if os.path.lexists(fixture):
+        refuse("owned fixture cleanup absence unconfirmed")
+
+
 def run_hosted_suite(output: Path) -> int:
     """Bracket unchanged unittest entrypoints with fresh complete live proofs."""
     output = output.resolve()
@@ -574,6 +599,9 @@ def run_hosted_suite(output: Path) -> int:
     receipt = {"schema": "P245-BRACKETED-SUITE-V2", "candidate_suite_pass": False,
                "before": {"attempted": False, "complete": False},
                "after": {"attempted": False, "complete": False}, "suites": {},
+               "fixture": {"created": False, "native_policy_verified": False,
+                           "cleanup_confirmed": False, "stage": "not attempted"},
+               "process_cleanup_confirmed": False,
                "qualified_approvals": "0/7", "full_product_regressions": "0/3",
                "real_key_admission": "NO-GO", "production_release": "HOLD"}
 
@@ -594,15 +622,37 @@ def run_hosted_suite(output: Path) -> int:
         return proof
 
     before = after = None
+    fixture = None
+    fixture_identity = None
     save()
     try:
         before = attempt("before")
+        receipt["fixture"]["stage"] = "disposable hosted event guard"
+        fixture = hosted_fixture_path()
+        receipt["fixture"]["stage"] = "exclusive random root creation"
+        receipt["fixture"]["path"] = str(fixture)
+        if os.path.lexists(fixture):
+            refuse("random hosted fixture already exists")
+        os.mkdir(fixture)
+        receipt["fixture"]["created"] = True
+        meta = fixture.lstat()
+        fixture_identity = (meta.st_dev, meta.st_ino)
+        receipt["fixture"]["stage"] = "original P139 native handle policy"
+        verify_hosted_fixture(fixture)
+        receipt["fixture"].update(native_policy_verified=True,
+                                  identity=list(fixture_identity))
+        child_env = environment()
+        for name in ("TMPDIR", "TEMP", "TMP"):
+            child_env[name] = str(fixture)
+        receipt["fixture"]["child_environment"] = "sanitized Git overrides; TMPDIR/TEMP/TMP verified root"
+        receipt["fixture"]["stage"] = "native policy verified; test children"
+        save()
         for label, classes in SUITES.items():
             count = expected_tests(classes)
             command = [sys.executable, "-B", "-m", "unittest", "-v",
                        *("tests.test_p245_p76_current_source." + name for name in classes)]
             result = {"attempted": True, "complete": False, "native_exit": None,
-                      "expected_tests": count}
+                      "expected_tests": count, "process_cleanup_confirmed": False}
             receipt["suites"][label] = result
             save()
             log = output / (label + ".log")
@@ -610,8 +660,10 @@ def run_hosted_suite(output: Path) -> int:
                 with log.open("wb") as stream:
                     child = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL,
                                            stdout=stream, stderr=subprocess.STDOUT,
-                                           timeout=240, check=False, shell=False)
+                                           timeout=240, check=False, shell=False,
+                                           env=child_env)
                 result["native_exit"] = child.returncode
+                result["process_cleanup_confirmed"] = True
                 with log.open("rb") as stream:
                     raw = stream.read(MAX_GIT_BYTES + 1)
                 if len(raw) > MAX_GIT_BYTES:
@@ -626,9 +678,24 @@ def run_hosted_suite(output: Path) -> int:
                     with log.open("rb") as stream:
                         result["log_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest().upper()
             save()
-    except (CurrentSourceRefused, OSError, ValueError):
+    except (CurrentSourceRefused, OSError, ValueError, RuntimeError) as error:
         receipt["before_or_suite_error"] = "source proof or suite orchestration refused"
+        receipt["orchestration_error_type"] = type(error).__name__
+        # Domain failure names distinguish original OS policy refusal from
+        # a P245 alias refusal without exposing arbitrary exception messages.
+        receipt["orchestration_domain_failure"] = getattr(getattr(error, "failure", None), "name", None)
     finally:
+        if receipt["fixture"]["created"]:
+            try:
+                cleanup_hosted_fixture(fixture, fixture_identity)
+                receipt["fixture"]["cleanup_confirmed"] = True
+                receipt["fixture"]["cleanup_outcome"] = "empty owned root removed; absence confirmed"
+            except Exception as error:
+                # Preserve native-policy, reparse, identity and residue uncertainty.
+                receipt["fixture"]["cleanup_outcome"] = "HOLD: cleanup refused or absence unconfirmed"
+                receipt["fixture"]["cleanup_error_type"] = type(error).__name__
+                receipt["fixture"]["cleanup_domain_failure"] = getattr(
+                    getattr(error, "failure", None), "name", None)
         try:
             after = attempt("after")
         except (CurrentSourceRefused, OSError, ValueError):
@@ -636,9 +703,15 @@ def run_hosted_suite(output: Path) -> int:
         save()
     try:
         receipt["complete_witness_sha256"] = compare_witnesses(before, after)
+        receipt["process_cleanup_confirmed"] = (
+            set(receipt["suites"]) == set(SUITES)
+            and all(result["process_cleanup_confirmed"] for result in receipt["suites"].values()))
         if (not all(receipt[label]["attempted"] and receipt[label]["complete"]
                     for label in ("before", "after"))
                 or set(receipt["suites"]) != set(SUITES)
+                or not receipt["fixture"]["native_policy_verified"]
+                or not receipt["fixture"]["cleanup_confirmed"]
+                or not receipt["process_cleanup_confirmed"]
                 or not all(result["complete"] and result["native_exit"] == 0
                            for result in receipt["suites"].values())):
             refuse("missing, incomplete or failed native suite attempt")
@@ -652,4 +725,7 @@ def run_hosted_suite(output: Path) -> int:
 if __name__ == "__main__":
     if len(sys.argv) != 3 or sys.argv[1] != "--hosted-suite":
         refuse("expected --hosted-suite and external evidence directory")
+    if not __package__:
+        # Preserve the script entrypoint as well as the workflow's -m entrypoint.
+        sys.path.insert(0, str(ROOT))
     sys.exit(run_hosted_suite(Path(sys.argv[2])))
