@@ -1,0 +1,69 @@
+name: P229 Real Windows Original P86/P87 UI Red and Additive Current Safe UI Contract — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p229-current-windows-connection-view-contract-20261115
+permissions:
+  contents: read
+jobs:
+  original-red-and-current-positive:
+    name: Original unchanged P86/P87 Tk failures remain red; current 3-button Tk contract separate
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Checkout true event HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authenticate real event; independently materialize byte-exact Git Windows clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p229-current-windows-connection-view-contract-20261115' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P229 event source identity mismatch'
+          }
+          if(Test-Path -LiteralPath reviewed){throw 'P229 disposable fixture preexists'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p229-current-windows-connection-view-contract-20261115 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P229 independent source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA -or
+             @(git -C reviewed status --porcelain=v1 -uall).Count -ne 0){
+             throw 'P229 reviewed exact Windows source HEAD not clean'
+          }
+          Write-Output 'P229_ORIGINAL_SOURCE_BYTES_AND_EVENT_HEAD=AUTHENTIC'
+      - name: Windows Python 3.12 / real native Tk
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve exact original FAILs, then run added current UI contract
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'p229-current-Windows-connection-view'
+          New-Item -Path $out -ItemType Directory -Force | Out-Null
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p229_windows_current_tk_regression_diagnostic *> (Join-Path $out 'P229-native-runner.log')
+            $code=$LASTEXITCODE
+          } finally {Pop-Location}
+          ('P229_GITHUB_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'P229-native-exit.log')
+          ('P229_NATIVE_DIAGNOSTIC_EXIT='+$code) | Add-Content (Join-Path $out 'P229-native-exit.log')
+          Get-Content -LiteralPath (Join-Path $out 'P229-native-runner.log') | ForEach-Object {Write-Output $_}
+          if($code -ne 0){throw 'P229 original negative vs new current GUI contract mismatched observed evidence'}
+          Write-Output 'P229_ORIGINAL_THREE_WINDOWS_GUI_FAIL=STILL_REAL_NOT_WAIVED'
+          Write-Output 'P229_NEW_CURRENT_UI_CONTRACT_POSITIVE=PASS_NOT_RELEASE'
+          Write-Output 'P229_ORIGINAL_FULL_REGRESSION=0/3|REALKEY_NO_GO|PRODUCTION_HOLD'
+      - name: Preserve original Windows Tk stdout/stderr and source SHA receipts, all outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p229-Windows-original-P86-P87-red-and-current-safe-UI-HOLD
+          path: ${{ runner.temp }}/p229-current-Windows-connection-view/*
+          if-no-files-found: warn
+          retention-days: 14
