@@ -1,0 +1,101 @@
+name: P240 source-equality-only correction - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p240-g1-bounded-immutable-transport-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  source-and-synthetic-only:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Establish fixed receipts and raw checkout bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p240-public" -ErrorAction Stop | Out-Null
+          [ordered]@{
+            schema = 240; scope = 'SOURCE EQUALITY ONLY'; release = 'HOLD'
+            g1_executed = $false; additional_transport_admitted = $false
+            full_unfiltered_regressions = '0/3'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p240-public/workflow.json" -Encoding utf8
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Raw checkout configuration refused' }
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Full-history source guard and exact four-addition parent envelope
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p240-guard-private.log"
+          python -B controller/scripts/p240_g1_safe_transport.py guard --source authentic --output "$env:RUNNER_TEMP/p240-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 240; scope = 'SOURCE GUARD ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; g1_executed = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p240-public/guard-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: Synthetic representation and mutation adversaries first
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p240-synthetic-private.log"
+          python -B controller/scripts/p240_g1_safe_transport_selftest.py --report "$env:RUNNER_TEMP/p240-public/selftest.json" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 240; scope = 'SYNTHETIC ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; g1_executed = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p240-public/selftest-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: Fresh original source witness byte equality only
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p240-source-check-private.log"
+          python -B controller/scripts/p240_g1_safe_transport.py source-check --source authentic --output "$env:RUNNER_TEMP/p240-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 240; scope = 'SOURCE EQUALITY ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; g1_executed = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p240-public/source-check-native.json" -Encoding utf8
+          Write-Output "P240_SOURCE_EQUALITY_NATIVE_EXIT=$nativeExit | ALL_C1_GATES_HOLD | FULL_UNFILTERED=0/3"
+          exit $nativeExit
+      # Source-equality-only fallback: intentionally no G1 or candidate step.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p240-SOURCE-EQUALITY-ONLY-HOLD-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p240-public/workflow.json
+            ${{ runner.temp }}/p240-public/guard.json
+            ${{ runner.temp }}/p240-public/guard-native.json
+            ${{ runner.temp }}/p240-public/selftest.json
+            ${{ runner.temp }}/p240-public/selftest-native.json
+            ${{ runner.temp }}/p240-public/source-check.json
+            ${{ runner.temp }}/p240-public/source-check-native.json
+          if-no-files-found: error
+          retention-days: 14
