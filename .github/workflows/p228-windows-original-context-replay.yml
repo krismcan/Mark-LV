@@ -1,0 +1,70 @@
+name: P228 Authentic Historical Windows Source Context and Current Failure — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p228-original-historical-source-context-replay-20261115
+permissions:
+  contents: read
+jobs:
+  original-source-context:
+    name: Three actual original historical Git branches and unchanged current-source refusal
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Verify actual push-event source checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authenticate exact HEAD, then isolate immutable disk-equal raw-byte Windows clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p228-original-historical-source-context-replay-20261115' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA){
+             throw 'P228 actual GitHub-hosted Windows source event refused'
+          }
+          if(Test-Path -LiteralPath reviewed){throw 'P228 raw-byte fixture preexists'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p228-original-historical-source-context-replay-20261115 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P228 original GitHub verified clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA -or
+             @(git -C reviewed status --porcelain=v1 -uall).Count -gt 0){
+             throw 'P228 reviewed independent source not exact clean HEAD'
+          }
+          Write-Output 'P228_ORIGINAL_CURRENT_SOURCE_AUTHENTIC_RAW_BYTES=YES'
+      - name: Pin real Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Replay three authentic original GitHub historical branches, keep current red
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'p228-original-historical-context'
+          New-Item -Path $out -ItemType Directory -Force | Out-Null
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p228_windows_historical_context_replay *> (Join-Path $out 'p228-observed-native-runner.log')
+            $code=$LASTEXITCODE
+          } finally {Pop-Location}
+          ('P228_EVENT_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'p228-native-exit.log')
+          ('P228_REAL_NATIVE_EXECUTION_EXIT='+$code) | Add-Content (Join-Path $out 'p228-native-exit.log')
+          Get-Content -LiteralPath (Join-Path $out 'p228-observed-native-runner.log') | ForEach-Object {Write-Output $_}
+          if($code -ne 0){throw 'P228 original historical-source compatibility observation failed; retain all original evidence'}
+          Write-Output 'P228_REAL_ORIGINAL_HISTORICAL_CONTEXT_REPLAY=PASS'
+          Write-Output 'P228_ORIGINAL_CURRENT_SOURCE_FAILURE=STILL_REAL_AND_UNWAIVED'
+          Write-Output 'P228_FULL_PRODUCT_REGRESSIONS=0/3|REAL_KEYS=NO_GO|PRODUCTION=HOLD'
+      - name: Preserve narrow original logs and SHA-256 receipts even on failure (never clone repositories)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p228-original-historical-Windows-source-replay-current-failure-HOLD
+          path: ${{ runner.temp }}/p228-original-historical-context/*
+          if-no-files-found: warn
+          retention-days: 14
