@@ -1,0 +1,89 @@
+name: P238 G1 INSTRUMENTED CANDIDATE - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p238-g1-immutable-batch-equivalence-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  one-candidate-only:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Establish original raw checkout bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Raw checkout configuration refused' }
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact parent and four additions guard before synthetic work
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p238-public" -ErrorAction Stop | Out-Null
+          $log = "$env:RUNNER_TEMP/p238-guard-private.log"
+          python -B controller/scripts/p238_g1_immutable_batch_candidate.py guard --source authentic --output "$env:RUNNER_TEMP/p238-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            scope = 'CONTROLLER SOURCE GUARD ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p238-public/guard-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: Synthetic adversaries before one expensive candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p238-synthetic-private.log"
+          python -B controller/scripts/p238_g1_batch_selftest.py --report "$env:RUNNER_TEMP/p238-public/selftest.json" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            scope = 'SYNTHETIC ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p238-public/selftest-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: One INSTRUMENTED CANDIDATE G1 within original 180 seconds
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p238-controller-private.log"
+          python -B controller/scripts/p238_g1_immutable_batch_candidate.py observe --source authentic --output "$env:RUNNER_TEMP/p238-candidate" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            scope = 'INSTRUMENTED CANDIDATE'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; candidate_pass_still_held_exit = 3
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p238-public/candidate-native.json" -Encoding utf8
+          Write-Output "P238_INSTRUMENTED_CANDIDATE_NATIVE_EXIT=$nativeExit | ALL_C1_GATES_HOLD | FULL_UNFILTERED=0/3"
+          if ($nativeExit -eq 0) { throw 'Unexpected zero: candidate cannot grant product GO' }
+          exit $nativeExit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p238-G1-INSTRUMENTED-CANDIDATE-HOLD-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p238-public/*.json
+            ${{ runner.temp }}/p238-candidate/*.json
+          if-no-files-found: error
+          retention-days: 14
