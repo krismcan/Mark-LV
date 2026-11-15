@@ -1,0 +1,137 @@
+name: P234 54 original Windows method diagnostics - release HOLD
+on:
+  workflow_dispatch:
+  push:
+    branches: [byok-c1-p234-codex-windows-finegrain-20261115]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  plan:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check controller, compile and selftest using synthetic processes only
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p234-codex-windows-finegrain-20261115' -or
+             (git -C controller rev-parse HEAD).Trim() -ne $env:GITHUB_SHA -or
+             @(git -C controller status --porcelain=v1 -uall).Count -ne 0){throw 'Controller identity refused'}
+          git -C authentic config --local core.autocrlf false
+          if($LASTEXITCODE -ne 0){throw 'Raw source config failed'}
+          python -B -c "import os,pathlib,py_compile; files=['p234_windows_finegrain_diagnostic.py','p234_finegrain_selftest.py']; [py_compile.compile('controller/scripts/'+p,cfile=str(pathlib.Path(os.environ['RUNNER_TEMP'])/(p+'c')),doraise=True) for p in files]"
+          if($LASTEXITCODE -ne 0){throw 'P234 compile failed'}
+          python -B controller/scripts/p234_finegrain_selftest.py
+          if($LASTEXITCODE -ne 0){throw 'P234 synthetic selftest failed'}
+      - name: Authenticate unchanged discovery and issue stable assignment manifest
+        run: |
+          python -B controller/scripts/p234_windows_finegrain_diagnostic.py plan --source authentic --run-id '${{ github.run_id }}-${{ github.run_attempt }}' --output "$env:RUNNER_TEMP/p234-plan"
+          if($LASTEXITCODE -ne 0){throw 'P234 original source or inventory refused'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p234-plan-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-plan/*
+          if-no-files-found: error
+          retention-days: 14
+  singles:
+    needs: plan
+    runs-on: windows-2025
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: p234-plan-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-plan
+      - name: Run six original single-method subprocesses, propagate original failures
+        run: |
+          git -C authentic config --local core.autocrlf false
+          if($LASTEXITCODE -ne 0){throw 'Raw source config failed'}
+          python -B controller/scripts/p234_windows_finegrain_diagnostic.py group --source authentic --run-id '${{ github.run_id }}-${{ github.run_attempt }}' --manifest "$env:RUNNER_TEMP/p234-plan/manifest.json" --group ${{ matrix.group }} --output "$env:RUNNER_TEMP/p234-group-${{ matrix.group }}"
+          $driverExit=$LASTEXITCODE
+          Write-Output "P234_PARENT_DRIVER_EXIT=$driverExit | ORIGINAL_FAILURES_UNWAIVED | FULL_UNFILTERED=0/3"
+          exit $driverExit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p234-group-${{ matrix.group }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-group-${{ matrix.group }}/*
+          if-no-files-found: error
+          retention-days: 14
+  certificate:
+    needs: [plan, singles]
+    if: always()
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: p234-plan-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-artifacts/p234-plan
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p234-group-*-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-artifacts
+      - name: Reconcile all nine groups, exact-once assignments and raw result receipts
+        if: always()
+        run: |
+          python -B controller/scripts/p234_windows_finegrain_diagnostic.py aggregate --run-id '${{ github.run_id }}-${{ github.run_attempt }}' --manifest "$env:RUNNER_TEMP/p234-artifacts/p234-plan/manifest.json" --artifacts "$env:RUNNER_TEMP/p234-artifacts" --artifact-suffix=-${{ github.run_attempt }} --output "$env:RUNNER_TEMP/p234-certificate"
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p234-certificate-HOLD-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p234-certificate/*
+          if-no-files-found: error
+          retention-days: 14
