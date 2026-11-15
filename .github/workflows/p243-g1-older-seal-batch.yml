@@ -1,0 +1,101 @@
+name: P243 older-seal batch candidate - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p243-g1-full-history-immutable-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  one-instrumented-g1:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Establish failure receipt and LF checkout configuration
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p243-public" -ErrorAction Stop | Out-Null
+          [ordered]@{
+            schema = 243; scope = 'INSTRUMENTED CANDIDATE'; release = 'HOLD'
+            g1_executed = $false; full_unfiltered_regressions = '0/3'
+            qualified_approvals = '0/7'; real_key = 'NO-GO'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p243-public/workflow.json" -Encoding utf8
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Raw checkout configuration refused' }
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact parent four additions full history and original P234 host guard
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p243-guard-private.log"
+          python -B controller/scripts/p243_g1_older_seal_batch.py guard --source authentic --output "$env:RUNNER_TEMP/p243-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 243; scope = 'SOURCE GUARD ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; g1_executed = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p243-public/guard-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: All focused synthetic tamper delegation mock progress and containment proofs first
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p243-synthetic-private.log"
+          python -B controller/scripts/p243_g1_older_seal_batch_selftest.py --report "$env:RUNNER_TEMP/p243-public/selftest.json" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 243; scope = 'SYNTHETIC ONLY'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; g1_executed = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p243-public/selftest-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: Exactly one unchanged G1 with the original 180 second whole-child budget
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p243-controller-private.log"
+          python -B controller/scripts/p243_g1_older_seal_batch.py observe --source authentic --output "$env:RUNNER_TEMP/p243-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 243; scope = 'ONE INSTRUMENTED G1'; native_exit = $nativeExit
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; candidate_pass_still_held_exit = 3
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p243-public/candidate-native.json" -Encoding utf8
+          Write-Output "P243_NATIVE_EXIT=$nativeExit | ALL_C1_GATES_HOLD | FULL_UNFILTERED=0/3"
+          if ($nativeExit -eq 0) { throw 'Candidate cannot grant product GO' }
+          exit $nativeExit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p243-OLDER-SEAL-CANDIDATE-HOLD-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p243-public/workflow.json
+            ${{ runner.temp }}/p243-public/guard.json
+            ${{ runner.temp }}/p243-public/guard-native.json
+            ${{ runner.temp }}/p243-public/selftest.json
+            ${{ runner.temp }}/p243-public/selftest-native.json
+            ${{ runner.temp }}/p243-public/observe.json
+            ${{ runner.temp }}/p243-public/candidate-native.json
+          if-no-files-found: error
+          retention-days: 14
