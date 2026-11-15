@@ -1,0 +1,78 @@
+name: P237 single original G1 Git timing - OBSERVATION ONLY - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p237-g1-original-trace-20261115
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  observe-one:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Establish raw checkout bytes before either checkout
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Raw checkout configuration refused' }
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Synthetic adversaries only; preserve real native exit and log receipt
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p237-public" -ErrorAction Stop | Out-Null
+          $log = "$env:RUNNER_TEMP/p237-selftest-private.log"
+          python -B controller/scripts/p237_g1_observer_selftest.py --report "$env:RUNNER_TEMP/p237-public/selftest.json" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            scope = 'SYNTHETIC ONLY'; native_exit = $nativeExit
+            combined_stdout_stderr_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p237-public/selftest-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: Observe exactly one unchanged original child; propagate HOLD even on PASS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p237-observer-private.log"
+          python -B controller/scripts/p237_g1_git_timing_observer.py observe --source authentic --output "$env:RUNNER_TEMP/p237-observation" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            scope = 'OBSERVATION ONLY'; native_exit = $nativeExit
+            combined_stdout_stderr_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+            release = 'HOLD'; expected_pass_still_held_exit = 3
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p237-public/observer-native.json" -Encoding utf8
+          Write-Output "P237_OBSERVER_NATIVE_EXIT=$nativeExit | OBSERVATION_ONLY | RELEASE_HOLD | FULL_UNFILTERED=0/3"
+          if ($nativeExit -eq 0) { throw 'Unexpected zero: held release cannot be green' }
+          exit $nativeExit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p237-G1-OBSERVATION-ONLY-HOLD-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p237-public/*.json
+            ${{ runner.temp }}/p237-observation/*.json
+          if-no-files-found: error
+          retention-days: 14
