@@ -127,7 +127,8 @@ def require_current_source():
 
 def replay_clone(label,branch,head,path,source_sha,output,manifest):
     """Authentic remote original branch; never synthesize signed GITHUB_SHA."""
-    dst=output/("actual-original-"+label)
+    dst=Path(os.environ["RUNNER_TEMP"])/"p228-ephemeral-historical-clones"/("actual-original-"+label)
+    dst.parent.mkdir(parents=True,exist_ok=True)
     if dst.exists():
         raise RuntimeError("P228 historical workspace unexpectedly preexists")
     command=["git","-c","core.autocrlf=false","clone","--quiet",
