@@ -1,4 +1,4 @@
-name: P232 Genuine Windows Verified Local Temp + Original Native Fixtures — Original Regression Repair HOLD
+name: P232 Genuine Windows Full Six-Shard Original Suite / Verified Temp and Native Fixtures — HOLD
 on:
   push:
     branches:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 5]
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - name: Checkout exact signed source without persistent Git credential
         uses: actions/checkout@v4
