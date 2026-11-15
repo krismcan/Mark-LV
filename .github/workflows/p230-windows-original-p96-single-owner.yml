@@ -1,0 +1,70 @@
+name: P230 Windows Original P96 Race vs New Isolated Single-Owner Native Actor — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p230-service-owned-revocation-linearization-synthetic-20261115
+permissions:
+  contents: read
+jobs:
+  source-linked-native-safety:
+    name: Genuine x64/x86 original negative and new serialized test-only owner (no keys, no deployment)
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout actual event head (no persisted Git credential)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authenticate actual event and independent Windows raw-byte clone
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p230-service-owned-revocation-linearization-synthetic-20261115' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+             throw 'P230 real hosted Windows head/branch evidence refused'
+          }
+          if (Test-Path -LiteralPath reviewed) {throw 'P230 clone preexists'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p230-service-owned-revocation-linearization-synthetic-20261115 https://github.com/krismcan/Mark-LV.git reviewed
+          if ($LASTEXITCODE -ne 0) {throw 'P230 source clone failure'}
+          git -C reviewed config --local core.autocrlf false
+          if ((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA -or
+               @(git -C reviewed status --porcelain=v1 -uall).Count -ne 0) {
+             throw 'P230 independent source is not pristine current head'
+          }
+          Write-Output 'P230_GITHUB_SOURCE_AUTHENTIC_AND_RAW_GIT_BYTES=YES'
+      - name: Set up real Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute original P96 and test-only single-owner actor CSharp x64 and x86
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:RUNNER_TEMP 'p230-isolated-native-revocation'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p230_windows_original_p96_single_owner_native *> (Join-Path $out 'P230-native-process-runner.log')
+            $code=$LASTEXITCODE
+          } finally {Pop-Location}
+          ('P230_EVENT_HEAD='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'P230-native-exits.log')
+          ('P230_RUNNER_NATIVE_EXIT='+$code) | Add-Content (Join-Path $out 'P230-native-exits.log')
+          Get-Content -LiteralPath (Join-Path $out 'P230-native-process-runner.log') | ForEach-Object {Write-Output $_}
+          if($code -ne 0) {throw 'P230 x64/x86 original source-linked Windows review proof failed'}
+          Write-Output 'P230_ORIGINAL_P96_RACE=STILL_REPRODUCED_IN_FROZEN_SOURCE'
+          Write-Output 'P230_NEW_SINGLE_OWNER_MODEL=REVIEW_PASS_NOT_PRODUCTION'
+          Write-Output 'P230_REAL_KEYS=NO_GO|NATIVE_PRODUCTION=HOLD'
+      - name: Preserve native logs, authentic original SHA-256 and denials on all outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p230-genuine-Windows-original-P96-and-new-synthetic-single-owner-HOLD
+          path: ${{ runner.temp }}/p230-isolated-native-revocation/*
+          if-no-files-found: warn
+          retention-days: 14
