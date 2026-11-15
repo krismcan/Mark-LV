@@ -18,10 +18,12 @@ jobs:
     steps:
       - name: Establish raw Git checkout
         run: |
-          git config --global core.autocrlf false
-          if ($LASTEXITCODE -ne 0) { throw 'Git raw checkout configuration failed' }
           New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p245-public" -Force | Out-Null
       - uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -29,35 +31,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Pure negative controls (not production authority)
+      - name: Fresh complete proof before and after all P245 native tests
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
-          $log = "$env:RUNNER_TEMP/p245-public/pure-negative.log"
-          python -B -m unittest -v tests.test_p245_p76_current_source.P245PureNegativeTests *> $log
-          $childExit = $LASTEXITCODE
+          $evidence = "$env:RUNNER_TEMP/p245-public"
+          $log = "$evidence/bracket-runner.log"
+          $LASTEXITCODE = $null
+          python -B scripts/p245_p76_current_source.py --hosted-suite $evidence *> $log
+          $runnerExit = $LASTEXITCODE
+          $passed = $false
+          if (Test-Path -LiteralPath "$evidence/suite-receipt.json") {
+            $receipt = Get-Content -LiteralPath "$evidence/suite-receipt.json" -Raw | ConvertFrom-Json
+            $passed = ($runnerExit -eq 0 -and $null -ne $runnerExit -and
+              $receipt.candidate_suite_pass -eq $true -and
+              $receipt.before.attempted -eq $true -and $receipt.before.complete -eq $true -and
+              $receipt.after.attempted -eq $true -and $receipt.after.complete -eq $true -and
+              $receipt.before.witness_sha256 -eq $receipt.after.witness_sha256)
+          }
           [ordered]@{
-            schema = 'P245-V1'; test_scope = 'PURE NEGATIVE'; native_exit = $childExit
-            log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
-            real_key = 'NO-GO'; production = 'HOLD'
-          } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/p245-public/pure-negative.json" -Encoding utf8
-          if ($childExit -ne 0) { throw "Original negative controls failed, native exit $childExit" }
-      - name: Genuine live signed-event current-source and hostile negatives
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $false
-          $log = "$env:RUNNER_TEMP/p245-public/live-candidate.log"
-          python -B -m unittest -v tests.test_p245_p76_current_source.P245GenuineHostedWindowsCandidateTests *> $log
-          $childExit = $LASTEXITCODE
-          [ordered]@{
-            schema = 'P245-V1'; test_scope = 'GITHUB WINDOWS CURRENT-CANDIDATE'
-            native_exit = $childExit; log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
+            schema = 'P245-WORKFLOW-V2'; runner_native_exit = $runnerExit
+            runner_log_sha256 = (Get-FileHash -Algorithm SHA256 $log).Hash
+            candidate_suite_pass = $passed
+            intentional_workflow_exit = $(if ($passed) { 3 } else { 1 })
             source = 'da9c436a177b3ec68db0eff2b610180b745bfb2b'
             event_sha = "$env:GITHUB_SHA"
             historical_failures = '4 ORIGINAL FAIL REMAIN UNWAIVED'
             qualified_approvals = '0/7'; full_unfiltered_regressions = '0/3'
             real_key = 'NO-GO'; production = 'HOLD'
-          } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/p245-public/live-candidate.json" -Encoding utf8
-          if ($childExit -ne 0) { throw "P245 hosted candidate failed native exit $childExit" }
-          Write-Output 'P245 LIVE CANDIDATE PASSED -- RELEASE AND HISTORICAL GATES REMAIN HOLD'
+          } | ConvertTo-Json | Set-Content "$evidence/workflow-receipt.json" -Encoding utf8
+          if (-not $passed) { throw 'P245 complete source proofs or native suite receipts failed' }
+          Write-Output 'P245 BRACKETED CANDIDATE PASSED -- RELEASE AND HISTORICAL GATES REMAIN HOLD'
           exit 3
       - name: Preserve authentic public evidence
         if: always()
@@ -65,5 +68,5 @@ jobs:
         with:
           name: p245-candidate-source-era-HOLD
           path: ${{ runner.temp }}/p245-public/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
