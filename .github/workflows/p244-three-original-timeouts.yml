@@ -1,0 +1,106 @@
+name: P244 three original timeout candidates - HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p244-three-original-timeouts-20261115
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONHASHSEED: '0'
+  P234_DIAGNOSTICS_ONLY: '54_UNCHANGED_METHODS'
+jobs:
+  original-timeout-case:
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [g2, g3, g6]
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Establish failure receipt and LF checkout configuration
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/p244-public" -ErrorAction Stop | Out-Null
+          [ordered]@{
+            schema = 244; scope = 'INSTRUMENTED CANDIDATE'; release = 'HOLD'
+            case = '${{ matrix.case }}'; original_method_executed = $false
+            full_unfiltered_regressions = '0/3'; qualified_approvals = '0/7'
+            SEC03_SEC04 = 'OPEN'; real_key = 'NO-GO'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p244-public/workflow.json" -Encoding utf8
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Raw checkout configuration refused' }
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: authentic
+          ref: 096048db17c7c1f9402dfd16a7deb31e9ebdc81d
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact P243 parent four additions full history and P233 source guard
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p244-guard-private.log"
+          python -B controller/scripts/p244_three_timeout_immutable_runner.py guard --case ${{ matrix.case }} --source authentic --output "$env:RUNNER_TEMP/p244-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 244; scope = 'SOURCE GUARD ONLY'; native_exit = $nativeExit
+            case = '${{ matrix.case }}'; release = 'HOLD'; original_method_executed = $false
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p244-public/guard-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: All 122 inherited focused tests and P244 case and count adversaries
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p244-synthetic-private.log"
+          python -B controller/scripts/p244_three_timeout_selftest.py --report "$env:RUNNER_TEMP/p244-public/selftest.json" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 244; scope = 'SYNTHETIC ONLY'; native_exit = $nativeExit
+            case = '${{ matrix.case }}'; release = 'HOLD'; original_method_executed = $false
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p244-public/selftest-native.json" -Encoding utf8
+          if ($nativeExit -ne 0) { exit $nativeExit }
+      - name: One exact original method within 180 whole-child seconds
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = "$env:RUNNER_TEMP/p244-controller-private.log"
+          python -B controller/scripts/p244_three_timeout_immutable_runner.py observe --case ${{ matrix.case }} --source authentic --output "$env:RUNNER_TEMP/p244-public" *> $log
+          $nativeExit = $LASTEXITCODE
+          [ordered]@{
+            schema = 244; scope = 'ONE ORIGINAL METHOD CANDIDATE'; native_exit = $nativeExit
+            case = '${{ matrix.case }}'; release = 'HOLD'; candidate_pass_still_held_exit = 3
+            raw_private_log_sha256 = (Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/p244-public/candidate-native.json" -Encoding utf8
+          Write-Output "P244_NATIVE_EXIT=$nativeExit | ALL_C1_GATES_HOLD | FULL_UNFILTERED=0/3"
+          if ($nativeExit -eq 0) { throw 'Candidate cannot grant product GO' }
+          exit $nativeExit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p244-${{ matrix.case }}-ORIGINAL-TIMEOUT-HOLD-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p244-public/workflow.json
+            ${{ runner.temp }}/p244-public/guard.json
+            ${{ runner.temp }}/p244-public/guard-native.json
+            ${{ runner.temp }}/p244-public/selftest.json
+            ${{ runner.temp }}/p244-public/selftest-native.json
+            ${{ runner.temp }}/p244-public/observe.json
+            ${{ runner.temp }}/p244-public/candidate-native.json
+          if-no-files-found: error
+          retention-days: 14
