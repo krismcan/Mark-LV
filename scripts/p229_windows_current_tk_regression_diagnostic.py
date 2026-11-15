@@ -55,7 +55,7 @@ FORBIDDEN=(
  "ACTIONS_RUNTIME_TOKEN","ACTIONS_ID_TOKEN_REQUEST_TOKEN",
  "P134_NATIVE_WINCRED_EPHEMERAL_AUTH",
 )
-COUNT=re.compile(r"(?m)^Ran (\d+) tests? in [\d.]+s$")
+COUNT=re.compile(r"(?m)^Ran (\d+) tests? in [\d.]+s\r?$")
 NAMES=re.compile(r"(?m)^FAIL: (test_[^ (]+) \(")
 OK=re.compile(r"(?m)^OK\s*$")
 
