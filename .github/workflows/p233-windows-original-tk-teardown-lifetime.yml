@@ -1,4 +1,4 @@
-name: P233 Original Windows TestCase Lifetime Versus Tk Teardown — Source Preserved HOLD
+name: P233 Windows Whole Original Suite Six-Shard Correct TestCase Lifetimes — HOLD
 on:
   push:
     branches:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1]
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - name: Checkout exact signed source without persistent Git credential
         uses: actions/checkout@v4
