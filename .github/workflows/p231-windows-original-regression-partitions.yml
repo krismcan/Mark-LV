@@ -1,0 +1,77 @@
+name: P231 Real Windows Original Complete Unittest Failure Inventory (Six Unchanged Partitions) — HOLD
+on:
+  push:
+    branches:
+      - byok-c1-p231-original-windows-regression-full-inventory-20261115
+permissions:
+  contents: read
+jobs:
+  original-native-regression-partition:
+    name: Original Windows discovery partition ${{ matrix.shard }}/6 (failures preserved, NOT release pass)
+    runs-on: windows-2025
+    timeout-minutes: 19
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout signed event no persisted credential
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authenticate actual push, clone raw Git Windows bytes independently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
+             $env:GITHUB_EVENT_NAME -ne 'push' -or
+             $env:GITHUB_REPOSITORY -ne 'krismcan/Mark-LV' -or
+             $env:GITHUB_REF_NAME -ne 'byok-c1-p231-original-windows-regression-full-inventory-20261115' -or
+             (git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) {
+             throw 'P231 real source event failed'
+          }
+          if(Test-Path -LiteralPath reviewed){throw 'P231 reviewed folder preexists'}
+          git -c core.autocrlf=false clone --quiet --single-branch --branch byok-c1-p231-original-windows-regression-full-inventory-20261115 https://github.com/krismcan/Mark-LV.git reviewed
+          if($LASTEXITCODE -ne 0){throw 'P231 original-source clone failed'}
+          git -C reviewed config --local core.autocrlf false
+          if((git -C reviewed rev-parse HEAD).Trim() -ne $env:GITHUB_SHA -or
+             @(git -C reviewed status --porcelain=v1 -uall).Count -ne 0){
+             throw 'P231 independent raw-byte checkout refused'
+          }
+          Write-Output 'P231_ACTUAL_GITHUB_WINDOWS_SOURCE=AUTHENTIC'
+      - name: Pin actual hosted Windows Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run ALL original discovery without rewriting tests, module partition only
+        shell: pwsh
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONHASHSEED: '0'
+          P134_NATIVE_WINCRED_EPHEMERAL_AUTH: 'EPHEMERAL_GITHUB_WINDOWS_ONLY'
+        run: |
+          $ErrorActionPreference='Stop'
+          $index='${{ matrix.shard }}'
+          $out=Join-Path $env:RUNNER_TEMP ('p231-original-Windows-shard-'+$index)
+          New-Item -Path $out -ItemType Directory -Force | Out-Null
+          Push-Location reviewed
+          try {
+            & python -B -m scripts.p231_windows_original_full_test_inventory --parent $index *> (Join-Path $out 'P231-actual-native-process.log')
+            $code=$LASTEXITCODE
+          } finally {Pop-Location}
+          ('P231_EVENT_SHA='+$env:GITHUB_SHA) | Set-Content (Join-Path $out 'P231-native-process-exit.log')
+          ('P231_SHARD_INDEX='+$index) | Add-Content (Join-Path $out 'P231-native-process-exit.log')
+          ('P231_DIAGNOSTIC_NATIVE_EXIT='+$code) | Add-Content (Join-Path $out 'P231-native-process-exit.log')
+          Get-Content -LiteralPath (Join-Path $out 'P231-actual-native-process.log') | ForEach-Object {Write-Output $_}
+          if($code -ne 0){throw 'P231 incomplete original test partition, preserving true failure evidence'}
+          Write-Output 'P231_ORIGINAL_PARTITION_EXECUTED=YES|ORIGINAL_TEST_FAILURES_UNWAIVED'
+          Write-Output 'P231_FULL_PRODUCT_RELEASE_REGRESSIONS=0/3|REALKEY_NO_GO|PRODUCTION_HOLD'
+      - name: Preserve all actual original stdout, fail IDs, exact module inventory, SHA and native exits
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p231-real-Windows-original-unmodified-test-shard-${{ matrix.shard }}-HOLD
+          path: ${{ runner.temp }}/p231-original-Windows-shard-${{ matrix.shard }}/*
+          if-no-files-found: warn
+          retention-days: 14
