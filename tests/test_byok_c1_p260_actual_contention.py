@@ -134,6 +134,31 @@ def check_workflow(source):
             re.findall(r"'([^']+)'", original[1]) == list(PINS)[:3] and
             re.findall(r"'([^']+)'", comparator[1]) == [list(PINS)[3], DRIVER],
             "only original fake proof and isolated comparator compiled")
+    resolution = (
+        "          $originalNative = @($original | ForEach-Object { "
+        "(Resolve-Path -LiteralPath $_).Path })\n"
+        "          $comparatorNative = @($comparator | ForEach-Object { "
+        "(Resolve-Path -LiteralPath $_).Path })\n"
+    )
+    require(source[comparator.end():].startswith(resolution),
+            "absolute-canonical source resolution follows exact allowlists")
+    compile_step = source.index(
+        "      - name: Compile guarded comparator and original fake-only proof, then execute\n")
+    resolution_start = source.index(resolution)
+    require("$ErrorActionPreference = 'Stop'" in source[compile_step:resolution_start] and
+            resolution_start < source.index("foreach ($guard in @("),
+            "fail-closed source resolution precedes all compiler calls")
+    require(re.findall(r"^\s*& \$env:REVIEW_CSC[^\n]*", source, re.M) == [
+        '              & $env:REVIEW_CSC /nologo /target:library '
+        '("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $rejected) '
+        '@comparatorNative *> $guardLog',
+        '              & $env:REVIEW_CSC /nologo /target:exe '
+        '("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $exe) '
+        '@sources *> (Join-Path $evidence ($suite + \'-compile.log\'))',
+    ] and re.findall(r"^\s*\$sources = [^\n]*", source, re.M) == [
+        "              $sources = if ($suite -eq 'P259') "
+        "{ $comparatorNative } else { $originalNative }",
+    ], "compiler calls require canonical native source splatting")
     for statement in (
         "@('none', 'isolated-only', 'synthetic-only')",
         "([regex]::Matches($guardText, 'error CS1029')).Count -ne 2",
@@ -213,6 +238,29 @@ class P260ActualContentionSourceTests(unittest.TestCase):
             ("P96_SECURITY_FINDING=OPEN", "P96_SECURITY_FINDING=CLOSED", "native exits"),
             ("$original = @(", "$original = @('native_c1_candidate/CustodyService.cs',",
              "only original fake proof"),
+            ("$originalNative = @($original | ForEach-Object { "
+             "(Resolve-Path -LiteralPath $_).Path })", "$originalNative = $original",
+             "absolute-canonical source resolution"),
+            ("$comparatorNative = @($comparator | ForEach-Object { "
+             "(Resolve-Path -LiteralPath $_).Path })", "$comparatorNative = $comparator",
+             "absolute-canonical source resolution"),
+            ("$originalNative = @($original | ForEach-Object { "
+             "(Resolve-Path -LiteralPath $_).Path })",
+             "$originalNative = @($original | ForEach-Object { "
+             "(Resolve-Path -Path $_).Path })", "absolute-canonical source resolution"),
+            ("@comparatorNative *> $guardLog", "@comparator *> $guardLog",
+             "compiler calls require canonical"),
+            ("{ $comparatorNative } else { $originalNative }",
+             "{ $comparator } else { $originalNative }", "compiler calls require canonical"),
+            ("{ $comparatorNative } else { $originalNative }",
+             "{ $comparatorNative } else { $original }", "compiler calls require canonical"),
+            ("@sources *> (Join-Path $evidence ($suite + '-compile.log'))",
+             "@original *> (Join-Path $evidence ($suite + '-compile.log'))",
+             "compiler calls require canonical"),
+            ("          REVIEW_BITS: ${{ matrix.bits }}\n        run: |\n"
+             "          $ErrorActionPreference = 'Stop'",
+             "          REVIEW_BITS: ${{ matrix.bits }}\n        run: |\n"
+             "          $ErrorActionPreference = 'Continue'", "fail-closed source resolution"),
             ("$process = Start-Process", "Set-ExecutionPolicy Bypass\n          "
              "$process = Start-Process", "policy bypass"),
             ("path: |\n"

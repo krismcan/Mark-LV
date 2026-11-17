@@ -109,6 +109,8 @@ jobs:
               'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs')
           $comparator = @('native_c1_g2_review/P259OwnedPendingTransaction.cs',
               'tests/p259_owned_pending_transaction/OwnedPendingTransactionTests.cs')
+          $originalNative = @($original | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+          $comparatorNative = @($comparator | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
           if (!(Test-Path -LiteralPath $env:REVIEW_CSC)) { throw 'Framework compiler unavailable' }
           foreach ($guard in @('none', 'isolated-only', 'synthetic-only')) {
               $defines = @()
@@ -116,7 +118,7 @@ jobs:
               if ($guard -eq 'synthetic-only') { $defines += '/define:C1_SYNTHETIC_TEST' }
               $rejected = Join-Path $evidence ($guard + '.dll')
               $guardLog = Join-Path $evidence ($guard + '-compile.log')
-              & $env:REVIEW_CSC /nologo /target:library ("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $rejected) @comparator *> $guardLog
+              & $env:REVIEW_CSC /nologo /target:library ("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $rejected) @comparatorNative *> $guardLog
               $rawExit = $LASTEXITCODE
               Set-Content -LiteralPath (Join-Path $evidence ($guard + '-compile.exit')) -Value $rawExit
               $guardText = Get-Content -Raw -LiteralPath $guardLog
@@ -127,7 +129,7 @@ jobs:
               }
           }
           foreach ($suite in @('P96-original', 'P259')) {
-              $sources = if ($suite -eq 'P259') { $comparator } else { $original }
+              $sources = if ($suite -eq 'P259') { $comparatorNative } else { $originalNative }
               $defines = @()
               if ($suite -eq 'P259') { $defines += '/define:C1_REVIEW_ISOLATED_ASSEMBLY,C1_SYNTHETIC_TEST' }
               $exe = Join-Path $evidence ($suite + '.exe')

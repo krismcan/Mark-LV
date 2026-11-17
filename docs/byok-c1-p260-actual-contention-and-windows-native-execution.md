@@ -1,7 +1,7 @@
 # P260 actual gate contention and Windows-native execution
 
-17 November 2026. Defensive tests only. Sole Codex writer. **REVIEW-ONLY /
-NONDEPLOYABLE / UNCOMMITTED. No real keys or production release.**
+17 November 2026. OM v2.1. Defensive tests only. Sole Codex writer. **REVIEW-ONLY /
+NONDEPLOYABLE. CI recovery is UNCOMMITTED. Security and production release HOLD.**
 
 ## Intake and bounded change
 
@@ -11,6 +11,13 @@ Work root is `D:\Nayeon\CODEX_P260_P96_CONTENTION_WINCIRUN_20261117`, branch
 tag is `nayeon-v1-phase-10-3-synthetic-provenance-redaction-01`.
 `.codex/CURRENT_STATE.md` records older Phase 10.2 work. Git governs this review.
 Only the four user-approved P260 paths are changed.
+
+The CI-recovery intake is clean HEAD `ec086aba61324b287c21c85c807b057bba2ebf8f`
+on that same branch, with P259 parent `f9833383177e4c76f7997ad6041434c52c401c05`
+and existing draft PR #182. No tag points at the recovery intake HEAD. The state
+file remains historical. This recovery changes exactly the workflow, P260 Python
+source checker and this document. The P259 C# driver and all pinned C# source
+bytes are preserved. The cumulative P259-base-to-PR-head scope stays four paths.
 
 `EffectFirst` retains all 49 P259 cases. While the effect is paused inside the
 private gate, it observes the publisher worker's `ThreadState.WaitSleepJoin`
@@ -25,10 +32,13 @@ case reuses the same worker-state observer before interrupting.
 
 The new Python module reads source bytes only. It checks the wait/return ordering,
 original Main case-registration digest, frozen source pins and bounded CI
-constraints. Twenty-two in-memory negative mutations exercise missing/false waits,
+constraints. Thirty in-memory negative mutations exercise missing/false waits,
 missing/delayed return evidence, disconnected pause, changed case count, unsafe
 workflow triggers/permissions, altered pins, fabricated exits, changed receipts,
-extra compiled authority, policy bypass and unsafe artifact paths. These lexical
+extra compiled authority, policy bypass and unsafe artifact paths. The eight
+recovery mutations also reject relative source arrays, wildcard path resolution,
+relative guard arguments, either relative positive-build branch, a direct relative
+positive-build splat and a changed fail-closed error preference. These lexical
 checks supplement native execution evidence.
 
 ## Open Failures & Prior-Issues Review
@@ -40,14 +50,51 @@ and publisher observation. Cross-instance/process/restart authority stays open.
 
 | Issue / severity | Cause, evidence and impacted boundary | P260 disposition |
 | --- | --- | --- |
+| P260 first CI compile failure / material | User-supplied evidence from genuine Actions run #44078871950 on 17 November 2026 reports both x64 and x86 failed at compile guards. `none-compile.log` reports CS1504 for both comparator source basenames resolved at the repository root. Relative forward-slash paths reached Framework `csc.exe`. Both positive-build routes shared that assumption. | Resolve each exact allowlisted source with literal canonical Windows paths before any compiler call. Eight in-memory mutations added. Host Python, both compilers, independent review and corrected CI evidence pending. Recovery acceptance HOLD. |
 | P259 evidence gap / material | Contender event precedes gate entry. Completion after `Read()` can conceal an early `Publish()` return. | Strengthened driver plus negative source tests. Windows execution and independent review pending. HOLD for acceptance. |
 | P96 race / HIGH | Original final approval and ownership checks precede a separate fake effect. Original proof reproduces Save/Replace/Delete after revoke. | Preserve original bytes and negative assertions. A proof PASS records reproduction. Production repair OPEN / HOLD. |
 | SEC-03/04 / HIGH missing evidence | Service principal/store, consent, IPC, loaded-code identity, durable recovery and alternate effect exclusion lack qualified evidence. | Qualified approvals remain 0/7. Security HOLD. |
 | Original regression failures / material | Four original P76 FAIL methods, original P251 FAIL and inherited P258 failures remain unwaived. | Targeted CI supplies no closure. Whole-product regressions remain 0/3. HOLD. |
 | P247 native execution / material missing evidence | Application Control and PowerShell policy blocked execution. | Existing x64 0/54 and x86 0/54 record preserved. Policy refusal stops execution. HOLD. |
 
-**GO for the user-authorized four-path defensive test change only.
-Security, production and release HOLD. Independent review pending.**
+**GO for the user-authorized three-file CI recovery only within the existing
+four-path P260 scope. Security, production and release HOLD. Independent review pending.**
+
+## First GitHub Actions run and bounded recovery
+
+Genuine run #44078871950 failed on both x64 and x86 at the compile guard step.
+The user-supplied run evidence records successful source checkout, exact head and
+source pins, P260 Python source contracts 5/5 and P259 Python source contracts 4/4
+before that failure. The uploaded x64 `none-compile.log` contains these diagnostics.
+
+```text
+error CS1504: Source file 'd:\a\Mark-LV\Mark-LV\P259OwnedPendingTransaction.cs' could not be opened (The system cannot find the file specified).
+error CS1504: Source file 'd:\a\Mark-LV\Mark-LV\OwnedPendingTransactionTests.cs' could not be opened (The system cannot find the file specified).
+```
+
+Framework `csc.exe` received relative forward-slash source arguments and resolved
+their basenames at the repository root. The guard step failed before the original
+P96 or P259 positive build and runtime loops. **No C# execution is credited to this
+run on either architecture.** The two CS1504 diagnostics provide no CS1029 guard
+acceptance. All three negative builds still require compiler failure, no output
+DLL, exactly two CS1029 diagnostics and the explicit NONDEPLOYABLE guard message.
+Both positive builds still require raw compiler exit zero before execution.
+
+Immediately after the fixed `$original` and `$comparator` relative allowlists,
+the recovery maps every authorized entry through
+`(Resolve-Path -LiteralPath $_).Path` in the checked-out repository, producing
+`$originalNative` and `$comparatorNative`. `$ErrorActionPreference = 'Stop'`
+makes a missing source terminate the step before compiler invocation. Each of
+the three guard builds splats `@comparatorNative`. The positive-build loop
+selects `$comparatorNative` or `$originalNative` into `$sources` and splats
+`@sources`. The compiler receives canonical absolute Windows source paths for
+all five builds. The source checker requires this resolution immediately after
+the exact allowlists, before guard compilation, plus the fail-closed preference
+and canonical argument flow through both compiler call sites.
+
+Nayeon independently runs the updated host Python contracts, x64/x86 compiler
+guards and fake-only execution, and code review before pushing the correction
+to existing draft PR #182. Recovery authoring leaves all three edits unstaged.
 
 ## Review-only Windows CI
 
@@ -81,10 +128,18 @@ case executions per architecture. It grants no security sign-off or release.
 
 ## Validation status
 
-Author checks cover exact Git intake, preserved source hashes, PowerShell run-block
-AST parsing, bounded source inspection and whitespace/scope checks. The authoritative
-host Python path was unavailable in this sandbox. Python tests and native C#
-compilation/execution remain unexecuted locally. P260 CI has not run. P259 runtime
-evidence remains **0/49 x64 and 0/49 x86** for this candidate. Independent review,
+Initial author checks covered exact Git intake, preserved source hashes,
+PowerShell run-block AST parsing, bounded source inspection and whitespace/scope
+checks. First-run CI source-only results above apply to the original submitted
+source. Recovery static checks passed for all three PowerShell run-block ASTs,
+all seven raw source pins, exact three-file unstaged scope and `git diff --check`.
+The recovery's authoritative host Python access probe returned Access
+denied in this sandbox. Updated Python tests and native C# compilation/execution
+remain unexecuted locally. Corrected CI has yet to run. P259 runtime evidence
+remains **0/49 x64 and 0/49 x86** for this candidate. Original P96 runtime evidence
+from this CI remains **0/15 x64 and 0/15 x86**. Independent review,
 affected/cross-phase and full authoritative product regressions remain pending.
-No commit, push, tag, seal, workbook or dashboard update occurred.
+Recovery authoring performs no staging, commit, push, tag, seal, new PR, workbook
+or dashboard update. Original P96 HIGH, SEC-03/04, qualified approvals 0/7,
+original regression failures, whole-product regressions 0/3, real-key NO-GO and
+production/release HOLD remain in force.
