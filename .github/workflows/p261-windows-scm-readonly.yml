@@ -1,0 +1,204 @@
+name: P261 real SCM read-only denial (production HOLD)
+
+on:
+  pull_request:
+    branches:
+      - byok-c1-p260-p96-contention-ci-20261117
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+jobs:
+  scm-read-only-review:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            csc: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          - arch: x86
+            bits: 32
+            csc: 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out exact PR source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify draft topology, additive scope and raw source hashes
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REVIEW_DRAFT: ${{ github.event.pull_request.draft }}
+          REVIEW_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'p261-${{ matrix.arch }}'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $expectedBase = '0e1171cdf6c542c08a087b8cd7f1fd1b86baec83'
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:REVIEW_HEAD -or
+              $env:REVIEW_BASE -cne $expectedBase -or
+              $env:REVIEW_BRANCH -cne 'byok-c1-p261-real-service-boundary-20261117' -or
+              $env:REVIEW_DRAFT -cne 'true' -or
+              $env:REVIEW_REPO -cne $env:GITHUB_REPOSITORY) { throw 'Exact draft topology mismatch' }
+          git merge-base --is-ancestor $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Fixed P260 parent missing' }
+          $expected = @('.github/workflows/p261-windows-scm-readonly.yml',
+              'docs/byok-c1-p261-real-service-boundary.md',
+              'native_c1_candidate/P261ScmReadOnlyAdmission.cs',
+              'tests/p261_scm_readonly/ScmReadOnlyTests.cs',
+              'tests/test_byok_c1_p261_scm_readonly.py')
+          $actual = @(git diff --name-only $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0) {
+              throw 'Exact five-path scope mismatch'
+          }
+          $changes = @(git diff --diff-filter=ACDMRTUXB --name-status $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -cnotmatch '^A\t' }).Count -ne 0) {
+              throw 'Only additive source is admitted'
+          }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0 -or
+              $LASTEXITCODE -ne 0) { throw 'Dirty review checkout' }
+          $pins = [ordered]@{
+              'native_c1_candidate/P261ScmReadOnlyAdmission.cs' = 'FBBC4AAF4B65D6C4B49DD0EE8B99C391A2E4AC08E1E6454CD10AF26C68804193'
+              'tests/p261_scm_readonly/ScmReadOnlyTests.cs' = 'F1755BDEBF1B1E44ABA6E47B5A4A4DC9BC36FF39D31A4CCE6C796A3716613A3B'
+              'tests/p99_original_native_c1_denial/ServiceGate.cs' = 'F65EF9F04283B6CA82D42B8D61B6B99B23262DE62E248DC575C0CEF1B3D96B8D'
+              'tests/p99_original_native_c1_denial/ProtectedAcl.cs' = '7152A0DB081EE9627B0F8E4D0D0230168FBF194752F3180DC884C694199AEC61'
+              'native_c1_candidate/CustodyService.cs' = '876E3006BA26966BE93BA033C97779B6FBB41E8656869A462535B1CF4B12D95E'
+              'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs' = '1FA108C18F228F83FE4BBDE0F682025BD23E864B23DDC24EA4D4F70F27382DD5'
+              'native_c1_candidate/P215WindowsStorePrincipalReadOnlyAdmission.cs' = 'A02A71481939A90C5F6380CCA7C3F078EAC9E75CCDA9603792D8216A6F3467C8'
+              'tests/p95_native_custody_preflight/CustodyLedger.cs' = '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' = 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs' = '2AEEAA8BA97396216B32D1894C8B8EA3AF7FACE44FB3562FF1C4DDE5E7DC582F'
+              'native_c1_g2_review/P259OwnedPendingTransaction.cs' = '80F69495177C22C7A0F80B733CC88DE764A48D7D4BE91C0897621408870A41C8'
+              'tests/p259_owned_pending_transaction/OwnedPendingTransactionTests.cs' = '10058CD0D20BCE6C9662C2E863C34BEFB9447E32E132F289A015A50E859F2BF4'
+              'tests/test_byok_c1_p259_owned_pending_transaction.py' = 'EA3602A5124F53B7282258FC21893B201828FD6D7B5742F3D195D486058F75C8'
+              'tests/test_byok_c1_p260_actual_contention.py' = '5DA83AC50D8B70F3B036D1C21DD009DF7380C893412D4975C8B01DFB9BE88A0A'
+              'docs/byok-c1-p216-service-owned-store-r3-external-decision.md' = '897C98B85F5EF2CB40D9FCCDC0D0D6FCB727D941CCFD597036E81391B68EAA85'
+              'tests/test_byok_c1_p261_scm_readonly.py' = '935A28276002C95757DE41AF5B03D0F0F9BDC6DD6C350F3A166DFBB9B7E55F09'
+          }
+          foreach ($pin in $pins.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $pin.Key -Algorithm SHA256).Hash -cne $pin.Value) {
+                  throw 'Raw source pin mismatch'
+              }
+          }
+          $pins | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-pins.json')
+          Set-Content -LiteralPath (Join-Path $evidence 'topology.log') -Value @(
+              ('P261_HEAD=' + $head), ('P261_BASE=' + $expectedBase),
+              'P261_REAL_KEYS=NONE', 'P261_QUALIFIED_APPROVALS=0/7', 'P261_PRODUCTION_RELEASE=HOLD')
+      - name: Set up Python for source-only tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Run source contracts including preserved P259 and P260
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP 'p261-${{ matrix.arch }}'
+          foreach ($module in @('test_byok_c1_p261_scm_readonly.py',
+              'test_byok_c1_p259_owned_pending_transaction.py', 'test_byok_c1_p260_actual_contention.py')) {
+              & python -I -B -m unittest discover -s tests -p $module -v *> (Join-Path $evidence ($module + '.log'))
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($module + '.exit')) -Value $rawExit
+              if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Source contract failed' }
+          }
+      - name: Compile guarded real SCM harness and execute ordinary Windows process
+        env:
+          REVIEW_CSC: ${{ matrix.csc }}
+          REVIEW_ARCH: ${{ matrix.arch }}
+          REVIEW_BITS: ${{ matrix.bits }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP 'p261-${{ matrix.arch }}'
+          $sourcePaths = @('native_c1_candidate/P261ScmReadOnlyAdmission.cs',
+              'tests/p261_scm_readonly/ScmReadOnlyTests.cs',
+              'tests/p99_original_native_c1_denial/ServiceGate.cs',
+              'tests/p99_original_native_c1_denial/ProtectedAcl.cs')
+          $sources = @($sourcePaths | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+          $rejected = Join-Path $evidence 'unguarded.dll'
+          $guardLog = Join-Path $evidence 'guard-compile.log'
+          & $env:REVIEW_CSC /nologo /target:library ("/platform:" + $env:REVIEW_ARCH) ("/out:" + $rejected) @sources *> $guardLog
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'guard-compile.exit') -Value $rawExit
+          $guardText = Get-Content -Raw -LiteralPath $guardLog
+          if ($null -eq $rawExit -or $rawExit -eq 0 -or (Test-Path -LiteralPath $rejected) -or
+              ([regex]::Matches($guardText, 'error CS1029')).Count -ne 2 -or
+              ([regex]::Matches($guardText, 'P261_REVIEW_ONLY_NONDEPLOYABLE')).Count -ne 2) {
+              throw 'Isolated compiler guard evidence incomplete'
+          }
+          $exe = Join-Path $evidence 'p261-review.exe'
+          & $env:REVIEW_CSC /nologo /target:exe ("/platform:" + $env:REVIEW_ARCH) /define:C1_REVIEW_ISOLATED_ASSEMBLY ("/out:" + $exe) @sources *> (Join-Path $evidence 'native-compile.log')
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'native-compile.exit') -Value $rawExit
+          if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Native compilation failed' }
+          $stdout = Join-Path $evidence 'native-runtime.log'
+          $stderr = Join-Path $evidence 'native-runtime-stderr.log'
+          try {
+              $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          } catch {
+              Set-Content -LiteralPath (Join-Path $evidence 'launch-status.log') -Value 'P261_NATIVE_LAUNCH=BLOCKED'
+              throw 'Ordinary Windows launch blocked'
+          }
+          $null = $process.Handle
+          if (!$process.WaitForExit(60000)) {
+              Stop-Process -Id $process.Id
+              Set-Content -LiteralPath (Join-Path $evidence 'launch-status.log') -Value 'P261_NATIVE_PROCESS=TIMEOUT'
+              throw 'Native process timed out'
+          }
+          $process.WaitForExit()
+          $rawExit = $process.ExitCode
+          Set-Content -LiteralPath (Join-Path $evidence 'native-runtime.exit') -Value $rawExit
+          if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Native evidence HOLD or failed' }
+          if ((Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Unexpected native stderr' }
+          $lines = @(Get-Content -LiteralPath $stdout)
+          $required = @('P261_PARSER_NEGATIVES=PASS', ('P261_POINTER_BITS=' + $env:REVIEW_BITS),
+              'P261_SCM_STATUS=Missing', 'P261_SERVICE_OPENED=False', 'P261_ACCOUNT_QUERIED=False',
+              'P261_ACCOUNT_MATCH=False', 'P261_SERVICE_SID_TYPE=Unverified', 'P261_SPOOF_CLAIMS=REJECT',
+              'P261_SERVICE_STORE_AUTHORITY=REJECT', 'P261_APPROVED_SERVICE_OWNER=False',
+              'P261_EFFECT_ALLOWED=False', 'P261_REAL_KEY_ELIGIBLE=False', 'P261_QUALIFIED_APPROVALS=0/7',
+              'P261_PRODUCTION_RELEASE=HOLD', 'P261_REAL_SCM_MISSING_DENIAL=PASS')
+          if ($lines.Count -ne $required.Count -or
+              @(Compare-Object -CaseSensitive $required $lines).Count -ne 0) {
+              throw 'Exact native receipt inventory mismatch'
+          }
+          Get-Content -LiteralPath $stdout
+      - name: Verify source hashes and checkout after execution
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'p261-${{ matrix.arch }}'
+          $pins = Get-Content -Raw -LiteralPath (Join-Path $evidence 'source-pins.json') | ConvertFrom-Json -AsHashtable
+          foreach ($pin in $pins.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $pin.Key -Algorithm SHA256).Hash -cne $pin.Value) { throw 'Source changed during validation' }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0 -or
+              $LASTEXITCODE -ne 0) { throw 'Review checkout changed during validation' }
+          Set-Content -LiteralPath (Join-Path $evidence 'post-source.log') -Value 'P261_SOURCE_HASHES_AFTER=UNCHANGED'
+      - name: Retain text evidence on success, failure or policy denial
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p261-scm-readonly-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p261-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p261-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p261-${{ matrix.arch }}/*.json
+          if-no-files-found: error
