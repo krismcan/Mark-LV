@@ -1,4 +1,4 @@
-"""Isolated Windows Generic Credential storage; no production consumers yet."""
+"""Windows credential storage; default native access is presence-only."""
 
 from __future__ import annotations
 
@@ -129,15 +129,27 @@ class WindowsCredentialBackend:
 
     The private adapter argument exists for deterministic tests. Construction
     makes no native call; real setup is lazy and fails closed when unavailable.
+    Default get/put/delete are refused, including after a presence refresh.
+    The injected adapter seam is not an authorization or OS isolation boundary.
     LOCAL_MACHINE persistence is for this Windows user on this computer.
     """
 
     def __init__(self, *, _native=None) -> None:
         self._native = _native
+        # Only construction-time injection supplies the test read contract.
+        # Lazy presence setup must never grant plaintext read access.
+        self._injected_read_adapter = _native
 
     def _adapter(self):
         if self._native is None:
             self._native = _Advapi32Adapter()
+        return self._native
+
+    def _injected_mutation_adapter(self):
+        # Preserve the existing fake-adapter contract without giving the lazy
+        # real native adapter mutation authority. No mode/approval switch.
+        if self._native is None or isinstance(self._native, _Advapi32Adapter):
+            return None
         return self._native
 
     @staticmethod
@@ -148,8 +160,11 @@ class WindowsCredentialBackend:
 
     def get(self, identifier: SecretIdentifier) -> SecretValue:
         target = self._target(identifier)
+        adapter = self._injected_read_adapter
+        if adapter is None:
+            raise SecretStorageError(_FAILURE)
         try:
-            blob = self._adapter().read(target)
+            blob = adapter.read(target)
             if blob is not None:
                 if type(blob) is not bytes or not 1 <= len(blob) <= _MAX_BLOB_BYTES:
                     raise SecretStorageError(_FAILURE)
@@ -162,19 +177,25 @@ class WindowsCredentialBackend:
         target = self._target(identifier)
         if type(value) is not SecretValue:
             raise TypeError("Value must be an exact SecretValue")
+        adapter = self._injected_mutation_adapter()
+        if adapter is None:
+            raise SecretStorageError(_FAILURE)
         try:
             blob = value.reveal().encode("utf-8", errors="strict")
             if len(blob) > _MAX_BLOB_BYTES:
                 raise SecretStorageError(_FAILURE)
-            self._adapter().write(target, blob, _CRED_TYPE_GENERIC,
-                                  _CRED_PERSIST_LOCAL_MACHINE, _USERNAME)
+            adapter.write(target, blob, _CRED_TYPE_GENERIC,
+                          _CRED_PERSIST_LOCAL_MACHINE, _USERNAME)
         except Exception:
             raise SecretStorageError(_FAILURE) from None
 
     def delete(self, identifier: SecretIdentifier) -> bool:
         target = self._target(identifier)
+        adapter = self._injected_mutation_adapter()
+        if adapter is None:
+            raise SecretStorageError(_FAILURE)
         try:
-            return self._adapter().delete(target)
+            return adapter.delete(target)
         except Exception:
             raise SecretStorageError(_FAILURE) from None
 
