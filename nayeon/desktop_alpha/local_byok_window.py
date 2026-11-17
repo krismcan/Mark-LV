@@ -1,9 +1,10 @@
-"""P132 manual Windows-user local BYOK window (OFFLINE, no provider probe).
+"""P258 default read-only Windows-user BYOK status (OFFLINE, no provider probe).
 
 Run explicitly: python -m nayeon.desktop_alpha.local_byok_window
 The normal offline assistant startup remains untouched. On import or launch,
-there is no Windows Credential Manager access until a person clicks Refresh
-or a Review button. No saved credential is read back into this window.
+there is no Windows Credential Manager access until a person clicks Refresh.
+Default mutation controls are disabled pending a trusted service-only owner.
+No saved credential is read back into this window.
 """
 
 from __future__ import annotations
@@ -16,6 +17,13 @@ from nayeon.brain.local_byok_user_scope import (
     LocalByokPresence, compose_user_scope_local_byok,
 )
 from nayeon.secrets.contracts import SecretValue
+
+
+_READ_ONLY_TEXT = (
+    "READ-ONLY STATUS: waiting for a qualified trusted Windows service-only "
+    "credential owner. Save, replace and delete are unavailable. "
+    "Refresh checks slot presence only; no stored key is shown."
+)
 
 
 _PRESENCE_TEXT = {
@@ -63,7 +71,9 @@ class LocalByokWindow:
         self._busy = False
         self._closed = False
 
-        root.title("Nayeon | Local Windows BYOK (offline setup)")
+        root.title("Nayeon | Local Windows BYOK (" + (
+            "offline setup" if controller.mutation_available else "read-only status"
+        ) + ")")
         root.geometry("700x555")
         root.minsize(610, 510)
         root.configure(bg="#101827")
@@ -76,11 +86,15 @@ class LocalByokWindow:
                         "This does not install a privileged service."),
             bg="#101827", fg="#c9d7e6", wraplength=640, justify="left",
         ).pack(anchor="w", padx=22)
-        tk.Label(
-            root, text=("OFFLINE SETUP: no provider connection or validation, "
-                        "and no key is saved on launch. A stored slot is not a usable connection."),
+        self._mode_notice = tk.Label(
+            root, text=(
+                "OFFLINE SETUP: no provider connection or validation, "
+                "and no key is saved on launch. A stored slot is not a usable connection."
+                if controller.mutation_available else _READ_ONLY_TEXT
+            ),
             bg="#101827", fg="#f2d5a2", wraplength=640, justify="left",
-        ).pack(anchor="w", padx=22, pady=(6, 14))
+        )
+        self._mode_notice.pack(anchor="w", padx=22, pady=(6, 14))
 
         self._refresh = tk.Button(
             root, text="Refresh local slot presence (never show key)",
@@ -157,9 +171,17 @@ class LocalByokWindow:
         # Tk disabled Entry cannot be deleted without a temporary enable.
         self._entry.configure(state="normal")
         self._entry.delete(0, tk.END)
+        if not self._controller.mutation_available:
+            self._entry.configure(state="disabled")
 
     def _sync(self) -> None:
         if not self._live():
+            return
+        if not self._controller.mutation_available:
+            for widget in (*self._choices, self._entry, self._confirm,
+                           self._delete_ack, self._approve, self._reject):
+                widget.configure(state="disabled")
+            self._refresh.configure(state="disabled" if self._busy else "normal")
             return
         pending = self._review is not None
         for button in self._choices:
@@ -189,6 +211,8 @@ class LocalByokWindow:
             )
 
     def review_from_button(self, operation: LocalByokOperation) -> None:
+        if not self._controller.mutation_available:
+            return
         if (not self._live() or self._busy or self._review is not None
                 or type(operation) is not LocalByokOperation):
             return
@@ -217,6 +241,8 @@ class LocalByokWindow:
         self._sync()
 
     def approve_from_button(self) -> None:
+        if not self._controller.mutation_available:
+            return
         if not self._live() or self._review is None or self._busy:
             return
         review = self._review
@@ -293,7 +319,7 @@ class LocalByokWindow:
 
 
 def main() -> None:
-    """Explicit manual launch only; no default app/startup integration."""
+    """Both fixed source child and manual module use the presence-only factory."""
     if sys.platform != "win32":
         raise SystemExit("Local BYOK Windows setup is available only on Windows.")
     root = tk.Tk()

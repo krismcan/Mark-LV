@@ -1,12 +1,13 @@
-"""P132: explicit offline, user-account Windows Credential Manager BYOK slice.
+"""P258 default presence-only status, retaining P132 fake-injected behavior.
 
 A deliberately *narrower* product model than privileged BYOK C1: no service,
 privileged journal, antirollback claims, native consent broker, provider API,
 network call, startup storage access, or credential export/read-back.
 
-Actual Windows CredWrite/CredDelete are reachable only when the separately
-launched, local human UI calls approve() on its exact one-use review. This is
-NOT a cryptographic proof of human presence inside a compromised process.
+The default composition cannot begin or approve mutations. A future trusted
+service-only credential owner requires separate qualification. The original
+injected fake-adapter review workflow remains for deterministic tests; it is
+NOT a cryptographic proof of human presence or an OS isolation boundary.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ class LocalByokReview:
 
 
 class LocalByokController:
-    """One user's optional offline credential workflow, not an agent tool.
+    """Presence-only by default; original offline review for injected fakes.
 
     Exact WindowsCredentialBackend, one fixed target and cooperative
     session-wide WindowsOnboardingMutex. The private mutex test seam never
@@ -71,17 +72,30 @@ class LocalByokController:
     an existing value without changing presence cannot be detected here.
     """
 
-    __slots__ = ("_backend", "_mutex", "_gate", "_pending", "_busy", "_uncertain")
+    __slots__ = (
+        "_backend", "_mutation_backend", "_mutex", "_gate", "_pending", "_busy", "_uncertain",
+    )
 
     def __init__(self, backend: WindowsCredentialBackend, *, _mutex=None) -> None:
         if type(backend) is not WindowsCredentialBackend:
             raise TypeError("Exact user-account Windows credential backend required")
         self._backend = backend
+        # Bind effects only for the preexisting injected-adapter seam. The
+        # default has no mutation binding, even after refresh or forged review
+        # state. There is no caller-supplied writable/default mode argument.
+        self._mutation_backend = (
+            backend if backend._injected_mutation_adapter() is not None else None
+        )
         self._mutex = WindowsOnboardingMutex() if _mutex is None else _mutex
         self._gate = threading.RLock()
         self._pending: LocalByokReview | None = None
         self._busy = False
         self._uncertain = False
+
+    @property
+    def mutation_available(self) -> bool:
+        """Presentation hint; begin/approve independently enforce the binding."""
+        return self._mutation_backend is not None
 
     def inspect_presence(self) -> LocalByokPresence:
         """Explicit refresh only: call CredRead metadata presence, never get()."""
@@ -102,6 +116,8 @@ class LocalByokController:
     def begin(self, operation: LocalByokOperation) -> LocalByokReview | None:
         """A separate manual review step; no write, validation or key retained."""
         with self._gate:
+            if self._mutation_backend is None:
+                return None
             if (type(operation) is not LocalByokOperation or self._pending is not None
                     or self._busy or self._uncertain):
                 return None
@@ -140,6 +156,9 @@ class LocalByokController:
         No automatic retry, network, provider validation or secret read.
         """
         with self._gate:
+            if self._mutation_backend is None:
+                self._pending = None
+                return LocalByokOutcome.REFUSED
             if (self._pending is not review or review is None
                     or type(review) is not LocalByokReview or self._busy):
                 return LocalByokOutcome.REFUSED
@@ -172,13 +191,13 @@ class LocalByokController:
                         return LocalByokOutcome.CONFLICT
 
                     if review.operation is LocalByokOperation.REMOVE:
-                        removed = self._backend.delete(_FIXED_IDENTIFIER)
+                        removed = self._mutation_backend.delete(_FIXED_IDENTIFIER)
                         if type(removed) is not bool or not removed:
                             self._uncertain = True
                             return LocalByokOutcome.RECONCILIATION_REQUIRED
                         expected = False
                     else:
-                        self._backend.put(_FIXED_IDENTIFIER, candidate)
+                        self._mutation_backend.put(_FIXED_IDENTIFIER, candidate)
                         expected = True
 
                     now_present = self._backend.is_available(_FIXED_IDENTIFIER)
@@ -203,5 +222,5 @@ class LocalByokController:
 
 
 def compose_user_scope_local_byok() -> LocalByokController:
-    """Explicit interactive entry only; construction never touches WinCred."""
+    """Presence-only default for source child AND manual module; zero native IO."""
     return LocalByokController(WindowsCredentialBackend())
