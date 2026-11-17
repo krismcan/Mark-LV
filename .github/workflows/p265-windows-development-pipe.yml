@@ -1,0 +1,213 @@
+name: P265 development pipe (P96 and production HOLD)
+
+on:
+  pull_request:
+    branches:
+      - byok-c1-p264-service-runtime-development-20261117
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+jobs:
+  development-pipe-review:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            csc: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          - arch: x86
+            bits: 32
+            csc: 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_BITS: ${{ matrix.bits }}
+      REVIEW_CSC: ${{ matrix.csc }}
+    steps:
+      - name: Check out exact PR source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source scope and record source hashes
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p265-evidence-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $expectedBase = '3a566c544384bc0b961fbf65fa2e987be47b343c'
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:REVIEW_HEAD -or
+              $env:REVIEW_BASE -cne $expectedBase) { throw 'Exact PR HEAD/P264 base mismatch' }
+          git merge-base --is-ancestor $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed P264 parent missing' }
+          $expected = @('.github/workflows/p265-windows-development-pipe.yml',
+              'docs/byok-c1-p265-development-pipe.md',
+              'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'tests/p265_successor/P265DevelopmentPipeTests.cs',
+              'tests/test_byok_c1_p265_development_pipe.py')
+          $actual = @(git diff --name-only $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0) {
+              throw 'Exact five-path scope mismatch; historical source must be preserved'
+          }
+          $changes = @(git diff --name-status $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -cnotmatch '^A\t' }).Count -ne 0) {
+              throw 'Only five additive P265 review paths are admitted'
+          }
+          git diff --check $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Review source whitespace failure' }
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Dirty review checkout' }
+          $hashes = [ordered]@{}
+          foreach ($path in $expected) {
+              $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+          }
+          $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
+          Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
+              ('P265_HEAD=' + $head), ('P265_BASE=' + $expectedBase),
+              'P265_SCOPE=DEVELOPMENT_DENIAL_ONLY P96=HOLD PRODUCTION=HOLD')
+      - name: Set up Python for five source-only tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+      - name: Run five focused Python static tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p265-evidence-' + $env:REVIEW_ARCH)
+          $log = Join-Path $evidence 'source-tests.log'
+          & python -I -B -m unittest discover -s tests -p test_byok_c1_p265_development_pipe.py -v *> $log
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'source-tests.exit') -Value $rawExit
+          Get-Content -LiteralPath $log
+          if ($null -eq $rawExit -or $rawExit -ne 0 -or
+              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 5 tests in ') {
+              throw 'Five focused source tests required'
+          }
+      - name: Compile both development artifacts and all incomplete-flag guards
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p265-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p265-build-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $build | Out-Null
+          $framework = Split-Path -Parent $env:REVIEW_CSC
+          $common = @('/nologo', '/noconfig', '/debug+', '/optimize-', '/warn:4', '/warnaserror+',
+              ('/platform:' + $env:REVIEW_ARCH), ('/reference:' + (Join-Path $framework 'System.dll')),
+              ('/reference:' + (Join-Path $framework 'System.Core.dll')))
+          $items = @(
+              @{Name='Adapter'; Source='native_c1_successor/P265DevelopmentPipeAdapter.cs'; Target='library'; Ext='.dll'; Required='P265_DEVELOPMENT_ONLY_EXPLICIT_OPT_IN_REQUIRED'; Release='P265_NO_RELEASE_BUILD'},
+              @{Name='Tests'; Source='tests/p265_successor/P265DevelopmentPipeTests.cs'; Target='exe'; Ext='.exe'; Required='P265_TESTS_REQUIRE_DEVELOPMENT_BUILD'; Release='P265_TESTS_NO_RELEASE_BUILD'})
+          foreach ($item in $items) {
+              $source = (Resolve-Path -LiteralPath $item.Source).Path
+              foreach ($guard in @('NONE', 'DEBUG', 'C1_P265_DEVELOPMENT_ONLY')) {
+                  $stem = $item.Name + '-' + $guard
+                  $output = Join-Path $build ($stem + $item.Ext)
+                  $log = Join-Path $evidence ($stem + '.log')
+                  $define = @()
+                  if ($guard -ne 'NONE') { $define = @(('/define:' + $guard)) }
+                  & $env:REVIEW_CSC @common @define ('/target:' + $item.Target) ('/out:' + $output) $source *> $log
+                  $rawExit = $LASTEXITCODE
+                  Set-Content -LiteralPath (Join-Path $evidence ($stem + '.exit')) -Value $rawExit
+                  if ($null -eq $rawExit -or $rawExit -eq 0 -or (Test-Path -LiteralPath $output)) {
+                      throw 'Incomplete development flags admitted an artifact'
+                  }
+                  $text = Get-Content -LiteralPath $log -Raw
+                  $required = @()
+                  if ($guard -ne 'C1_P265_DEVELOPMENT_ONLY') { $required += $item.Required }
+                  if ($guard -ne 'DEBUG') { $required += $item.Release }
+                  if (([regex]::Matches($text, 'error CS1029:')).Count -ne $required.Count -or
+                      ([regex]::Matches($text, 'error CS\d+:')).Count -ne $required.Count) {
+                      throw 'Unexpected guard failure (including policy refusal); stop'
+                  }
+                  foreach ($marker in $required) {
+                      if ($text -notmatch ('error CS1029:.*' + $marker)) { throw 'Missing exact guard diagnostic' }
+                  }
+              }
+              $output = Join-Path $build ('P265.' + $item.Name + '.' + $env:REVIEW_ARCH + $item.Ext)
+              $log = Join-Path $evidence ($item.Name + '-compile.log')
+              & $env:REVIEW_CSC @common '/define:DEBUG;C1_P265_DEVELOPMENT_ONLY' ('/target:' + $item.Target) ('/out:' + $output) $source *> $log
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($item.Name + '-compile.exit')) -Value $rawExit
+              if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Development compile failed; stop' }
+          }
+      - name: Execute actual native pipe driver with a 35-second process deadline
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p265-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p265-build-' + $env:REVIEW_ARCH)
+          $exe = Join-Path $build ('P265.Tests.' + $env:REVIEW_ARCH + '.exe')
+          $dll = Join-Path $build ('P265.Adapter.' + $env:REVIEW_ARCH + '.dll')
+          $stdout = Join-Path $evidence 'native-runtime.log'
+          $stderr = Join-Path $evidence 'native-stderr.log'
+          # Ordinary launch ONLY. No service invocation, policy changes or alternate loader.
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          try {
+              $process = Start-Process -FilePath $exe -ArgumentList ('--permitted-disposable-runner "{0}"' -f $dll) -WindowStyle Hidden -PassThru -ErrorAction Stop -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          } catch {
+              Set-Content -LiteralPath (Join-Path $evidence 'launch-status.log') -Value 'P265_NATIVE_LAUNCH=BLOCKED STOP_NO_RETRY'
+              throw 'Ordinary launch refused; stop without alternate loader'
+          }
+          $null = $process.Handle
+          $remaining = [Math]::Max(0, 35000 - [int]$watch.ElapsedMilliseconds)
+          $timedOut = -not $process.WaitForExit($remaining)
+          if ($timedOut) {
+              Stop-Process -Id $process.Id -ErrorAction Stop
+              if (-not $process.WaitForExit(5000)) { throw 'Timed-out process did not terminate; HOLD' }
+          }
+          $rawExit = $process.ExitCode
+          Set-Content -LiteralPath (Join-Path $evidence 'native-runtime.exit') -Value $rawExit
+          Get-Content -LiteralPath $stdout
+          Get-Content -LiteralPath $stderr
+          if ($timedOut) { throw 'Native process exceeded hard 35-second deadline; HOLD' }
+          if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Native failure or AppControl refusal; STOP, no retry' }
+          if ((Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Unexpected native stderr; HOLD' }
+          $lines = @(Get-Content -LiteralPath $stdout)
+          if ($lines.Count -ne 2 -or
+              $lines[0] -cnotmatch ('^P265_NATIVE_TESTS=PASS ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '$') -or
+              $lines[1] -cne 'P265_SAME_SID_APP_TRUST=UNTRUSTED P96=HOLD REAL_KEY=HOLD PRODUCTION=HOLD') {
+              throw 'Exact native receipt missing'
+          }
+      - name: Verify reviewed source stayed unchanged
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p265-evidence-' + $env:REVIEW_ARCH)
+          $hashes = Get-Content -LiteralPath (Join-Path $evidence 'source-hashes.json') -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($entry in $hashes.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash -cne $entry.Value) {
+                  throw 'Reviewed source bytes changed'
+              }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Review checkout changed' }
+          Set-Content -LiteralPath (Join-Path $evidence 'post-source.log') -Value 'P265_SOURCE_HASHES_AFTER=UNCHANGED'
+      - name: Retain only nonsecret text evidence, never binaries
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p265-development-pipe-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p265-evidence-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p265-evidence-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p265-evidence-${{ matrix.arch }}/*.json
+          if-no-files-found: error
