@@ -51,7 +51,7 @@ internal static class OwnedPendingTransactionTests
             Need(thread.Join(5000), "Windows thread did not finish");
             if (error != null) throw new InvalidOperationException("worker failed", error);
         }
-        internal void InterruptBlockedGateWait()
+        internal void WaitForBlockedGate()
         {
             var timer = System.Diagnostics.Stopwatch.StartNew();
             while ((thread.ThreadState & ThreadState.WaitSleepJoin) == 0)
@@ -60,6 +60,10 @@ internal static class OwnedPendingTransactionTests
                     "contender did not block on owned gate");
                 Thread.Yield();
             }
+        }
+        internal void InterruptBlockedGateWait()
+        {
+            WaitForBlockedGate();
             thread.Interrupt();
         }
     }
@@ -120,6 +124,7 @@ internal static class OwnedPendingTransactionTests
         using (var entered = new ManualResetEventSlim())
         using (var release = new ManualResetEventSlim())
         using (var waiting = new ManualResetEventSlim())
+        using (var publicationReturned = new ManualResetEventSlim())
         using (var completed = new ManualResetEventSlim())
         {
             SetProbe(owner, "dispatchEntered", entered);
@@ -133,7 +138,9 @@ internal static class OwnedPendingTransactionTests
                 Need(entered.Wait(2000), "effect did not enter owned gate");
                 publisher = new Worker(() =>
                 {
-                    Need(owner.Publish(signal) == Publication.TooLatePossibleEffect,
+                    Publication result = owner.Publish(signal);
+                    publicationReturned.Set();
+                    Need(result == Publication.TooLatePossibleEffect,
                         "publication falsely claimed zero effects");
                     Snapshot atReturn = owner.Read();
                     Need(atReturn.Attempts == 1 && atReturn.DispatchOrder > 0 &&
@@ -142,11 +149,14 @@ internal static class OwnedPendingTransactionTests
                     completed.Set();
                 });
                 Need(waiting.Wait(2000), "publication did not contend");
-                // A causal rendezvous, with no sleep or timeout-as-success check.
-                // Dispatch is paused inside its gate and has not mutated yet.
+                // The contender event precedes gate acquisition. Observe the worker
+                // actually blocked while dispatch remains paused inside that gate.
+                // Check Publish's return before Read can block on the same gate.
+                publisher.WaitForBlockedGate();
                 Need((int)typeof(P259OwnedPendingTransaction).GetField("attempts", PrivateInstance)
                     .GetValue(owner) == 0, "dispatch pause occurred too late");
-                Need(!completed.IsSet, "publication returned while dispatch owned gate");
+                Need(!publicationReturned.IsSet, "publication returned while dispatch owned gate");
+                Need(!completed.IsSet, "publication observation completed while dispatch owned gate");
             }
             finally
             {
@@ -157,7 +167,7 @@ internal static class OwnedPendingTransactionTests
                 SetProbe(owner, "dispatchContinue", null);
                 SetProbe(owner, "publicationWaiting", null);
             }
-            Need(completed.IsSet, "publication completion missing");
+            Need(publicationReturned.IsSet && completed.IsSet, "publication completion missing");
         }
         Snapshot state = owner.Read();
         CheckEffect(state, operation, 1);

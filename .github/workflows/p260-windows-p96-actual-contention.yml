@@ -1,0 +1,190 @@
+name: P260 review-only actual contention (production HOLD)
+
+on:
+  pull_request:
+    branches:
+      - byok-c1-p259-p96-owned-effect-ordering-20261117
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+jobs:
+  fake-only-review:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            csc: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          - arch: x86
+            bits: 32
+            csc: 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out exact PR head for review
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact base, four-path scope and raw source pins
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedBase = 'f9833383177e4c76f7997ad6041434c52c401c05'
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:REVIEW_HEAD -or
+              $env:REVIEW_BASE -cne $expectedBase) { throw 'Exact review topology mismatch' }
+          git merge-base --is-ancestor $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Expected P259 ancestor missing' }
+          $expected = @('.github/workflows/p260-windows-p96-actual-contention.yml',
+              'docs/byok-c1-p260-actual-contention-and-windows-native-execution.md',
+              'tests/p259_owned_pending_transaction/OwnedPendingTransactionTests.cs',
+              'tests/test_byok_c1_p260_actual_contention.py')
+          $actual = @(git diff --name-only $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0) {
+              throw 'Review source exceeds exact four-path scope'
+          }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0 -or
+              $LASTEXITCODE -ne 0) { throw 'Dirty review checkout' }
+          $pins = [ordered]@{
+              'tests/p95_native_custody_preflight/CustodyLedger.cs' = '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' = 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs' = '2AEEAA8BA97396216B32D1894C8B8EA3AF7FACE44FB3562FF1C4DDE5E7DC582F'
+              'native_c1_g2_review/P259OwnedPendingTransaction.cs' = '80F69495177C22C7A0F80B733CC88DE764A48D7D4BE91C0897621408870A41C8'
+              'tests/p259_owned_pending_transaction/OwnedPendingTransactionTests.cs' = '10058CD0D20BCE6C9662C2E863C34BEFB9447E32E132F289A015A50E859F2BF4'
+              'native_c1_candidate/CustodyService.cs' = '876E3006BA26966BE93BA033C97779B6FBB41E8656869A462535B1CF4B12D95E'
+              'native_c1_candidate/ServiceOwnedAdmissionBoundary.cs' = '1FA108C18F228F83FE4BBDE0F682025BD23E864B23DDC24EA4D4F70F27382DD5'
+          }
+          $evidence = Join-Path $env:RUNNER_TEMP 'p260-${{ matrix.arch }}'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          foreach ($pin in $pins.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $pin.Key -Algorithm SHA256).Hash -cne $pin.Value) {
+                  throw ('Raw source pin mismatch ' + $pin.Key)
+              }
+          }
+          $pins | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-pins.json')
+          Write-Output "P260_REVIEW_HEAD=$head"
+          Write-Output 'P260_REAL_KEYS=NONE; P96_HIGH=OPEN; PRODUCTION_RELEASE=HOLD'
+      - name: Set up Python for source-only contracts
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Run P259 and P260 source-only contracts
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP 'p260-${{ matrix.arch }}'
+          foreach ($module in @('test_byok_c1_p259_owned_pending_transaction.py',
+              'test_byok_c1_p260_actual_contention.py')) {
+              & python -I -B -m unittest discover -s tests -p $module -v *> (Join-Path $evidence ($module + '.log'))
+              $rawExit = $LASTEXITCODE
+              Write-Output "$module RAW_EXIT=$rawExit"
+              if ($rawExit -ne 0) { throw 'Source-only contract failed' }
+          }
+      - name: Compile guarded comparator and original fake-only proof, then execute
+        env:
+          REVIEW_CSC: ${{ matrix.csc }}
+          REVIEW_ARCH: ${{ matrix.arch }}
+          REVIEW_BITS: ${{ matrix.bits }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p260-' + $env:REVIEW_ARCH)
+          $original = @('tests/p95_native_custody_preflight/CustodyLedger.cs',
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs')
+          $comparator = @('native_c1_g2_review/P259OwnedPendingTransaction.cs',
+              'tests/p259_owned_pending_transaction/OwnedPendingTransactionTests.cs')
+          if (!(Test-Path -LiteralPath $env:REVIEW_CSC)) { throw 'Framework compiler unavailable' }
+          foreach ($guard in @('none', 'isolated-only', 'synthetic-only')) {
+              $defines = @()
+              if ($guard -eq 'isolated-only') { $defines += '/define:C1_REVIEW_ISOLATED_ASSEMBLY' }
+              if ($guard -eq 'synthetic-only') { $defines += '/define:C1_SYNTHETIC_TEST' }
+              $rejected = Join-Path $evidence ($guard + '.dll')
+              $guardLog = Join-Path $evidence ($guard + '-compile.log')
+              & $env:REVIEW_CSC /nologo /target:library ("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $rejected) @comparator *> $guardLog
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($guard + '-compile.exit')) -Value $rawExit
+              $guardText = Get-Content -Raw -LiteralPath $guardLog
+              if ($rawExit -eq 0 -or (Test-Path -LiteralPath $rejected) -or
+                  ([regex]::Matches($guardText, 'error CS1029')).Count -ne 2 -or
+                  !$guardText.Contains('P259 requires isolated synthetic review and is NONDEPLOYABLE')) {
+                  throw 'Explicit two-source guard rejection missing'
+              }
+          }
+          foreach ($suite in @('P96-original', 'P259')) {
+              $sources = if ($suite -eq 'P259') { $comparator } else { $original }
+              $defines = @()
+              if ($suite -eq 'P259') { $defines += '/define:C1_REVIEW_ISOLATED_ASSEMBLY,C1_SYNTHETIC_TEST' }
+              $exe = Join-Path $evidence ($suite + '.exe')
+              & $env:REVIEW_CSC /nologo /target:exe ("/platform:" + $env:REVIEW_ARCH) @defines ("/out:" + $exe) @sources *> (Join-Path $evidence ($suite + '-compile.log'))
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($suite + '-compile.exit')) -Value $rawExit
+              if ($rawExit -ne 0) { throw 'Fake-only compilation failed' }
+              $stdout = Join-Path $evidence ($suite + '-stdout.log')
+              $stderr = Join-Path $evidence ($suite + '-stderr.log')
+              # Policy refusal is fatal. Keep the normal Windows execution path.
+              $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+              $null = $process.Handle
+              if (!$process.WaitForExit(60000)) {
+                  Stop-Process -Id $process.Id
+                  throw 'Fake-only child timed out; evidence preserved'
+              }
+              $process.WaitForExit()
+              $rawExit = $process.ExitCode
+              Set-Content -LiteralPath (Join-Path $evidence ($suite + '-runtime.exit')) -Value $rawExit
+              Write-Output "$suite RAW_PROCESS_EXIT=$rawExit"
+              if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Fake-only runtime failed' }
+              if ((Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Unexpected runtime stderr' }
+              $lines = @(Get-Content -LiteralPath $stdout)
+              $required = if ($suite -eq 'P259') {
+                  @(('P259_POINTER_BITS=' + $env:REVIEW_BITS), 'P259_PASSED=49', 'P259_FAILED=0',
+                      'P259_REVIEW_ONLY_P96_PRODUCTION_OPEN_RELEASE_HOLD')
+              } else {
+                  @('P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15',
+                      'P96_NATIVE_ACTUAL_COORDINATOR_TESTS_FAILED=0',
+                      'P96_LEGACY_POST_CHECK_REVOCATION_RACE=REPRODUCED_IN_FAKE_ONLY',
+                      'P96_REAL_NATIVE_EFFECTS=NONE', 'P96_SECURITY_FINDING=OPEN',
+                      'P96_C1_PRODUCTION_RELEASE=HOLD')
+              }
+              foreach ($receipt in $required) {
+                  if (@($lines | Where-Object { $_ -ceq $receipt }).Count -ne 1) { throw 'Exact runtime receipt missing' }
+              }
+              $count = if ($suite -eq 'P259') { 49 } else { 15 }
+              if (@($lines | Where-Object { $_ -cmatch '^PASS ' }).Count -ne $count -or
+                  @($lines | Where-Object { $_ -cmatch '^FAIL ' }).Count -ne 0) { throw 'Case inventory mismatch' }
+              Get-Content -LiteralPath $stdout
+          }
+          $pins = Get-Content -Raw -LiteralPath (Join-Path $evidence 'source-pins.json') | ConvertFrom-Json -AsHashtable
+          foreach ($pin in $pins.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $pin.Key -Algorithm SHA256).Hash -cne $pin.Value) { throw 'Source changed during execution' }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0 -or
+              $LASTEXITCODE -ne 0) { throw 'Review checkout changed during execution' }
+          Write-Output 'P260_SYNTHETIC_REVIEW_ONLY; ORIGINAL_FAILURES_UNWAIVED; SECURITY_HOLD; REAL_KEY_NO_GO; PRODUCTION_RELEASE_HOLD'
+      - name: Preserve review evidence on success, failure or policy refusal
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p260-review-only-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p260-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p260-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p260-${{ matrix.arch }}/*.json
+          if-no-files-found: error
