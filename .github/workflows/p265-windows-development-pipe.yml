@@ -82,12 +82,12 @@ jobs:
           Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
               ('P265_HEAD=' + $head), ('P265_BASE=' + $expectedBase),
               'P265_SCOPE=DEVELOPMENT_DENIAL_ONLY P96=HOLD PRODUCTION=HOLD')
-      - name: Set up Python for five source-only tests
+      - name: Set up Python for six source-only tests
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
           architecture: ${{ matrix.arch }}
-      - name: Run five focused Python static tests
+      - name: Run six focused Python static tests including async lifetime canaries
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
@@ -98,8 +98,8 @@ jobs:
           Set-Content -LiteralPath (Join-Path $evidence 'source-tests.exit') -Value $rawExit
           Get-Content -LiteralPath $log
           if ($null -eq $rawExit -or $rawExit -ne 0 -or
-              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 5 tests in ') {
-              throw 'Five focused source tests required'
+              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 6 tests in ') {
+              throw 'Six focused source tests required'
           }
       - name: Compile both development artifacts and all incomplete-flag guards
         run: |

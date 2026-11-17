@@ -49,10 +49,26 @@ internal static class P265DevelopmentPipeTests
         Buffer.BlockCopy(id.ToByteArray(), 0, frame, 12, 16);
         return frame;
     }
-    private static void Complete(IAsyncResult pending, Action finish)
+    private static void Complete(NamedPipeClientStream client, IAsyncResult pending, Action finish)
     {
-        using (WaitHandle wait = pending.AsyncWaitHandle) Need(wait.WaitOne(3000));
-        finish();
+        using (WaitHandle wait = pending.AsyncWaitHandle)
+        {
+            bool ready = false;
+            try
+            {
+                ready = wait.WaitOne(3000);
+                if (!ready) client.Dispose(); // cancel before completing a timed-out operation
+                Need(ready);
+            }
+            catch { client.Dispose(); throw; }
+            finally
+            {
+                // EndRead/EndWrite may themselves wait on this same handle.
+                try { finish(); }
+                catch (IOException) { if (ready) throw; }
+                catch (ObjectDisposedException) { if (ready) throw; }
+            }
+        }
     }
     private static NamedPipeClientStream Connect(object adapter, TokenImpersonationLevel level)
     {
@@ -64,7 +80,7 @@ internal static class P265DevelopmentPipeTests
     private static void Write(NamedPipeClientStream client, byte[] frame)
     {
         IAsyncResult write = client.BeginWrite(frame, 0, frame.Length, null, null);
-        Complete(write, delegate { client.EndWrite(write); });
+        Complete(client, write, delegate { client.EndWrite(write); });
     }
     private static byte[] Reply(NamedPipeClientStream client, byte[] delivery)
     {
@@ -74,7 +90,7 @@ internal static class P265DevelopmentPipeTests
         {
             IAsyncResult read = client.BeginRead(reply, offset, reply.Length - offset, null, null);
             int count = 0;
-            Complete(read, delegate { count = client.EndRead(read); });
+            Complete(client, read, delegate { count = client.EndRead(read); });
             Need(count > 0); offset += count;
         }
         Need(BitConverter.ToString(reply) == "43-31-44-4E-01-01-00-00");

@@ -95,16 +95,15 @@ namespace Nayeon.ByokC1.P265Development
             return (int)remaining;
         }
 
-        private void Wait(IAsyncResult pending, Stopwatch elapsed, int timeoutMs)
+        // The caller owns the wait handle through End*, including cancellation cleanup.
+        private void Wait(WaitHandle handle, Stopwatch elapsed, int timeoutMs)
         {
-            using (WaitHandle handle = pending.AsyncWaitHandle)
+            try
             {
                 if (!handle.WaitOne(Remaining(elapsed, timeoutMs)))
-                {
-                    Dispose(); // closes the pending native overlapped operation; never leave a reader waiting
                     throw new TimeoutException();
-                }
             }
+            catch { Dispose(); throw; } // also cancel if Remaining expires before WaitOne
         }
 
         private void ReadExact(byte[] buffer, Stopwatch elapsed, int timeoutMs)
@@ -114,8 +113,20 @@ namespace Nayeon.ByokC1.P265Development
             {
                 Remaining(elapsed, timeoutMs);
                 IAsyncResult read = pipe.BeginRead(buffer, offset, buffer.Length - offset, null, null);
-                Wait(read, elapsed, timeoutMs);
-                int count = pipe.EndRead(read);
+                int count = 0;
+                using (WaitHandle handle = read.AsyncWaitHandle)
+                {
+                    bool ready = false;
+                    try { Wait(handle, elapsed, timeoutMs); ready = true; }
+                    finally
+                    {
+                        // End exactly once before releasing the handle. Preserve a wait failure
+                        // when End reports the expected pipe cancellation/disposal exception.
+                        try { count = pipe.EndRead(read); }
+                        catch (IOException) { if (ready) throw; }
+                        catch (ObjectDisposedException) { if (ready) throw; }
+                    }
+                }
                 if (count == 0) throw new EndOfStreamException();
                 offset += count;
             }
@@ -165,8 +176,17 @@ namespace Nayeon.ByokC1.P265Development
                 RequireNoThreadIdentity();
                 Stopwatch elapsed = Stopwatch.StartNew();
                 IAsyncResult connect = pipe.BeginWaitForConnection(null, null);
-                Wait(connect, elapsed, timeoutMs);
-                pipe.EndWaitForConnection(connect);
+                using (WaitHandle handle = connect.AsyncWaitHandle)
+                {
+                    bool ready = false;
+                    try { Wait(handle, elapsed, timeoutMs); ready = true; }
+                    finally
+                    {
+                        try { pipe.EndWaitForConnection(connect); }
+                        catch (IOException) { if (ready) throw; }
+                        catch (ObjectDisposedException) { if (ready) throw; }
+                    }
+                }
                 Guid requestId;
                 if (!ReadRequest(elapsed, timeoutMs, out requestId))
                     return new DenialEvidence(DenialReason.InvalidFrame, false, false, false, false);
@@ -205,8 +225,17 @@ namespace Nayeon.ByokC1.P265Development
                 byte[] denial = new byte[] { 67, 49, 68, 78, 1, 1, 0, 0 };
                 Remaining(elapsed, timeoutMs);
                 IAsyncResult write = pipe.BeginWrite(denial, 0, denial.Length, null, null);
-                Wait(write, elapsed, timeoutMs);
-                pipe.EndWrite(write);
+                using (WaitHandle handle = write.AsyncWaitHandle)
+                {
+                    bool ready = false;
+                    try { Wait(handle, elapsed, timeoutMs); ready = true; }
+                    finally
+                    {
+                        try { pipe.EndWrite(write); }
+                        catch (IOException) { if (ready) throw; }
+                        catch (ObjectDisposedException) { if (ready) throw; }
+                    }
+                }
                 Remaining(elapsed, timeoutMs);
                 replied = true;
                 // A bounded one-byte delivery marker avoids Disconnect discarding a buffered

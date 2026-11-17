@@ -28,7 +28,42 @@ def require(condition, message):
         raise AssertionError(message)
 
 
+def check_adapter_async_lifetimes(text):
+    body = compact(text)
+    require("privatevoidWait(WaitHandlehandle,Stopwatchelapsed,inttimeoutMs)" in body,
+            "wait helper borrows caller-owned handle")
+    require("catch{Dispose();throw;}" in body, "wait failure cancels pending I/O")
+    for pending, end in (("read", "count=pipe.EndRead(read);"),
+                         ("connect", "pipe.EndWaitForConnection(connect);"),
+                         ("write", "pipe.EndWrite(write);")):
+        scope = ("using(WaitHandlehandle=" + pending + ".AsyncWaitHandle){"
+                 "boolready=false;try{Wait(handle,elapsed,timeoutMs);ready=true;}"
+                 "finally{try{" + end + "}"
+                 "catch(IOException){if(ready)throw;}"
+                 "catch(ObjectDisposedException){if(ready)throw;}}}")
+        require(scope in body, "End inside handle lifetime on success/failure: " + pending)
+        require(body.count(end) == 1, "exactly one matching End: " + pending)
+    require(body.count(".AsyncWaitHandle") == 3, "all adapter handle owners checked")
+
+
+def check_driver_async_lifetime(text):
+    body = compact(text)
+    require("using(WaitHandlewait=pending.AsyncWaitHandle){boolready=false;"
+            "try{ready=wait.WaitOne(3000);if(!ready)client.Dispose();Need(ready);}"
+            "catch{client.Dispose();throw;}finally{try{finish();}"
+            "catch(IOException){if(ready)throw;}"
+            "catch(ObjectDisposedException){if(ready)throw;}}}" in body,
+            "driver End before handle disposal, including timeout cancellation")
+    require(body.count("finish();") == 1 and body.count(".AsyncWaitHandle") == 1,
+            "single driver handle owner and completion")
+    for pending, end in (("write", "client.EndWrite(write);"),
+                         ("read", "count=client.EndRead(read);")):
+        require("Complete(client," + pending + ",delegate{" + end + "});" in body,
+                "client and matching End supplied: " + pending)
+
+
 def check_adapter(text):
+    check_adapter_async_lifetimes(text)
     require(text.startswith("#if !C1_P265_DEVELOPMENT_ONLY\n"
                             "#error P265_DEVELOPMENT_ONLY_EXPLICIT_OPT_IN_REQUIRED\n#endif\n"
                             "#if !DEBUG\n#error P265_NO_RELEASE_BUILD\n#endif\n"), "development guards")
@@ -58,7 +93,7 @@ def check_adapter(text):
         "observed!=null&&expected!=null&&observed.Equals(expected)",
         "WindowsIdentity.GetCurrent(true)", "if(thread!=null)thrownewSecurityException(",
         "if(remaining<=0)thrownewTimeoutException();", "handle.WaitOne(Remaining(elapsed,timeoutMs))",
-        "Dispose();thrownewTimeoutException();", "pipe.BeginRead(", "pipe.EndRead(read)",
+        "catch{Dispose();throw;}", "pipe.BeginRead(", "pipe.EndRead(read)",
         "if(count==0)thrownewEndOfStreamException();",
         "header[0]!=BodyLength||header[1]!=0||header[2]!=0||header[3]!=0",
         "byte[]body=newbyte[BodyLength];", "!pipe.IsMessageComplete", "body[4]!=1||body[6]!=0||body[7]!=0",
@@ -88,6 +123,7 @@ def check_adapter(text):
 
 
 def check_driver(text):
+    check_driver_async_lifetime(text)
     body = compact(text)
     for witness in (
         "#errorP265_TESTS_REQUIRE_DEVELOPMENT_BUILD", "#errorP265_TESTS_NO_RELEASE_BUILD",
@@ -129,6 +165,44 @@ class P265DevelopmentPipeSourceTests(unittest.TestCase):
 
     def test_native_driver_contract(self):
         check_driver(DRIVER.read_text(encoding="utf-8"))
+
+    def test_async_handle_lifetime_mutation_canaries(self):
+        adapter = SOURCE.read_text(encoding="utf-8")
+        driver = DRIVER.read_text(encoding="utf-8")
+        check_adapter_async_lifetimes(adapter)
+        check_driver_async_lifetime(driver)
+        for source, checker, before, after in (
+            (adapter, check_adapter_async_lifetimes,
+             "private void Wait(WaitHandle handle,", "private void Wait(IAsyncResult pending,"),
+            (adapter, check_adapter_async_lifetimes,
+             "catch { Dispose(); throw; }", "catch { throw; }"),
+            (driver, check_driver_async_lifetime,
+             "if (!ready) client.Dispose();", ""),
+            (driver, check_driver_async_lifetime,
+             "try { finish(); }", "try { wait.Dispose(); finish(); }"),
+            (driver, check_driver_async_lifetime,
+             "Complete(client, read,", "Complete(client, write,"),
+            (driver, check_driver_async_lifetime,
+             "finally\n            {", "if (ready)\n            {"),
+        ):
+            with self.subTest(before=before):
+                self.assertIn(before, source)
+                with self.assertRaises(AssertionError):
+                    checker(source.replace(before, after))
+        for pending, end in (("read", "count = pipe.EndRead(read);"),
+                             ("connect", "pipe.EndWaitForConnection(connect);"),
+                             ("write", "pipe.EndWrite(write);")):
+            for before, after in (
+                (end, "handle.Dispose(); " + end),
+                ("using (WaitHandle handle = " + pending + ".AsyncWaitHandle)",
+                 "if (true)"),
+                ("finally\n                    {", "if (ready)\n                    {"),
+                ("catch (IOException) { if (ready) throw; }", "catch (IOException) { }"),
+            ):
+                with self.subTest(pending=pending, before=before):
+                    self.assertIn(before, adapter)
+                    with self.assertRaises(AssertionError):
+                        check_adapter_async_lifetimes(adapter.replace(before, after))
 
     def test_negative_adapter_mutations(self):
         source = SOURCE.read_text(encoding="utf-8")

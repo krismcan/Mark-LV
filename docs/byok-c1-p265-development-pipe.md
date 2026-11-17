@@ -21,7 +21,7 @@ Exactly five additive paths:
   actual Windows `System.IO.Pipes` server handles, security descriptors and
   `RunAsClient` OS-token observation. It is not a synthetic identity comparator.
 * `tests/p265_successor/P265DevelopmentPipeTests.cs`: separate native test EXE.
-* `tests/test_byok_c1_p265_development_pipe.py`: five independent source test
+* `tests/test_byok_c1_p265_development_pipe.py`: six independent source test
   methods, including frozen-byte witnesses and negative mutations.
 * `.github/workflows/p265-windows-development-pipe.yml`: hosted x64/x86 PR review.
 * This boundary/evidence/command record.
@@ -262,7 +262,7 @@ targets base `byok-c1-p264-service-runtime-development-20261117`, checks out exa
 PR HEAD against the fixed P264 parent and admits only these five additive paths.
 It uses P261's pinned actions, read-only contents permission and disabled checkout
 credentials; no secrets, WinCred, service installation or policy changes.
-It runs five Python source tests, all twelve incomplete-flag compiler negatives,
+It runs six Python source tests, all twelve incomplete-flag compiler negatives,
 four positive x64/x86 builds, then actual native drivers with a hard 35-second
 process deadline and raw exit capture. AppControl refusal stops execution without
 an alternate loader. Only nonsecret text logs, exits and computed source hashes
@@ -276,3 +276,31 @@ exactly these five paths remain untracked. Historical P264 files are preserved.
 Python execution remains pending under the recorded host-path denial; no retry,
 candidate loading or native execution occurred in this correction session.
 P96, real keys and production remain HOLD. No commit, tag, push or release.
+
+## Hosted failure repair — 2026-11-17
+
+Prompt-supplied hosted x64 run `44197507845`, job `134442682528`, failed with
+`ObjectDisposedException: Safe handle has been closed` in driver `Complete`
+(line 55), through `Write`, `Exchange` and `SecurityAndProtocolTests`. The driver
+and adapter both disposed `AsyncWaitHandle` before the matching `End*`, which
+can itself wait on that handle. No hosted logs were fetched in this repair.
+
+Each connect/read/write handle now encloses its matching `End*` in `finally`.
+Wait failures close the pipe before completion cleanup; expected cancellation
+I/O/disposal exceptions preserve the original failure. Completion errors after a
+successful wait still propagate. Handle disposal follows completion even when
+it throws. Existing total deadlines, native watchdog, denial protocol and DACL
+remain in force; OS cancellation completion still depends on Windows returning.
+The six-test source suite adds lifetime mutation canaries, and CI requires six
+tests while retaining both architectures and the hard process deadline.
+
+Repair-session sandbox evidence: four x64/x86 warning-as-error builds exited 0;
+twelve incomplete-flag builds rejected with exact guard errors. PowerShell
+lifetime checks passed, ten premature-disposal/cleanup mutations were rejected,
+all five workflow PowerShell blocks parsed, and `git diff --check` passed.
+Compiler logs/artifacts are in
+`%TEMP%\p265-handle-repair-1bb7327388a147cda0f2bde13c95c934`.
+The authoritative Python path probe returned Access denied; Python tests remain
+unexecuted locally. No native artifact was loaded or executed, no alternate
+interpreter/loader was used, and no commit/push occurred. Fresh independent
+Python and hosted x64/x86 native receipts remain required; acceptance is HOLD.
