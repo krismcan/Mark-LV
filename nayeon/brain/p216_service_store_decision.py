@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 import stat
+import subprocess
 
 from nayeon.brain.p211_high_assurance_package_quarantine import (
     inspect_current_source_tree,
@@ -53,6 +54,8 @@ class P216EffectSourceFinding:
     wincred_backend_import:bool
     explicit_native_credential_call:bool
     dynamic_import_risk:bool
+    wincred_presence_only_adapter:bool=False
+    explicit_native_credential_mutation_call:bool=False
 
 @dataclass(frozen=True,slots=True)
 class P216StoreReview:
@@ -71,6 +74,7 @@ class P216StoreReview:
     trusted_user_presence_proven:bool=False
     machine_code_integrity_approved:bool=False
     user_scope_key_migration_authorized:bool=False
+    source_mode_runtime_risk_reachable:bool=False
 
     def __post_init__(self)->None:
         if any((
@@ -130,9 +134,42 @@ def _safe_tracked_path(root:Path, relative:str)->Path|None:
 
 def _finding(path:str,source:str)->P216EffectSourceFinding:
     tree=ast.parse(source,filename=path)
+    compile(tree,path,"exec")  # In-memory validation only; never execute source.
     imported=False
     native=False
+    mutation=False
     dynamic=False
+    native_names={"CredReadW","CredWriteW","CredDeleteW"}
+    dynamic_names={"__import__","getattr","eval","exec","import_module",
+                   "WinDLL","CDLL","LoadLibrary"}
+    aliases={name:{name} for name in native_names|dynamic_names}
+
+    def symbols(node:ast.AST)->set[str]:
+        if isinstance(node,ast.Attribute):
+            return {node.attr}
+        if isinstance(node,ast.Name):
+            return aliases.get(node.id,set())
+        return set()
+
+    # Conservative, scope-insensitive union: clear direct assignment/import
+    # aliases cannot hide a call. Rebinding may overreport; this is no proof
+    # against computed lookup, dynamic imports or same-user native callers.
+    changed=True
+    while changed:
+        changed=False
+        for node in ast.walk(tree):
+            pairs=[]
+            if isinstance(node,ast.ImportFrom):
+                pairs=[(a.asname or a.name,{a.name}) for a in node.names]
+            elif isinstance(node,(ast.Assign,ast.AnnAssign)):
+                targets=node.targets if isinstance(node,ast.Assign) else [node.target]
+                pairs=[(t.id,symbols(node.value)) for t in targets
+                       if isinstance(t,ast.Name)]
+            for name,values in pairs:
+                old=aliases.get(name,set())
+                if not values.issubset(old):
+                    aliases[name]=old|values
+                    changed=True
     for n in ast.walk(tree):
         if isinstance(n,ast.ImportFrom):
             if n.module=="nayeon.secrets.windows_credential":
@@ -142,14 +179,11 @@ def _finding(path:str,source:str)->P216EffectSourceFinding:
                 imported=True
         elif isinstance(n,ast.Call):
             fn=n.func
-            if isinstance(fn,ast.Attribute):
-                if fn.attr in ("CredWriteW","CredDeleteW","CredReadW"):
-                    native=True
-                if fn.attr in ("import_module", "WinDLL","CDLL","LoadLibrary"):
-                    dynamic=True
-            elif isinstance(fn,ast.Name):
-                if fn.id in ("__import__","getattr","eval","exec"):
-                    dynamic=True
+            called=symbols(fn)
+            native=native or bool(called&native_names)
+            mutation=mutation or bool(called&{"CredWriteW","CredDeleteW"})
+            dynamic=dynamic or bool(called&dynamic_names)
+    presence=_presence_only_adapter(tree) if path==KNOWN_DIRECT_EFFECT else False
     return P216EffectSourceFinding(
         path=path,
         wincred_native_adapter=(
@@ -159,7 +193,82 @@ def _finding(path:str,source:str)->P216EffectSourceFinding:
         wincred_backend_import=imported,
         explicit_native_credential_call=native,
         dynamic_import_risk=dynamic,
+        wincred_presence_only_adapter=presence,
+        explicit_native_credential_mutation_call=mutation,
     )
+
+
+def _presence_only_adapter(tree:ast.AST)->bool:
+    """Bounded AST witness for the P275 seam; never OS isolation evidence.
+
+    Require exact executable read/free and denial statements, rather than
+    interpreting a returned pointer or a blob-copy helper as presence-only.
+    Comments, docstrings and whitespace do not create this witness.
+    """
+    adapters=[n for n in getattr(tree,"body",())
+              if isinstance(n,ast.ClassDef) and n.name=="_Advapi32Adapter"]
+    if len(adapters)!=1:return False
+    adapter=adapters[0]
+    methods={n.name:n for n in adapter.body if isinstance(n,ast.FunctionDef)}
+    if (adapter.bases or adapter.decorator_list
+        or set(methods)!={"__init__","read","contains"}):return False
+    expected=ast.parse('''class _Advapi32Adapter:
+    def __init__(self):
+        try:
+            self._dll = _load_advapi32()
+            self._dll.CredReadW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(_PCREDENTIALW)]
+            self._dll.CredReadW.restype = ctypes.c_int32
+            self._dll.CredFree.argtypes = [ctypes.c_void_p]
+            self._dll.CredFree.restype = None
+        except Exception:
+            raise SecretStorageError(_FAILURE) from None
+    def read(self, target):
+        raise SecretStorageError(_FAILURE)
+    def contains(self, target):
+        pointer = _PCREDENTIALW()
+        try:
+            try:
+                if not self._dll.CredReadW(target, _CRED_TYPE_GENERIC, 0, ctypes.byref(pointer)):
+                    if ctypes.get_last_error() == _ERROR_NOT_FOUND and not pointer:
+                        return False
+                    raise SecretStorageError(_FAILURE)
+                if not pointer:
+                    raise SecretStorageError(_FAILURE)
+                return True
+            finally:
+                if pointer:
+                    self._dll.CredFree(pointer)
+        except Exception:
+            raise SecretStorageError(_FAILURE) from None
+''').body[0]
+    def body(node:ast.AST)->list[ast.stmt]:
+        statements=list(node.body)
+        if (statements and isinstance(statements[0],ast.Expr)
+            and isinstance(statements[0].value,ast.Constant)
+            and isinstance(statements[0].value.value,str)):
+            statements=statements[1:]
+        return statements
+    if len(body(adapter))!=3:return False
+    for wanted in expected.body:
+        actual=methods[wanted.name]
+        if actual.decorator_list:return False
+        if ast.dump(ast.Module(body=body(actual),type_ignores=[]))!=ast.dump(
+            ast.Module(body=wanted.body,type_ignores=[])):return False
+    # Native mutation symbols anywhere in the module defeat this narrow
+    # witness, including bindings that are not calls yet.
+    return not any(isinstance(n,ast.Attribute) and n.attr in
+                   {"CredWriteW","CredDeleteW"} for n in ast.walk(tree))
+
+
+def _git_tracked_python(root:Path)->tuple[str,...]:
+    """Read-only Git inventory; supplied filenames alone are not tracking."""
+    result=subprocess.run(
+        ["git","ls-files","--full-name","-z","--",*SCAN_ROOTS],cwd=root,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=True)
+    if result.stderr or len(result.stdout)>MAX_TRACKED_PY_FILES*201:
+        raise ValueError("unproven Git inventory")
+    return tuple(p for p in result.stdout.decode("utf8").split("\x00")
+                 if p.endswith(".py"))
 
 
 def review_proposed_service_store(
@@ -189,11 +298,14 @@ def review_proposed_service_store(
             tuple(),G0_R3_UNRESOLVED)
     findings=[]
     try:
+        if set(tracked_python)!=set(_git_tracked_python(root)):
+            raise ValueError("supplied inventory differs from Git")
         for path in sorted(tracked_python):
             f=_safe_tracked_path(root,path)
             if f is None:raise ValueError("untrusted Python tracked source")
             findings.append(_finding(path,f.read_text("utf8")))
-    except (OSError,UnicodeError,ValueError,SyntaxError,TypeError):
+    except (OSError,UnicodeError,ValueError,SyntaxError,TypeError,
+            subprocess.SubprocessError):
         return P216StoreReview(
             P216ReviewStatus.TRACKED_SOURCE_UNPROVEN,0,False,False,False,False,
             tuple(),G0_R3_UNRESOLVED)
@@ -209,8 +321,10 @@ def review_proposed_service_store(
             f for f in findings if
             f.wincred_native_adapter or f.wincred_backend_import
             or f.explicit_native_credential_call or f.dynamic_import_risk
+            or f.wincred_presence_only_adapter or f.explicit_native_credential_mutation_call
         ),
         G0_R3_UNRESOLVED,
+        source_mode_runtime_risk_reachable=source.source_mode_runtime_risk_present,
     )
 
 
