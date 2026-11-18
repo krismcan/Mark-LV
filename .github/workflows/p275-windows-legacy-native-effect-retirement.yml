@@ -1,0 +1,276 @@
+name: P275 product native effect retirement (production HOLD)
+on:
+  pull_request:
+    branches: [byok-c1-p274-real-os-effect-gate-20261118]
+    types: [opened, synchronize, reopened, converted_to_draft]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  fake-only-retirement:
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == true &&
+          github.repository == 'krismcan/Mark-LV' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.base.repo.full_name == github.repository &&
+          github.event.pull_request.head.ref == 'byok-c1-p275-retire-legacy-python-native-effects-20261118' &&
+          github.event.pull_request.base.ref == 'byok-c1-p274-real-os-effect-gate-20261118' &&
+          github.event.pull_request.base.sha == 'f388e69d31dbc8f1dc02230597c2b45deb5b1e60' }}
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+          - arch: x86
+            bits: 32
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      P275_ARCH: ${{ matrix.arch }}
+      P275_BITS: ${{ matrix.bits }}
+      P275_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      P275_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Exact parent one-child custody and five-path source scope
+        id: custody
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parent = 'f388e69d31dbc8f1dc02230597c2b45deb5b1e60'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p275-evidence-' + $env:P275_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $env:GITHUB_HEAD_REF -cne 'byok-c1-p275-retire-legacy-python-native-effects-20261118' -or
+              $env:GITHUB_BASE_REF -cne 'byok-c1-p274-real-os-effect-gate-20261118' -or
+              $env:P275_BASE_SHA -cne $parent -or $env:P275_HEAD_SHA -cnotmatch '\A[0-9a-f]{40}\z' -or
+              (git rev-parse HEAD).Trim() -cne $env:P275_HEAD_SHA -or
+              (git rev-parse 'HEAD^').Trim() -cne $parent -or
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact hosted one-child PR required' }
+          $eventFile = Get-Item -LiteralPath $env:GITHUB_EVENT_PATH
+          if ($eventFile.Length -le 0 -or $eventFile.Length -gt 262144 -or
+              ($eventFile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid event file' }
+          $event = Get-Content -LiteralPath $eventFile.FullName -Raw | ConvertFrom-Json
+          if ($event.pull_request.draft -ne $true -or
+              $event.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.head.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.head.sha -cne $env:P275_HEAD_SHA -or
+              $event.pull_request.base.sha -cne $parent -or
+              $event.pull_request.head.ref -cne $env:GITHUB_HEAD_REF -or
+              $event.pull_request.base.ref -cne $env:GITHUB_BASE_REF -or
+              $env:GITHUB_REF -cne ('refs/pull/' + $event.pull_request.number + '/merge')) { throw 'Wrong actual PR event' }
+          $backend = 'nayeon/secrets/windows_credential.py'
+          $added = @('tests/test_byok_c1_p275_native_effect_retirement.py',
+              'scripts/p275_product_effect_entrypoint_inventory.py',
+              '.github/workflows/p275-windows-legacy-native-effect-retirement.yml',
+              'docs/byok-c1-p275-retire-legacy-python-effects.md')
+          $expected = @($backend) + $added
+          $changes = @(git diff --name-status --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -ceq ('M' + "`t" + $backend) }).Count -ne 1 -or
+              @($changes | Where-Object { $_ -cmatch '^A\t' }).Count -ne 4) { throw 'One modified product plus four additions required' }
+          $paths = @(git diff --name-only --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($paths | Sort-Object)).Count -ne 0) { throw 'Wrong changed paths' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty checkout' }
+          $entries = @(git ls-tree -r $parent)
+          if ($LASTEXITCODE -ne 0 -or $entries.Count -ne 1109) { throw 'Wrong inherited source count' }
+          $custody = @()
+          foreach ($entry in $entries) {
+              if ($entry -cnotmatch '^100644 blob ([0-9a-f]{40})\t(.+)$') { throw 'Unexpected inherited entry' }
+              $oid = $Matches[1]; $path = $Matches[2]
+              $headEntry = (git ls-tree HEAD -- $path)
+              if ($LASTEXITCODE -ne 0 -or $headEntry -cnotmatch '^100644 blob ([0-9a-f]{40})\t') { throw 'Head mode/type changed' }
+              $headOid = $Matches[1]
+              if ($path -cne $backend -and $headOid -cne $oid) { throw 'Inherited blob changed' }
+              $file = Get-Item -LiteralPath $path
+              if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $file.PSIsContainer) { throw 'Nonregular source' }
+              $bytes = [IO.File]::ReadAllBytes($file.FullName)
+              $header = [Text.Encoding]::ASCII.GetBytes('blob ' + $bytes.Length + [char]0)
+              $payload = [byte[]]::new($header.Length + $bytes.Length)
+              [Array]::Copy($header, 0, $payload, 0, $header.Length)
+              [Array]::Copy($bytes, 0, $payload, $header.Length, $bytes.Length)
+              $sha = [Security.Cryptography.SHA1]::Create()
+              try { $actual = [Convert]::ToHexString($sha.ComputeHash($payload)).ToLowerInvariant() } finally { $sha.Dispose() }
+              if ($actual -cne $headOid) { throw 'Raw disk Git blob mismatch' }
+              $custody += ($path + ' parent=' + $oid + ' head=' + $headOid + ' SHA256=' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)
+          }
+          foreach ($path in $added) {
+              if ((git ls-tree HEAD -- $path) -cnotmatch '^100644 blob [0-9a-f]{40}\t' -or
+                  ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Nonregular addition' }
+          }
+          if ((Get-FileHash -LiteralPath $backend -Algorithm SHA256).Hash -cne
+              '9FFB136A73E4277B966FAE025A3962123433745B6BA8907AB3B8C4137F4A21B3') { throw 'Unreviewed backend bytes' }
+          $frozen = @{
+              'tests/p95_native_custody_preflight/CustodyLedger.cs' = '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' = 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs' = '2AEEAA8BA97396216B32D1894C8B8EA3AF7FACE44FB3562FF1C4DDE5E7DC582F'
+              'native_c1_successor/P268ServiceOwnedPendingTransaction.cs' = '964AF496E72C5510823809E4EBB74E045D2F01E7F0A9FABE7DBAE4625B172CFC'
+              'tests/p268_successor/P268RemediationTests.cs' = 'B2C91CA2D203A5825F65ED969BB4DD5D22CEFA6B2A9717A456404D4112A29C14'
+              'tests/test_p134_real_wincred_ephemeral.py' = '1E4E2F176B98824659246AB57AC7DAB76ECA4D501C93AFC6C07FC981171884C2'
+              'docs/byok-c1-p216-service-owned-store-r3-external-decision.md' = '897C98B85F5EF2CB40D9FCCDC0D0D6FCB727D941CCFD597036E81391B68EAA85'
+              '.github/workflows/p273-p76-current-admission.yml' = '0AEC883209771BF7DF3213145CC35CAF2C13952B1DBB055AE873D085E1DC78DC'
+              'scripts/p273_p76_current_admission.py' = '472684DF6A035C231980D006EE2E954384C0739401BB7A3213868A124251DEEE'
+              'tests/test_p273_p76_current_admission.py' = 'C4E3AA4F5539DCA6758CAA8E0F9E79C27BAB65346983EBD2AA7E577D85C409B1'
+              'native_c1_successor/P274EphemeralWinCredEffect.cs' = '6E1EC6D964C9686768D08206BBC404D0964CA50D1497235491C22C47E7D02ECE'
+              'tests/p274_successor/P274EphemeralWinCredEffectTests.cs' = '2681BB8833D401B597710244F7E5A0B094AAAD9321B76DA82CE602DA84BD1FFC'
+              'tests/test_byok_c1_p274_ephemeral_effect.py' = 'C731981E48F886ACA02E8ED6A1A7BAD4DFDABCF29DB7578DF20517E437E966D7'
+              '.github/workflows/p274-windows-ephemeral-real-effect.yml' = '7375AF922592309B6B96C5C3A8E3AC248C56475A72EAD5B3C86DF9A8378282CA'
+              'docs/byok-c1-p274-ephemeral-wincred-effect.md' = '786DB4AB3C50FE059DD6765D7C8B4C5F081AE0162F39087C3CE5301CCD147FB1'
+          }
+          foreach ($entry in $frozen.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash -cne $entry.Value) { throw 'Frozen source pin mismatch' }
+          }
+          $custody | Set-Content -LiteralPath (Join-Path $evidence 'inherited-custody.log')
+          $hashes = [ordered]@{}
+          foreach ($path in ($expected + @($frozen.Keys))) { $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+          $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
+          @('HEAD=' + $env:P275_HEAD_SHA, 'PARENT=' + $parent,
+              '1108_UNCHANGED_INHERITED_BLOBS; 1103_PRE_P274_PLUS_5_P274; 1_MODIFIED_PLUS_4_ADDED',
+              'PRODUCTION_HOLD; FULL_PRODUCT_0/3; ORIGINAL_P96_OPEN; P76_FOUR_FAIL_UNWAIVED; REAL_KEYS_NO_GO') |
+              Set-Content -LiteralPath (Join-Path $evidence 'scope.log')
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        id: python
+        with:
+          python-version: '3.12.8'
+          architecture: ${{ matrix.arch }}
+      - name: Focused P275 and preserved original fake status controls
+        id: focused
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p275-evidence-' + $env:P275_ARCH)
+          $parser = @'
+          import ast, json, os, struct, sys
+          from pathlib import Path
+          assert sys.platform == 'win32' and sys.version_info[:3] == (3, 12, 8)
+          assert struct.calcsize('P') * 8 == int(os.environ['P275_BITS'])
+          paths = ('nayeon/secrets/windows_credential.py', 'scripts/p275_product_effect_entrypoint_inventory.py', 'tests/test_byok_c1_p275_native_effect_retirement.py')
+          evidence = {}
+          for path in paths:
+              source = Path(path).read_text(encoding='utf-8-sig')
+              tree = ast.parse(source, filename=path)
+              compile(tree, path, 'exec')
+              evidence[path] = 'CPython AST parse and compile PASS; no execution'
+              if path == paths[0]:
+                  adapter = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == '_Advapi32Adapter')
+                  evidence['native_adapter_ast'] = ast.dump(adapter, indent=2)
+                  evidence['native_adapter_methods'] = [n.name for n in adapter.body if isinstance(n, ast.FunctionDef)]
+          print(json.dumps(evidence, sort_keys=True, indent=2))
+          '@
+          Write-Host ('START CPython source parser/AST/compile arch=' + $env:P275_ARCH)
+          & python -B -c $parser 1> (Join-Path $evidence 'source-parser.json') 2> (Join-Path $evidence 'source-parser.stderr.log')
+          $raw = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'source-parser.exit') -Value $raw
+          Write-Host ('END CPython source parser/AST/compile raw_exit=' + $raw)
+          $failed = $null -eq $raw -or $raw -ne 0
+          $guard = @'
+          import ctypes, os, struct, sys, unittest
+          from unittest.mock import patch
+          from nayeon.secrets import windows_credential as storage
+          assert sys.platform == 'win32' and sys.version_info[:3] == (3, 12, 8)
+          assert struct.calcsize('P') * 8 == int(os.environ['P275_BITS'])
+          with patch.object(storage, '_load_advapi32', side_effect=AssertionError('unpatched native loader forbidden')), patch.object(ctypes, 'WinDLL', side_effect=AssertionError('real DLL forbidden')):
+              unittest.main(module=None, argv=['p275-guarded', '-v', *sys.argv[1:]])
+          '@
+          $suites = [ordered]@{
+              'p275-focused' = @('tests.test_byok_c1_p275_native_effect_retirement')
+              'p258-preserved' = @('tests.test_byok_c1_p258_legacy_effect_containment.DefaultCompositionTests',
+                  'tests.test_byok_c1_p258_legacy_effect_containment.DefaultBackendDenialTests',
+                  'tests.test_byok_c1_p258_legacy_effect_containment.EntryAndBridgeTests')
+              'backend-original' = @('tests.test_windows_credential_backend.BackendTests')
+              'p132-fake-controller-original' = @('tests.test_local_user_scope_byok.LocalOfflineControllerTests')
+          }
+          foreach ($entry in $suites.GetEnumerator()) {
+              Write-Host ('START ' + $entry.Key + ' arch=' + $env:P275_ARCH)
+              $arguments = @($entry.Value)
+              $out = Join-Path $evidence ($entry.Key + '.stdout.log')
+              $err = Join-Path $evidence ($entry.Key + '.stderr.log')
+              & python -B -c $guard @arguments 1> $out 2> $err
+              $raw = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($entry.Key + '.exit')) -Value $raw
+              Get-Content -LiteralPath $out; Get-Content -LiteralPath $err
+              Write-Host ('END ' + $entry.Key + ' raw_exit=' + $raw)
+              if ($null -eq $raw -or $raw -ne 0 -or (Get-Content -LiteralPath $err -Raw) -notmatch '(?m)^Ran [1-9][0-9]* tests? in ') { $failed = $true }
+          }
+          Write-Host ('START product source inventory arch=' + $env:P275_ARCH)
+          & python -B scripts/p275_product_effect_entrypoint_inventory.py 1> (Join-Path $evidence 'product-inventory.json') 2> (Join-Path $evidence 'product-inventory.stderr.log')
+          $raw = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'product-inventory.exit') -Value $raw
+          Write-Host ('END product source inventory raw_exit=' + $raw)
+          if ($null -eq $raw -or $raw -ne 0) { $failed = $true }
+          if ($failed) { throw 'Focused source/fake regression HOLD; raw failures retained' }
+      - name: Authentic separate historical acceptance results (unwaived RED is HOLD)
+        if: ${{ always() && steps.custody.outcome == 'success' && steps.python.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p275-evidence-' + $env:P275_ARCH)
+          $guard = @'
+          import ctypes, sys, unittest
+          from unittest.mock import patch
+          from nayeon.secrets import windows_credential as storage
+          with patch.object(storage, '_load_advapi32', side_effect=AssertionError('unpatched native loader forbidden')), patch.object(ctypes, 'WinDLL', side_effect=AssertionError('real DLL forbidden')):
+              unittest.main(module=None, argv=['p275-historical', '-v', *sys.argv[1:]])
+          '@
+          $suites = [ordered]@{
+              'historical-native-adapter' = 'tests.test_windows_credential_backend.NativeAdapterTests'
+              'historical-p211-witness' = 'tests.test_p211_high_assurance_package_quarantine'
+              'historical-p216-witness' = 'tests.test_p216_service_store_decision_inventory'
+          }
+          $held = $false
+          foreach ($entry in $suites.GetEnumerator()) {
+              Write-Host ('START ' + $entry.Key + ' arch=' + $env:P275_ARCH)
+              $out = Join-Path $evidence ($entry.Key + '.stdout.log')
+              $err = Join-Path $evidence ($entry.Key + '.stderr.log')
+              & python -B -c $guard $entry.Value 1> $out 2> $err
+              $raw = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($entry.Key + '.exit')) -Value $raw
+              Get-Content -LiteralPath $out; Get-Content -LiteralPath $err
+              Write-Host ('END ' + $entry.Key + ' raw_exit=' + $raw)
+              $disposition = 'HISTORICAL_RAW_GREEN_ONLY; NO_FULL_PRODUCT_OR_RELEASE_CREDIT'
+              if ($null -eq $raw -or $raw -ne 0) { $held = $true; $disposition = 'HISTORICAL_RED/HOLD; UNWAIVED' }
+              Set-Content -LiteralPath (Join-Path $evidence ($entry.Key + '.disposition.log')) -Value $disposition
+          }
+          # No continue-on-error, expectedFailure, synthetic PASS or waived exit.
+          if ($held) { throw 'HISTORICAL RED/HOLD: original acceptance failures remain unwaived' }
+      - name: Final read-only source check and text evidence hashes
+        if: ${{ always() && steps.custody.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p275-evidence-' + $env:P275_ARCH)
+          git diff --check HEAD^ HEAD 1> (Join-Path $evidence 'diff-check.stdout.log') 2> (Join-Path $evidence 'diff-check.stderr.log')
+          $raw = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'diff-check.exit') -Value $raw
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          $dirty | Set-Content -LiteralPath (Join-Path $evidence 'final-status.log')
+          Get-ChildItem -LiteralPath $evidence -File | Where-Object { $_.Name -ne 'evidence-sha256.log' } |
+              Sort-Object Name | ForEach-Object { $_.Name + ' SHA256=' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash } |
+              Set-Content -LiteralPath (Join-Path $evidence 'evidence-sha256.log')
+          if ($null -eq $raw -or $raw -ne 0 -or $dirty.Count -ne 0) { throw 'Final source custody HOLD' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p275-fake-only-text-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p275-evidence-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p275-evidence-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p275-evidence-${{ matrix.arch }}/*.json
+          if-no-files-found: error
+          retention-days: 30
