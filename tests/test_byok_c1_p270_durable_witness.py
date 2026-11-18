@@ -14,6 +14,7 @@ PATHS = {
     'docs/byok-c1-p270-durable-custody.md',
 }
 FIRST_P270 = '815dda613602ec47ec1e5c539ab31d795b2329ee'
+SECOND_P270 = '17cd9774045aaee5ddf97e6c6f3ba89985516fed'
 PARENT = 'b160244c26dda096e86ec03ca0bd23b10ed29679'
 FROZEN = {
     'tests/p95_native_custody_preflight/CustodyLedger.cs': '93a5eeec6ee6cc4f6fff5146b5709f57cbdd37559d62de0bd4691bf678d5ce0b',
@@ -38,6 +39,21 @@ def contract(source):
         'FileSystemRights.FullControl', 'CheckHandle(h, true)',
         '0x02200000', '0x80200000', 'Require(info.Links == 1)',
         'stream.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(sid)',
+        'uint access = 0xC0000000u | (mode == FileMode.CreateNew ? 0x00080000u : 0u);',
+        'CreateFile(path, access, 0, IntPtr.Zero,',
+        '''if (mode == FileMode.CreateNew)
+                {
+                    // Provision only the exclusively held, verified new object.
+                    // Never repair ownership of an existing file on reopen.
+                    TestStage = "fresh-owner-provision";
+                    FileSecurity fs = stream.GetAccessControl();
+                    fs.SetOwner(sid);
+                    stream.SetAccessControl(fs);
+                }
+                TestStage = "file-owner";
+                Require(stream.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(sid));
+                return stream;''',
+        'catch { stream.Dispose(); throw; }',
         'Require(entries.Length == 2)', 'FileAttributes.ReparsePoint | FileAttributes.Directory',
         'stream.Length > 0 && stream.Length <= MaxBlob',
         'BitConverter.ToInt32(blob, 0) == blob.Length - 4',
@@ -75,6 +91,12 @@ class P270SourceTests(unittest.TestCase):
     def test_mutations_red(self):
         original = (ROOT / SOURCE).read_text(encoding='utf-8-sig')
         for old, new in (
+            ('fs.SetOwner(sid);', ''),
+            ('stream.SetAccessControl(fs);', ''),
+            ('0x00080000u', '0u'),
+            ('mode == FileMode.CreateNew ? 0x00080000u : 0u', '0x00080000u'),
+            ('if (mode == FileMode.CreateNew)\n                {', 'if (true)\n                {'),
+            ('Require(stream.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(sid));', 'Require(true);'),
             ('TestStage = "file-owner";', 'TestStage = "unknown";'),
             ('stream.Flush(true)', 'stream.Flush()'),
             ('0x80200000', '0x80000000'),
@@ -107,11 +129,13 @@ class P270SourceTests(unittest.TestCase):
         def git(*args):
             return subprocess.check_output(['git', *args], cwd=ROOT, text=True).strip()
         head = git('rev-parse', 'HEAD')
-        if head == FIRST_P270:  # Local precommit diagnostics only.
-            self.assertEqual(git('rev-parse', 'HEAD^'), PARENT)
-        else:
+        if head == SECOND_P270:  # Local precommit owner repair only.
             self.assertEqual(git('rev-parse', 'HEAD^'), FIRST_P270)
             self.assertEqual(git('rev-parse', 'HEAD^^'), PARENT)
+        else:
+            self.assertEqual(git('rev-parse', 'HEAD^'), SECOND_P270)
+            self.assertEqual(git('rev-parse', 'HEAD^^'), FIRST_P270)
+            self.assertEqual(git('rev-parse', 'HEAD^^^'), PARENT)
         self.assertEqual(len(git('rev-list', '--parents', '-n', '1', 'HEAD').split()), 2)
         changed = set(filter(None, git('diff', '--name-only', PARENT).splitlines()))
         untracked = set(filter(None, git('ls-files', '--others', '--exclude-standard').splitlines()))
@@ -121,6 +145,11 @@ class P270SourceTests(unittest.TestCase):
 
     def test_hosted_runner_safety_and_cases(self):
         text = (ROOT / 'tests/p270_successor/P270DurableWitnessTests.cs').read_text(encoding='utf-8-sig')
+        for token in ('disposed-readonly-owner', 'FileMode.Open, FileAccess.Read, FileShare.Read',
+                      'check.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(WindowsIdentity.GetCurrent().User)',
+                      'readonly-file-acl-reopen-denied', 'FileSystemRights.Read, AccessControlType.Allow',
+                      'finally { File.SetAccessControl(path, original); }'):
+            self.assertIn(token, text)
         for token in ('P270_FAIL_CASE=', 'P270_FAIL_STAGE=', 'finally { if (blocked) DurableWitness.TestStage = stage; }', 'github-hosted', 'P270_HOSTED_DISPOSABLE', 'WindowsIdentity.GetCurrent().IsSystem',
                       'Directory.Delete(Root, false)', 'File.Delete(path)', 'torn-half-journal-flushed',
                       'journal-only-crash', 'same-process-stale-cas-latches', 'repeat-enrollment',
@@ -131,7 +160,7 @@ class P270SourceTests(unittest.TestCase):
 
     def test_workflow_pins_guards_and_watchdog(self):
         text = (ROOT / '.github/workflows/p270-windows-durable-custody.yml').read_text(encoding='utf-8-sig')
-        for token in (PARENT, FIRST_P270, 'HEAD^^', 'fetch-depth: 3', 'windows-latest', 'arch: x64', 'arch: x86', '/warnaserror+',
+        for token in (PARENT, FIRST_P270, SECOND_P270, 'HEAD^^^', 'fetch-depth: 4', 'CASES=23', 'windows-latest', 'arch: x64', 'arch: x86', '/warnaserror+',
                       'System.Security.dll', '40000', 'runtime.exit', 'Get-FileHash',
                       'P270_NO_RELEASE_BUILD', 'P270_DEVELOPMENT_OPT_IN_REQUIRED', 'P270_HOSTED_DISPOSABLE',
                       '11bd71901bbe5b1630ceea73d27597364c9af683',

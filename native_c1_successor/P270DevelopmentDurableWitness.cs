@@ -124,7 +124,8 @@ namespace Nayeon.ByokC1.P270Development
             string path = Path.Combine(root, name);
             if (mode == FileMode.Open) Require((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0);
             TestStage = "file-open";
-            SafeFileHandle handle = CreateFile(path, 0xC0000000, 0, IntPtr.Zero,
+            uint access = 0xC0000000u | (mode == FileMode.CreateNew ? 0x00080000u : 0u);
+            SafeFileHandle handle = CreateFile(path, access, 0, IntPtr.Zero,
                 mode == FileMode.CreateNew ? 1u : 3u, 0x80200000, IntPtr.Zero);
             if (handle.IsInvalid) { handle.Dispose(); throw new LedgerBlocked(); }
             FileStream stream;
@@ -139,6 +140,15 @@ namespace Nayeon.ByokC1.P270Development
             try
             {
                 CheckHandle(stream.SafeFileHandle, false);
+                if (mode == FileMode.CreateNew)
+                {
+                    // Provision only the exclusively held, verified new object.
+                    // Never repair ownership of an existing file on reopen.
+                    TestStage = "fresh-owner-provision";
+                    FileSecurity fs = stream.GetAccessControl();
+                    fs.SetOwner(sid);
+                    stream.SetAccessControl(fs);
+                }
                 TestStage = "file-owner";
                 Require(stream.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(sid));
                 return stream;

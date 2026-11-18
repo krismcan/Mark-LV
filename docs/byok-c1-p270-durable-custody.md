@@ -68,7 +68,7 @@ proof that a same-SID attacker never erased or replayed a former directory.
 
 ## Executable tests and CI
 
-`tests/p270_successor/P270DurableWitnessTests.cs` contains 22 bounded cases.
+`tests/p270_successor/P270DurableWitnessTests.cs` contains 23 bounded cases (22 original plus the owner-fix ACL negative).
 It refuses ordinary execution unless all GitHub-hosted/disposable environment
 gates match, rejects LocalSystem, and uses only newly generated OS-temp roots.
 These environment gates prevent accidents; they are not authenticated consent
@@ -91,12 +91,12 @@ Cleanup deletes only immediate files (including links themselves) in the exact
 new root and deletes that root nonrecursively. No user input or user files.
 
 `tests/test_byok_c1_p270_durable_witness.py` supplies five focused source,
-frozen-hash, scope, runner, workflow and red mutation checks. The 21 mutation
+frozen-hash, scope, runner, workflow and red mutation checks. The 27 mutation
 probes remove or weaken explicit source protections; these are static guard
 checks, not substitutes for Windows execution or independent security review.
 
 `.github/workflows/p270-windows-durable-custody.yml` pins checkout/setup-python
-by full SHA; requires a clean remediation child of the first P270 commit over exact P269 and exactly
+by full SHA; requires a clean third P270 commit with the exact preserved diagnostic/first/P269 ancestry and exactly
 five added paths; pins P95/P96/P269 source plus P269 workflow hashes; and thus
 freezes all other historical source via the exact-parent delta restriction.
 It runs Python checks and x64/x86 .NET Framework C# warning-as-error builds,
@@ -188,3 +188,72 @@ milestone HOLD. Nayeon may review/stage/commit and run hosted diagnostics;
 use its fixed first failing case/stage to guide a separately reviewed repair.
 Authoritative Python is unavailable in this sandbox; no replacement installed.
 Local compile-only outcomes are reported in the handoff, never runtime proof.
+
+## P270-HOSTED-FRESH-OWNER: bounded repair candidate (2026-11-18)
+
+This section supersedes the diagnostic-only unknown-cause disposition above;
+both failures remain failures. User-supplied run 44267760065 failed x64/x86
+with LedgerBlocked. Diagnostic run 44269213492 also failed BOTH architectures,
+exit 1, at `P270_FAIL_CASE=initial-dpapi-codec-and-restart-denial` and
+`P270_FAIL_STAGE=file-owner`. Its Python 5/5, two positive builds and six
+negative compiler guards passed; none establishes native runtime acceptance.
+First commit `815dda613602ec47ec1e5c539ab31d795b2329ee` and diagnostic commit
+`17cd9774045aaee5ddf97e6c6f3ba89985516fed` are preserved unchanged; PR #190
+remains draft. No amend, commit, push or external run was performed here.
+
+Severity: material security/verification blocker; release HOLD. Root cause:
+an elevated hosted token may default a newly created file's owner to
+BUILTIN\Administrators, although its parent has the current-user owner and
+inheritable ACL. The original immediate exact-user owner check therefore
+correctly refused the fresh journal. Administrators is never an accepted
+substitute owner. Affected callers are fresh enrollment and existing-file
+reopen in this fixture only; frozen P95/P96/P265-P269 and production routes
+are untouched.
+
+Repair: CREATE_NEW alone adds WRITE_OWNER (0x00080000) to the native access
+mask. After exclusive opening, native attribute/link verification and stream
+wrapping, `fresh-owner-provision` reads FileSecurity from that same handle,
+calls SetOwner(current SID), and persists it through FileStream.SetAccessControl.
+The unconditional subsequent FileStream.GetAccessControl rereads the actual
+owner and requires exact SID equality on BOTH fresh creation and reopen.
+Existing files never receive WRITE_OWNER or owner repair. No path-based
+ownership update, retry or fallback exists. Any provisioning failure disposes
+the stream/handle, propagates into constructor fail-closed cleanup and retains
+the fixed stage diagnostic. Root ACL, reparse/hardlink checks, filenames,
+entropy, bounds, DPAPI, dual-store protocol and source identity are unchanged.
+
+The existing Python mutation test now includes six additional red probes:
+remove SetOwner, remove handle-based persistence, remove WRITE_OWNER, grant
+WRITE_OWNER on reopen, remove fresh-only provisioning, or remove the final
+exact owner assertion. A contiguous source contract binds fresh gating to
+provisioning and the unconditional reread/return. Five focused test methods
+are retained. Static probes do not prove Windows security semantics.
+
+Native runner assertions reopen BOTH disposed files with read-only handles
+and require actual current-user ownership. One additional case removes file
+ACL inheritance and grants current-user Read only, requiring reopen refusal;
+its original ACL is restored in finally for bounded cleanup. This mutates
+only its generated disposable fixture. It requires no second account or
+privilege enablement. Unauthorized replacement-owner runtime coverage is
+not claimed: assigning another SID would depend on token ownership/privileges.
+The unconditional exact-owner source guard covers rejection without adding
+an OS privilege dependency. The original unprotected-root-ACL case remains.
+The workflow now requires the exact 23-case runtime receipt.
+
+Third-commit CI requires HEAD^ = diagnostic commit, HEAD^^ = first P270,
+HEAD^^^ = P269, fetch-depth 4, a single-parent HEAD and exactly the same FIVE
+additive paths against P269. Python permits the diagnostic HEAD for local
+precommit checks, or that exact third-commit topology. No other source scope
+is admitted. The diagnostic-only earlier depth-3 description is historical.
+
+Local repair checks: x64/x86 .NET Framework compile-only PASS, exit 0,
+/warnaserror+ with System.dll, System.Core.dll and System.Security.dll;
+all six missing-define compiler negatives PASS, exit 1, expected diagnostic
+and no output executable. No executable launched on Kristian. Authoritative
+Python command could not resolve the configured executable in this sandbox;
+five focused tests, full regression and compileall remain NOT RUN here.
+Independent external security review and fresh hosted x64/x86 execution are
+PENDING. Source repair is a candidate, not verified incident closure or a
+milestone seal. Production WinCred, rollback protection, installed service,
+real keys, workbook/dashboard updates and policy changes are not claimed.
+Disposition: HOLD pending independent validation and hosted runtime evidence.

@@ -99,6 +99,9 @@ internal static class P270DurableWitnessTests
                     }
                     foreach (string name in new string[] { DurableWitness.JournalName, DurableWitness.AnchorName })
                     {
+                        DurableWitness.TestStage = "disposed-readonly-owner";
+                        using (FileStream check = new FileStream(scope.FilePath(name), FileMode.Open, FileAccess.Read, FileShare.Read))
+                            Assert(check.GetAccessControl().GetOwner(typeof(SecurityIdentifier)).Equals(WindowsIdentity.GetCurrent().User));
                         byte[] blob = File.ReadAllBytes(scope.FilePath(name));
                         string raw = Encoding.UTF8.GetString(blob);
                         Assert(!raw.Contains(j) && !raw.Contains(a) && !raw.Contains("J2|") && !raw.Contains("A2|"));
@@ -240,6 +243,25 @@ internal static class P270DurableWitnessTests
                         Block(delegate { using (DurableWitness ignored = new DurableWitness(s.Root, false)) {} });
                     }
                     else { int error = Marshal.GetLastWin32Error(); Assert(error == 1314 || error == 87 || error == 50); Console.WriteLine("REPARSE_TEST=UNAVAILABLE ERROR=" + error); }
+                }
+            });
+            Run("readonly-file-acl-reopen-denied", delegate
+            {
+                using (Scope s = new Scope())
+                {
+                    using (DurableWitness w = new DurableWitness(s.Root, true)) Assert(w.InspectConsistent());
+                    string path = s.FilePath(DurableWitness.JournalName);
+                    FileSecurity original = File.GetAccessControl(path);
+                    try
+                    {
+                        FileSecurity restricted = new FileSecurity();
+                        restricted.SetAccessRuleProtection(true, false);
+                        restricted.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+                            FileSystemRights.Read, AccessControlType.Allow));
+                        File.SetAccessControl(path, restricted);
+                        Block(delegate { using (DurableWitness ignored = new DurableWitness(s.Root, false)) {} });
+                    }
+                    finally { File.SetAccessControl(path, original); }
                 }
             });
             Console.WriteLine("P270_DURABLE=PASS CASES=" + cases + " ASSERTIONS=" + assertions + " BITS=" + (IntPtr.Size * 8));
