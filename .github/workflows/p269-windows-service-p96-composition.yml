@@ -1,0 +1,197 @@
+name: P269 development service composition (production HOLD)
+on:
+  pull_request:
+    branches:
+      - byok-c1-p268-p96-actual-successor-20261118
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  remediation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            framework: Framework64
+          - arch: x86
+            bits: 32
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_BITS: ${{ matrix.bits }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Exact branch parent additions and source custody
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REVIEW_TARGET: ${{ github.event.pull_request.base.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $parent = 'a7519059710fe5720dc55334e83d273ee8627e61'
+          if ((git rev-parse HEAD).Trim() -cne $env:REVIEW_HEAD -or
+              $env:REVIEW_BASE -cne $parent -or
+              $env:REVIEW_BRANCH -cne 'byok-c1-p269-service-owned-p96-composition-20261118' -or
+              $env:REVIEW_TARGET -cne 'byok-c1-p268-p96-actual-successor-20261118' -or
+              (git rev-parse 'HEAD^').Trim() -cne $parent -or
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact one-child topology required' }
+          $expected = @('native_c1_successor/P269ComposedDevelopmentService.cs',
+              'tests/p269_successor/P269ComposedServiceTests.cs',
+              'tests/test_byok_c1_p269_composition.py',
+              '.github/workflows/p269-windows-service-p96-composition.yml',
+              'docs/byok-c1-p269-service-composition.md')
+          $paths = @(git diff --name-only $parent HEAD)
+          $changes = @(git diff --name-status --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -cnotmatch '^A\t' }).Count -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($paths | Sort-Object)).Count -ne 0) { throw 'Exact five additions required' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty checkout' }
+          $frozen = @{
+              'tests/p95_native_custody_preflight/CustodyLedger.cs' = '93A5EEEC6EE6CC4F6FFF5146B5709F57CBDD37559D62DE0BD4691BF678D5CE0B'
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs' = 'D8B8E4C6D5EA5E035B58C6AD73DD758C16640167C804CCF3305969B12BDF81AB'
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs' = '2AEEAA8BA97396216B32D1894C8B8EA3AF7FACE44FB3562FF1C4DDE5E7DC582F'
+          }
+          foreach ($entry in $frozen.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash -cne $entry.Value) { throw 'Frozen source hash mismatch' }
+          }
+          $hashes = [ordered]@{}
+          foreach ($path in ($expected + @($frozen.Keys) + @(
+              'native_c1_successor/P267DevelopmentAtomicService.cs',
+              'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+              '.github/workflows/p267-windows-atomic-ordering.yml',
+              '.github/workflows/p96-native-transaction-negative-proof.yml'))) {
+              $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+          }
+          $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
+          Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
+              ('HEAD=' + $env:REVIEW_HEAD), ('PARENT=' + $parent),
+              'P269_SCOPE=DEVELOPMENT_ONLY DENIAL_ONLY PRODUCTION=HOLD')
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+      - name: Source and red mutation tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
+          $log = Join-Path $evidence 'source-tests.log'
+          & python -I -B -m unittest discover -s tests -p test_byok_c1_p269_composition.py -v *> $log
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'source-tests.exit') -Value $rawExit
+          Get-Content -LiteralPath $log
+          if ($null -eq $rawExit -or $rawExit -ne 0 -or
+              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 4 tests in ') { throw 'Focused source checks failed' }
+
+      - name: Compile guarded composition and negative guards
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
+          $framework = Join-Path $env:WINDIR ('Microsoft.NET/' + $env:REVIEW_FRAMEWORK + '/v4.0.30319')
+          $csc = Join-Path $framework 'csc.exe'
+          $build = Join-Path $env:RUNNER_TEMP ('p269-build-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $build | Out-Null
+          $common = @('/nologo', '/noconfig', '/debug+', '/optimize-', '/warn:4', '/warnaserror+',
+              '/target:exe', ('/platform:' + $env:REVIEW_ARCH), '/main:P269ComposedServiceTests',
+              ('/reference:' + (Join-Path $framework 'System.dll')),
+              ('/reference:' + (Join-Path $framework 'System.Core.dll')),
+              ('/reference:' + (Join-Path $framework 'System.ServiceProcess.dll')))
+          $inputs = @('tests/p95_native_custody_preflight/CustodyLedger.cs',
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+              'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'native_c1_successor/P267DevelopmentAtomicService.cs',
+              'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+              'native_c1_successor/P269ComposedDevelopmentService.cs',
+              'tests/p269_successor/P269ComposedServiceTests.cs') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
+          $flags = @('DEBUG', 'C1_P265_DEVELOPMENT_ONLY', 'C1_P267_DEVELOPMENT_ONLY', 'C1_P268_DEVELOPMENT_ONLY', 'C1_P269_DEVELOPMENT_ONLY')
+          foreach ($missing in (@('ALL') + $flags)) {
+              $selected = @($flags | Where-Object { $missing -ne 'ALL' -and $_ -ne $missing })
+              $define = @()
+              if ($selected.Count) { $define = @('/define:' + ($selected -join ';')) }
+              $out = Join-Path $build ('missing-' + $missing + '.exe')
+              $log = Join-Path $evidence ('guard-' + $missing + '.log')
+              & $csc @common @define ('/out:' + $out) @inputs *> $log
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ('guard-' + $missing + '.exit')) -Value $rawExit
+              $text = Get-Content -LiteralPath $log -Raw
+              if ($null -eq $rawExit -or $rawExit -eq 0 -or (Test-Path -LiteralPath $out)) { throw 'Negative guard compiled' }
+              $required = if ($missing -eq 'DEBUG') { 'P269_NO_RELEASE_BUILD' } else { 'P269_ALL_DEVELOPMENT_OPT_INS_REQUIRED' }
+              if ($text -notmatch ('error CS1029:.*' + $required)) { throw 'Required guard diagnostic absent' }
+          }
+          $log = Join-Path $evidence 'compile.log'
+          & $csc @common ('/define:' + ($flags -join ';')) ('/out:' + (Join-Path $build 'P269.exe')) @inputs *> $log
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'compile.exit') -Value $rawExit
+          Get-Content -LiteralPath $log
+          if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Compile failed' }
+      - name: Actual hosted denial worker and pending races (40 second watchdog)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p269-build-' + $env:REVIEW_ARCH)
+          $stdout = Join-Path $evidence 'runtime.log'
+          $stderr = Join-Path $evidence 'stderr.log'
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          try {
+              $process = Start-Process -FilePath (Join-Path $build 'P269.exe') -WindowStyle Hidden -PassThru -ErrorAction Stop -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          } catch {
+              Set-Content -LiteralPath (Join-Path $evidence 'launch.log') -Value 'BLOCKED STOP_NO_RETRY'
+              throw 'Ordinary hosted launch refused; no bypass'
+          }
+          $null = $process.Handle
+          $remaining = [Math]::Max(0, 40000 - [int]$watch.ElapsedMilliseconds)
+          $timedOut = -not $process.WaitForExit($remaining)
+          if ($timedOut) { Stop-Process -Id $process.Id -ErrorAction Stop; $null = $process.WaitForExit(5000) }
+          $rawExit = $process.ExitCode
+          Set-Content -LiteralPath (Join-Path $evidence 'runtime.exit') -Value $rawExit
+          Get-Content -LiteralPath $stdout
+          Get-Content -LiteralPath $stderr
+          if ($timedOut -or $null -eq $rawExit -or $rawExit -ne 0 -or (Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Native failure STOP no retry' }
+          $text = Get-Content -LiteralPath $stdout -Raw
+          if ($text -notmatch ('(?m)^P269_COMPOSITION=PASS CASES=23 ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '\r?$') -or
+              $text -notmatch '(?m)^P269_SCOPE=DEVELOPMENT_ONLY DENIAL_ONLY PRODUCTION=HOLD\r?$' -or
+              ([regex]::Matches($text, '(?m)^PASS order ')).Count -ne 18) { throw 'Exact native receipts absent' }
+      - name: Verify unchanged source and record SHA256 of text evidence
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
+          $hashes = Get-Content -LiteralPath (Join-Path $evidence 'source-hashes.json') -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($entry in $hashes.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash -cne $entry.Value) { throw 'Source changed' }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0 -or @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Checkout changed' }
+          Get-ChildItem -LiteralPath $evidence -File | Where-Object { $_.Extension -in @('.log', '.exit', '.json') } |
+              ForEach-Object { $_.Name + ' SHA256=' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash } |
+              Set-Content -LiteralPath (Join-Path $evidence 'evidence-sha256.log')
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p269-service-composition-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p269-evidence-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p269-evidence-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p269-evidence-${{ matrix.arch }}/*.json
+          if-no-files-found: error
