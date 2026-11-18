@@ -261,14 +261,62 @@ def _presence_only_adapter(tree:ast.AST)->bool:
 
 
 def _git_tracked_python(root:Path)->tuple[str,...]:
-    """Read-only Git inventory; supplied filenames alone are not tracking."""
-    result=subprocess.run(
-        ["git","ls-files","--full-name","-z","--",*SCAN_ROOTS],cwd=root,
-        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=True)
-    if result.stderr or len(result.stdout)>MAX_TRACKED_PY_FILES*201:
-        raise ValueError("unproven Git inventory")
-    return tuple(p for p in result.stdout.decode("utf8").split("\x00")
-                 if p.endswith(".py"))
+    """Inventory only the exact ordinary checkout root; never OS source trust.
+
+    Path equality accounts for Windows case and slash conventions. Strict
+    resolution and inspection of every ancestor reject aliases/reparse paths.
+    These read-only pathname checks do not bind handles or defeat substitution
+    races, hostile Git configuration, or a same-user writer.
+    """
+    try:
+        if (not isinstance(root,Path) or not root.is_absolute()
+            or any(p in (".","..") or p.endswith(("."," "))
+                   for p in root.parts[1:])
+            or not root.is_dir() or root!=root.resolve(strict=True)):
+            raise ValueError("unproven checkout root")
+        for current in (root,*root.parents):
+            meta=current.lstat()
+            if (not stat.S_ISDIR(meta.st_mode) or current.is_symlink()
+                or getattr(meta,"st_file_attributes",0)&0x400):
+                raise ValueError("aliased checkout root")
+        # Extended/device namespace paths are aliases, not checkout spellings.
+        if str(root).startswith(("\\\\?\\","\\\\.\\")):
+            raise ValueError("aliased checkout namespace")
+        top=subprocess.run(
+            ["git","rev-parse","--show-toplevel"],cwd=root,
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=True)
+        if top.stderr or not 1<=len(top.stdout)<=32768:
+            raise ValueError("unproven Git root")
+        line=top.stdout.decode("utf8")
+        # Git emits one LF/CRLF-terminated absolute path, never extra records.
+        if not line.endswith("\n"):
+            raise ValueError("malformed Git root")
+        name=line[:-1].removesuffix("\r")
+        spelling=name.replace("\\","/")
+        expected=root.as_posix()
+        if root.drive:
+            spelling=spelling.lower()
+            expected=expected.lower()
+        if (not name or any(ord(c)<32 or ord(c)==127 for c in name)
+            or spelling!=expected
+            or not Path(name).is_absolute() or Path(name)!=root
+            or Path(name).resolve(strict=True)!=root):
+            raise ValueError("Git root differs from checkout")
+        result=subprocess.run(
+            ["git","ls-files","--full-name","-z","--",*SCAN_ROOTS],cwd=root,
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=True)
+        if (result.stderr or not result.stdout or not result.stdout.endswith(b"\x00")
+            or len(result.stdout)>MAX_TRACKED_PY_FILES*201):
+            raise ValueError("unproven Git inventory")
+        records=result.stdout.decode("utf8").split("\x00")[:-1]
+        if any(not p for p in records) or len(set(records))!=len(records):
+            raise ValueError("malformed Git inventory")
+        paths=tuple(p for p in records if p.endswith(".py"))
+        if not paths or len(paths)>MAX_TRACKED_PY_FILES:
+            raise ValueError("unproven Python inventory")
+        return paths
+    except (OSError,UnicodeError,RuntimeError,subprocess.SubprocessError) as exc:
+        raise ValueError("unproven checkout Git inventory") from exc
 
 
 def review_proposed_service_store(

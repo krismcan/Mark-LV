@@ -1,0 +1,327 @@
+name: P278 current acceptance exact checkout root (historical RED remains HOLD)
+on:
+  pull_request:
+    branches: [byok-c1-p277-current-service-store-inventory-20261118]
+    types: [opened, synchronize, reopened, converted_to_draft]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  source-only-inventory:
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == true &&
+          github.repository == 'krismcan/Mark-LV' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.base.repo.full_name == github.repository &&
+          github.event.pull_request.head.ref == 'byok-c1-p278-current-acceptance-service-root-20261118' &&
+          github.event.pull_request.base.ref == 'byok-c1-p277-current-service-store-inventory-20261118' &&
+          github.event.pull_request.base.sha == 'a0e07e55f6ea7953db02046a77c8e2b4a22410e3' }}
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+          - arch: x86
+            bits: 32
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      P278_ARCH: ${{ matrix.arch }}
+      P278_BITS: ${{ matrix.bits }}
+      P278_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      P278_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Exact draft event, one-child parent and complete raw source custody
+        id: custody
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parent = 'a0e07e55f6ea7953db02046a77c8e2b4a22410e3'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p278-evidence-' + $env:P278_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $env:GITHUB_HEAD_REF -cne 'byok-c1-p278-current-acceptance-service-root-20261118' -or
+              $env:GITHUB_BASE_REF -cne 'byok-c1-p277-current-service-store-inventory-20261118' -or
+              $env:P278_BASE_SHA -cne $parent -or $env:P278_HEAD_SHA -cnotmatch '\A[0-9a-f]{40}\z') { throw 'Wrong hosted event' }
+          $actualHead = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualHead -cne $env:P278_HEAD_SHA) { throw 'Wrong HEAD' }
+          $parents = (git rev-list --parents -n 1 HEAD) -split ' '
+          if ($LASTEXITCODE -ne 0 -or $parents.Count -ne 2 -or $parents[1] -cne $parent) { throw 'Exact one-child required' }
+          $eventFile = Get-Item -LiteralPath $env:GITHUB_EVENT_PATH
+          if ($eventFile.Length -le 0 -or $eventFile.Length -gt 262144 -or
+              ($eventFile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid event file' }
+          $event = Get-Content -LiteralPath $eventFile.FullName -Raw | ConvertFrom-Json
+          if ($event.pull_request.draft -ne $true -or
+              $event.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.head.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $event.pull_request.head.sha -cne $env:P278_HEAD_SHA -or
+              $event.pull_request.base.sha -cne $parent -or
+              $event.pull_request.head.ref -cne $env:GITHUB_HEAD_REF -or
+              $event.pull_request.base.ref -cne $env:GITHUB_BASE_REF -or
+              $env:GITHUB_REF -cne ('refs/pull/' + $event.pull_request.number + '/merge')) { throw 'Wrong actual draft PR' }
+          Copy-Item -LiteralPath $eventFile.FullName -Destination (Join-Path $evidence 'actual-event.json')
+          $eventHash = (Get-FileHash -LiteralPath $eventFile.FullName -Algorithm SHA256).Hash
+          if ((Get-FileHash -LiteralPath (Join-Path $evidence 'actual-event.json') -Algorithm SHA256).Hash -cne $eventHash) { throw 'Event copy mismatch' }
+          $eventHash | Set-Content -LiteralPath (Join-Path $evidence 'actual-event.sha256.log')
+          $product = 'nayeon/brain/p216_service_store_decision.py'
+          $added = @('tests/test_byok_c1_p278_current_acceptance_root.py',
+              '.github/workflows/p278-windows-current-acceptance.yml',
+              'docs/byok-c1-p278-current-acceptance-root.md')
+          $expected = @($product) + $added
+          $changes = @(git diff --name-status --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 4 -or
+              @($changes | Where-Object { $_ -ceq ('M' + "`t" + $product) }).Count -ne 1 -or
+              @($changes | Where-Object { $_ -cmatch '^A\t' }).Count -ne 3) { throw 'One modified product plus three additions required' }
+          $paths = @(git diff --name-only --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($paths | Sort-Object)).Count -ne 0) { throw 'Wrong changed paths' }
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Dirty checkout' }
+          $entries = @(git ls-tree -r $parent)
+          if ($LASTEXITCODE -ne 0 -or $entries.Count -ne 1119) { throw 'Wrong inherited count' }
+          $inherited = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+          foreach ($entry in $entries) {
+              if ($entry -cnotmatch '^100644 blob ([0-9a-f]{40})\t(.+)$') { throw 'Unexpected inherited entry' }
+              $inherited.Add($Matches[2], $Matches[1])
+          }
+          $headEntries = @(git ls-tree -r HEAD)
+          if ($LASTEXITCODE -ne 0 -or $headEntries.Count -ne 1122) { throw 'Wrong candidate count' }
+          $custody = @()
+          $hashes = [ordered]@{}
+          $unchanged = 0
+          foreach ($entry in $headEntries) {
+              if ($entry -cnotmatch '^100644 blob ([0-9a-f]{40})\t(.+)$') { throw 'Nonregular candidate entry' }
+              $oid = $Matches[1]; $path = $Matches[2]
+              $old = 'ADDED'
+              if ($inherited.ContainsKey($path)) {
+                  $old = $inherited[$path]
+                  if ($path -cne $product) {
+                      if ($old -cne $oid) { throw 'Inherited blob changed' }
+                      $unchanged++
+                  }
+              } elseif ($added -cnotcontains $path) { throw 'Unknown addition' }
+              $current = Get-Item -LiteralPath .
+              foreach ($part in $path.Split('/')) {
+                  if ($current.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse source parent' }
+                  $current = Get-Item -LiteralPath (Join-Path $current.FullName $part)
+              }
+              if ($current.PSIsContainer -or ($current.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Nonregular disk source' }
+              $bytes = [IO.File]::ReadAllBytes($current.FullName)
+              $header = [Text.Encoding]::ASCII.GetBytes('blob ' + $bytes.Length + [char]0)
+              $payload = [byte[]]::new($header.Length + $bytes.Length)
+              [Array]::Copy($header, 0, $payload, 0, $header.Length)
+              [Array]::Copy($bytes, 0, $payload, $header.Length, $bytes.Length)
+              $sha = [Security.Cryptography.SHA1]::Create()
+              try { $diskOid = [Convert]::ToHexString($sha.ComputeHash($payload)).ToLowerInvariant() } finally { $sha.Dispose() }
+              if ($diskOid -cne $oid) { throw 'Raw disk Git blob mismatch' }
+              $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+              $custody += ($path + ' parent=' + $old + ' head=' + $oid + ' raw_disk=' + $diskOid + ' SHA256=' + $hashes[$path])
+          }
+          if ($unchanged -ne 1118) { throw 'Wrong unchanged inherited count' }
+          if ($hashes['nayeon/secrets/windows_credential.py'] -cne
+              '9FFB136A73E4277B966FAE025A3962123433745B6BA8907AB3B8C4137F4A21B3') { throw 'P275 backend changed' }
+          if ($hashes['tests/test_p216_service_store_decision_inventory.py'] -cne
+              'FF077BB4959A0EB5D33D95397649C772F395FE89143C5A8643589E5CB9B4A1F5') { throw 'Original P216 test changed' }
+          $custody | Set-Content -LiteralPath (Join-Path $evidence 'complete-source-custody.log')
+          $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
+          @('HEAD=' + $env:P278_HEAD_SHA, 'PARENT=' + $parent,
+              '1119_INHERITED; 1118_UNCHANGED; 1_MODIFIED_P216_PLUS_3_ADDED; 1122_TOTAL',
+              'PRODUCTION_HOLD; FULL_PRODUCT_0/3; ORIGINAL_P216_TEST02_TEST06_UNWAIVED; REAL_KEYS_NO_GO') |
+              Set-Content -LiteralPath (Join-Path $evidence 'scope.log')
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        id: python
+        with:
+          python-version: '3.12.8'
+          architecture: ${{ matrix.arch }}
+      - name: Focused P278 10, preserved P277 10 and P276 12 source-only tests (must be GREEN)
+        id: focused
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $runner = @'
+          import os, re, struct, subprocess, sys
+          from pathlib import Path
+          assert sys.platform == 'win32' and sys.version_info[:3] == (3, 12, 8)
+          assert struct.calcsize('P') * 8 == int(os.environ['P278_BITS'])
+          evidence = Path(os.environ['RUNNER_TEMP']) / ('p278-evidence-' + os.environ['P278_ARCH'])
+          parser = '''import ast, json
+          from pathlib import Path
+          paths = ('nayeon/brain/p216_service_store_decision.py',
+                   'tests/test_byok_c1_p278_current_acceptance_root.py',
+                   'tests/test_byok_c1_p277_current_store_source.py',
+                   'nayeon/brain/p211_high_assurance_package_quarantine.py',
+                   'tests/test_byok_c1_p276_current_package_refusal.py',
+                   'tests/test_p216_service_store_decision_inventory.py',
+                   'nayeon/secrets/windows_credential.py')
+          for path in paths:
+              tree = ast.parse(Path(path).read_text(encoding='utf-8-sig'), filename=path)
+              compile(tree, path, 'exec')
+          print(json.dumps({'CPYTHON_AST_COMPILE': 'PASS', 'source_paths': paths}))
+          '''
+          receipt = '''from dataclasses import asdict
+          import json, subprocess
+          from pathlib import Path
+          from nayeon.brain.p216_service_store_decision import review_proposed_service_store
+          root = Path.cwd()
+          tracked = subprocess.run(['git', 'ls-files', '--full-name', '-z', '--', 'nayeon', 'core'],
+              cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=True)
+          if tracked.stderr:
+              raise RuntimeError('Git source inventory unproven')
+          paths = tuple(p for p in tracked.stdout.decode('utf-8').split(chr(0)) if p.endswith('.py'))
+          witness = review_proposed_service_store(root, paths)
+          print(json.dumps({'actual_git_tracked_python': paths, 'receipt': asdict(witness),
+              'PRODUCTION': 'HOLD', 'REAL_KEYS': 'NO-GO', 'FULL_WINDOWS_PRODUCT': '0/3',
+              'same_user_alternate_Advapi32': 'REAL_OS_THREAT',
+              'source_inventory_is_not_OS_isolation_or_release_authority': True}, indent=2))
+          '''
+          commands = (
+              ('source-parser', ['-c', parser]),
+              ('p278-focused', ['-m', 'unittest', '-v', 'tests.test_byok_c1_p278_current_acceptance_root']),
+              ('p277-preserved', ['-m', 'unittest', '-v', 'tests.test_byok_c1_p277_current_store_source']),
+              ('p276-preserved', ['-m', 'unittest', '-v', 'tests.test_byok_c1_p276_current_package_refusal']),
+              ('current-source-receipt', ['-c', receipt]),
+          )
+          failed = False
+          for name, arguments in commands:
+              print('START', name, flush=True)
+              with (evidence / (name + '.stdout.log')).open('wb') as out, (evidence / (name + '.stderr.log')).open('wb') as err:
+                  raw = subprocess.run([sys.executable, '-B', *arguments], stdout=out, stderr=err, timeout=180, check=False).returncode
+              (evidence / (name + '.exit')).write_text(str(raw) + '\n', encoding='ascii')
+              for suffix in ('.stdout.log', '.stderr.log'):
+                  print((evidence / (name + suffix)).read_text(encoding='utf-8', errors='replace'), end='')
+              print('END', name, 'raw_exit=' + str(raw), flush=True)
+              failed = failed or raw != 0
+              expected = {'p278-focused': 10, 'p277-preserved': 10, 'p276-preserved': 12}.get(name)
+              if expected is not None:
+                  text = (evidence / (name + '.stderr.log')).read_text(encoding='utf-8', errors='replace')
+                  complete = re.search(r'^Ran ' + str(expected) + r' tests in ', text, re.M) is not None
+                  if not complete or re.search(r'skipped=|expected failures=|unexpected successes=', text):
+                      print('HOLD: incomplete or waived focused test result', name, flush=True)
+                      failed = True
+          sys.exit(1 if failed else 0)
+          '@
+          & python -B -c $runner
+          $raw = $LASTEXITCODE
+          if ($null -eq $raw -or $raw -ne 0) { throw 'Focused source tests HOLD; authentic raw receipts retained' }
+      - name: Original unchanged P216 18 tests (two old-native expectations unwaived, authentic RED is HOLD)
+        if: ${{ always() && steps.custody.outcome == 'success' && steps.python.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $runner = @'
+          import json, os, re, struct, subprocess, sys
+          from pathlib import Path
+          assert sys.platform == 'win32' and sys.version_info[:3] == (3, 12, 8)
+          assert struct.calcsize('P') * 8 == int(os.environ['P278_BITS'])
+          evidence = Path(os.environ['RUNNER_TEMP']) / ('p278-evidence-' + os.environ['P278_ARCH'])
+          name = 'historical-p216-original'
+          print('START original unchanged P216', flush=True)
+          with (evidence / (name + '.stdout.log')).open('wb') as out, (evidence / (name + '.stderr.log')).open('wb') as err:
+              raw = subprocess.run([sys.executable, '-B', '-m', 'unittest', '-v',
+                  'tests.test_p216_service_store_decision_inventory'], stdout=out, stderr=err, timeout=180, check=False).returncode
+          (evidence / (name + '.exit')).write_text(str(raw) + '\n', encoding='ascii')
+          for suffix in ('.stdout.log', '.stderr.log'):
+              print((evidence / (name + suffix)).read_text(encoding='utf-8', errors='replace'), end='')
+          text = (evidence / (name + '.stderr.log')).read_text(encoding='utf-8', errors='replace')
+          diagnostics = {
+              'raw_unittest_exit': raw,
+              'all_18_executed': re.search(r'^Ran 18 tests in ', text, re.M) is not None,
+              'original_test02_failed': re.search(r'^test_02_p132_live_Python_direct_WinCred_effect_still_reachable .* \.\.\. FAIL$', text, re.M) is not None,
+              'original_test06_failed': re.search(r'^test_06_actual_native_credential_adapter_appears_in_scan .* \.\.\. FAIL$', text, re.M) is not None,
+              'exact_two_failures_no_errors': re.search(r'^FAILED \(failures=2\)$', text, re.M) is not None,
+              'waiver_detected': re.search(r'skipped=|expected failures=|unexpected successes=', text) is not None,
+              'disposition': 'HOLD; inspect actual logs; no failure waived',
+          }
+          (evidence / (name + '.diagnostics.json')).write_text(json.dumps(diagnostics, indent=2) + '\n', encoding='utf-8')
+          (evidence / (name + '.disposition.log')).write_text(
+              'UNWAIVED HISTORICAL RED/HOLD\n' if raw else 'UNEXPECTED RAW GREEN; REVIEW HOLD; NO RELEASE CREDIT\n', encoding='ascii')
+          print('END original unchanged P216 raw_exit=' + str(raw), flush=True)
+          # Preserve the genuine unittest exit: never skip, xfail, patch,
+          # replace, waive, coerce to green or manufacture an assertion failure.
+          # Infrastructure failures do not prove the two historical assertions.
+          sys.exit(raw)
+          '@
+          & python -B -c $runner
+          $raw = $LASTEXITCODE
+          if ($null -eq $raw) { throw 'Missing original P216 native exit; HOLD' }
+          if ($raw -ne 0) { exit $raw }
+          throw 'Unexpected raw P216 GREEN requires investigation: original test02/test06 must remain FAIL; production HOLD'
+      - name: Final read-only custody and complete raw evidence hashes
+        if: ${{ always() && steps.custody.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p278-evidence-' + $env:P278_ARCH)
+          git diff --check HEAD^ HEAD 1> (Join-Path $evidence 'diff-check.stdout.log') 2> (Join-Path $evidence 'diff-check.stderr.log')
+          $raw = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'diff-check.exit') -Value $raw
+          $hashes = Get-Content -LiteralPath (Join-Path $evidence 'source-hashes.json') -Raw | ConvertFrom-Json -AsHashtable
+          $changed = @()
+          $after = @()
+          $finalEntries = @(git ls-tree -r HEAD)
+          if ($LASTEXITCODE -ne 0 -or $finalEntries.Count -ne 1122) { throw 'Wrong final Git inventory' }
+          $finalHead = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $finalHead -cne $env:P278_HEAD_SHA) { throw 'Final HEAD changed' }
+          $eventFile = Get-Item -LiteralPath $env:GITHUB_EVENT_PATH
+          if (($eventFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+              (Get-FileHash -LiteralPath $eventFile.FullName -Algorithm SHA256).Hash -cne
+              (Get-Content -LiteralPath (Join-Path $evidence 'actual-event.sha256.log')).Trim()) { throw 'Actual event changed' }
+          Copy-Item -LiteralPath $eventFile.FullName -Destination (Join-Path $evidence 'actual-event-after.json')
+          (Get-FileHash -LiteralPath (Join-Path $evidence 'actual-event-after.json') -Algorithm SHA256).Hash |
+              Set-Content -LiteralPath (Join-Path $evidence 'actual-event-after.sha256.log')
+          foreach ($entry in $finalEntries) {
+              if ($entry -cnotmatch '^100644 blob ([0-9a-f]{40})\t(.+)$') { throw 'Nonregular final Git source' }
+              $oid = $Matches[1]; $path = $Matches[2]
+              if (-not $hashes.ContainsKey($path)) { throw 'Unknown final source' }
+              $current = Get-Item -LiteralPath .
+              foreach ($part in $path.Split('/')) {
+                  if ($current.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Final reparse source parent' }
+                  $current = Get-Item -LiteralPath (Join-Path $current.FullName $part)
+              }
+              if ($current.PSIsContainer -or ($current.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Nonregular final disk source' }
+              $bytes = [IO.File]::ReadAllBytes($current.FullName)
+              $header = [Text.Encoding]::ASCII.GetBytes('blob ' + $bytes.Length + [char]0)
+              $payload = [byte[]]::new($header.Length + $bytes.Length)
+              [Array]::Copy($header, 0, $payload, 0, $header.Length)
+              [Array]::Copy($bytes, 0, $payload, $header.Length, $bytes.Length)
+              $sha = [Security.Cryptography.SHA1]::Create()
+              try { $diskOid = [Convert]::ToHexString($sha.ComputeHash($payload)).ToLowerInvariant() } finally { $sha.Dispose() }
+              $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+              $after += ($path + ' head=' + $oid + ' raw_disk=' + $diskOid + ' SHA256=' + $actual)
+              if ($actual -cne $hashes[$path] -or $diskOid -cne $oid) { $changed += $path }
+          }
+          $after | Sort-Object | Set-Content -LiteralPath (Join-Path $evidence 'source-after.log')
+          $changed | Set-Content -LiteralPath (Join-Path $evidence 'final-source-changes.log')
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          $statusExit = $LASTEXITCODE
+          $dirty | Set-Content -LiteralPath (Join-Path $evidence 'final-status.log')
+          Get-ChildItem -LiteralPath $evidence -File | Where-Object { $_.Name -ne 'evidence-sha256.log' } |
+              Sort-Object Name | ForEach-Object { $_.Name + ' SHA256=' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash } |
+              Set-Content -LiteralPath (Join-Path $evidence 'evidence-sha256.log')
+          if ($null -eq $raw -or $raw -ne 0 -or $statusExit -ne 0 -or $dirty.Count -ne 0 -or $changed.Count -ne 0) { throw 'Final source custody HOLD' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p278-source-only-text-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p278-evidence-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p278-evidence-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p278-evidence-${{ matrix.arch }}/*.json
+          if-no-files-found: error
+          retention-days: 30
