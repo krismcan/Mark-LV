@@ -1,0 +1,199 @@
+name: P272 OS custody admission negatives (production HOLD)
+on:
+  pull_request:
+    branches: [byok-c1-p271-service-owned-durable-custody-20261118]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  admission:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            framework: Framework64
+          - arch: x86
+            bits: 32
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_BITS: ${{ matrix.bits }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Exact parent, five additions and source receipts
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REVIEW_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'Hosted Windows only' }
+          $parent = 'bff6895f5f0b4f086f0c4ed97f5f46a44f8d2762'
+          if ((git rev-parse HEAD).Trim() -cne $env:REVIEW_HEAD -or
+              (git rev-parse 'HEAD^').Trim() -cne $parent -or $env:REVIEW_BASE -cne $parent -or
+              $env:REVIEW_BRANCH -cne 'byok-c1-p272-os-bound-custody-admission-20261118' -or
+              $env:REVIEW_REPO -cne $env:GITHUB_REPOSITORY -or
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact P271 parent required' }
+          $expected = @('native_c1_successor/P272OsBoundCustodyAdmission.cs',
+            'tests/p272_successor/P272OsCustodyAdmissionTests.cs', 'tests/test_byok_c1_p272_os_admission.py',
+            '.github/workflows/p272-windows-os-custody-admission.yml', 'docs/byok-c1-p272-os-custody-admission.md')
+          $paths = @(git diff --name-only $parent HEAD)
+          $changes = @(git diff --name-status --no-renames $parent HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -cnotmatch '^A\t' }).Count -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($paths | Sort-Object)).Count -ne 0 -or
+              @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exact clean five additions required' }
+          $evidence = Join-Path $env:RUNNER_TEMP ('p272-evidence-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $pins = [ordered]@{}
+          foreach ($path in @(git ls-files)) { $pins[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+          $pins | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-pins.json')
+          Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
+            ('P272_PARENT=' + $parent), ('P272_HEAD=' + $env:REVIEW_HEAD),
+            'PRODUCTION=HOLD REAL_KEYS=NO_GO P76=HOLD FULL_PRODUCT=0/3')
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12.8'
+          architecture: ${{ matrix.arch }}
+      - name: Source contracts, mutations and frozen P261 contracts
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p272-evidence-' + $env:REVIEW_ARCH)
+          foreach ($module in @('test_byok_c1_p272_os_admission.py', 'test_byok_c1_p261_scm_readonly.py')) {
+            $log = Join-Path $evidence ($module + '.log')
+            & python -I -B -m unittest discover -s tests -p $module -v *> $log
+            $code = $LASTEXITCODE
+            Set-Content -LiteralPath (Join-Path $evidence ($module + '.exit')) -Value $code
+            Get-Content -LiteralPath $log
+            if ($null -eq $code -or $code -ne 0) { throw 'Source contract HOLD' }
+          }
+      - name: Warning-as-error builds and all compiler guard negatives
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p272-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p272-build-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $build | Out-Null
+          $framework = Join-Path $env:WINDIR ('Microsoft.NET/' + $env:REVIEW_FRAMEWORK + '/v4.0.30319')
+          $csc = Join-Path $framework 'csc.exe'
+          $inputs = @('tests/p95_native_custody_preflight/CustodyLedger.cs',
+            'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+            'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+            'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+            'native_c1_successor/P267DevelopmentAtomicService.cs',
+            'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+            'native_c1_successor/P269ComposedDevelopmentService.cs',
+            'native_c1_successor/P270DevelopmentDurableWitness.cs',
+            'native_c1_successor/P271DurableDevelopmentBridge.cs',
+            'tests/p271_successor/P271DurableBridgeTests.cs',
+            'native_c1_candidate/P261ScmReadOnlyAdmission.cs',
+            'tests/p99_original_native_c1_denial/ServiceGate.cs',
+            'tests/p99_original_native_c1_denial/ProtectedAcl.cs',
+            'tests/p261_scm_readonly/ScmReadOnlyTests.cs',
+            'native_c1_successor/P272OsBoundCustodyAdmission.cs',
+            'tests/p272_successor/P272OsCustodyAdmissionTests.cs') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
+          $common = @('/nologo', '/noconfig', '/target:exe', '/warn:4', '/warnaserror+', '/debug+', '/optimize-',
+            ('/platform:' + $env:REVIEW_ARCH), ('/reference:' + (Join-Path $framework 'System.dll')),
+            ('/reference:' + (Join-Path $framework 'System.Core.dll')),
+            ('/reference:' + (Join-Path $framework 'System.Security.dll')),
+            ('/reference:' + (Join-Path $framework 'System.ServiceProcess.dll')))
+          $flags = @('DEBUG', 'C1_REVIEW_ISOLATED_ASSEMBLY', 'C1_P265_DEVELOPMENT_ONLY', 'C1_P267_DEVELOPMENT_ONLY',
+            'C1_P268_DEVELOPMENT_ONLY', 'C1_P269_DEVELOPMENT_ONLY', 'C1_P270_DEVELOPMENT_ONLY',
+            'C1_P271_DEVELOPMENT_ONLY', 'C1_P272_DEVELOPMENT_ONLY')
+          foreach ($missing in (@('ALL') + $flags)) {
+            $selected = @($flags | Where-Object { $missing -ne 'ALL' -and $_ -ne $missing })
+            $define = @(); if ($selected.Count) { $define = @('/define:' + ($selected -join ';')) }
+            $out = Join-Path $build ('guard-' + $missing + '.exe')
+            $log = Join-Path $evidence ('guard-' + $missing + '.log')
+            & $csc @common /main:P272OsCustodyAdmissionTests @define ('/out:' + $out) @inputs *> $log
+            $code = $LASTEXITCODE
+            Set-Content -LiteralPath (Join-Path $evidence ('guard-' + $missing + '.exit')) -Value $code
+            if ($null -eq $code -or $code -eq 0 -or (Test-Path -LiteralPath $out) -or
+                (Get-Content -Raw $log) -notmatch 'error CS1029:.*(NO_RELEASE_BUILD|DEVELOPMENT.*REQUIRED|OPT_INS_REQUIRED|NONDEPLOYABLE)') { throw 'Compiler guard HOLD' }
+          }
+          $mains = [ordered]@{ P272 = 'P272OsCustodyAdmissionTests'; P271 = 'P271DurableBridgeTests';
+            P261 = 'ScmReadOnlyTests'; P96 = 'Nayeon.ByokC1.P96NegativeProof' }
+          foreach ($item in $mains.GetEnumerator()) {
+            $log = Join-Path $evidence ('compile-' + $item.Key + '.log')
+            & $csc @common ('/main:' + $item.Value) ('/define:' + ($flags -join ';')) ('/out:' + (Join-Path $build ($item.Key + '.exe'))) @inputs *> $log
+            $code = $LASTEXITCODE
+            Set-Content -LiteralPath (Join-Path $evidence ('compile-' + $item.Key + '.exit')) -Value $code
+            Get-Content -LiteralPath $log
+            if ($null -eq $code -or $code -ne 0) { throw 'Native compile HOLD' }
+          }
+          (Get-FileHash -LiteralPath $csc -Algorithm SHA256).Hash | Set-Content -LiteralPath (Join-Path $evidence 'compiler-sha256.log')
+      - name: Hosted disposable runtime negatives with process watchdogs
+        env:
+          P271_HOSTED_DISPOSABLE: '1'
+          P272_HOSTED_DISPOSABLE: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'GitHub-hosted only' }
+          $evidence = Join-Path $env:RUNNER_TEMP ('p272-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p272-build-' + $env:REVIEW_ARCH)
+          foreach ($name in @('P272', 'P271', 'P261', 'P96')) {
+            $stdout = Join-Path $evidence ($name + '-runtime.log')
+            $stderr = Join-Path $evidence ($name + '-stderr.log')
+            $exe = Join-Path $build ($name + '.exe')
+            (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash | Set-Content -LiteralPath (Join-Path $evidence ($name + '-exe-sha256.log'))
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            try {
+              $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            } catch {
+              Set-Content -LiteralPath (Join-Path $evidence ($name + '-launch.log')) -Value 'LAUNCH=BLOCKED NO_RAW_PROCESS_EXIT'
+              throw 'Launch denied HOLD: no retry or policy bypass'
+            }
+            $null = $process.Handle
+            $timedOut = -not $process.WaitForExit([Math]::Max(0, 60000 - [int]$watch.ElapsedMilliseconds))
+            if ($timedOut) { Stop-Process -Id $process.Id; $null = $process.WaitForExit(5000) }
+            $code = $process.ExitCode
+            Set-Content -LiteralPath (Join-Path $evidence ($name + '-runtime.exit')) -Value $code
+            Get-Content -LiteralPath $stdout
+            Get-Content -LiteralPath $stderr
+            if ($timedOut -or $null -eq $code -or $code -ne 0 -or (Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Native runtime HOLD' }
+            $receipt = Get-Content -Raw $stdout
+            $required = switch ($name) {
+              P272 { '(?m)^P272_ADMISSION=PASS CASES=17 ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '\r?$' }
+              P271 { '(?m)^P271_INTEGRATION=PASS CASES=38 ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '\r?$' }
+              P261 { '(?m)^P261_REAL_SCM_MISSING_DENIAL=PASS\r?$' }
+              P96 { '(?m)^P96_NATIVE_ACTUAL_COORDINATOR_TESTS_PASSED=15\r?$' }
+            }
+            if ($receipt -notmatch $required -or $receipt -notmatch 'PRODUCTION.*HOLD') { throw 'Missing runtime receipt' }
+          }
+      - name: Preserve raw text receipts and recheck source
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p272-evidence-' + $env:REVIEW_ARCH)
+          if (Test-Path -LiteralPath (Join-Path $evidence 'source-pins.json')) {
+            $pins = Get-Content -Raw -LiteralPath (Join-Path $evidence 'source-pins.json') | ConvertFrom-Json -AsHashtable
+            foreach ($pin in $pins.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $pin.Key -Algorithm SHA256).Hash -cne $pin.Value) { throw 'Source bytes changed' }
+            }
+          }
+          if (Test-Path -LiteralPath $evidence) {
+            foreach ($file in (Get-ChildItem -LiteralPath $evidence -File | Sort-Object Name)) {
+              Write-Output ('EVIDENCE ' + $file.Name + ' SHA256=' + (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash)
+              Get-Content -LiteralPath $file.FullName
+            }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0 -or @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Source changed during verification' }
+          # Text only; no executable, ciphertext, credential or system identity upload.
