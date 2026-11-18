@@ -1,0 +1,244 @@
+name: P267 development service IPC (real keys NO-GO, production HOLD)
+
+on:
+  pull_request:
+    branches:
+      - byok-c1-p266-service-bound-ipc-synthetic-20261117
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+jobs:
+  atomic-ordering:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            csc: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          - arch: x86
+            bits: 32
+            csc: 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe'
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_BITS: ${{ matrix.bits }}
+      REVIEW_CSC: ${{ matrix.csc }}
+    steps:
+      - name: Check out exact PR source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact HEAD and five additive paths; hash composed sources
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p267-evidence-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $expectedBase = '08c5cc6d3c3f9b25bd0b9f85b1c515af960a0169'
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:REVIEW_HEAD -or
+              $env:REVIEW_BASE -cne $expectedBase -or
+              $env:REVIEW_BRANCH -cne 'byok-c1-p267-service-owned-atomic-ordering-20261118') {
+              throw 'Exact PR HEAD/base/branch mismatch'
+          }
+          if ((git rev-parse 'HEAD^').Trim() -cne $expectedBase -or
+              @(git rev-list --parents -n 1 HEAD).Count -ne 1 -or
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) {
+              throw 'Exact single P266 parent required'
+          }
+          git merge-base --is-ancestor $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed P266 parent missing' }
+          $expected = @('.github/workflows/p267-windows-atomic-ordering.yml',
+              'docs/byok-c1-p267-atomic-ordering.md',
+              'native_c1_successor/P267DevelopmentAtomicService.cs',
+              'tests/p267_successor/P267DevelopmentAtomicTests.cs',
+              'tests/test_byok_c1_p267_atomic_ordering.py')
+          $actual = @(git diff --name-only $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or
+              @(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0) {
+              throw 'Exact five-path scope mismatch'
+          }
+          $changes = @(git diff --name-status $expectedBase HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 5 -or
+              @($changes | Where-Object { $_ -cnotmatch '^A\t' }).Count -ne 0) {
+              throw 'Only five additive P267 paths admitted; historical sources immutable'
+          }
+          git diff --check $expectedBase HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Review whitespace failure' }
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Dirty review checkout' }
+          $hashes = [ordered]@{}
+          foreach ($path in ($expected + @('native_c1_successor/P266DevelopmentServiceIpc.cs',
+              'tests/p266_successor/P266DevelopmentServiceIpcTests.cs',
+              '.github/workflows/p266-development-service-ipc.yml',
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+              'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'tests/p265_successor/P265DevelopmentPipeTests.cs',
+              'tests/test_byok_c1_p265_development_pipe.py',
+              '.github/workflows/p265-windows-development-pipe.yml'))) {
+              $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+          }
+          $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
+          Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
+              ('P267_HEAD=' + $head), ('P267_BASE=' + $expectedBase),
+              'P267_SCOPE=DEVELOPMENT_SYNTHETIC_ONLY P96=HOLD P76=HOLD REAL_KEY=NO_GO PRODUCTION=HOLD')
+      - name: Set up pinned Python for source tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+      - name: Run eight focused source and mutation tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p267-evidence-' + $env:REVIEW_ARCH)
+          $log = Join-Path $evidence 'source-tests.log'
+          & python -I -B -m unittest discover -s tests -p test_byok_c1_p267_atomic_ordering.py -v *> $log
+          $rawExit = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'source-tests.exit') -Value $rawExit
+          Get-Content -LiteralPath $log
+          if ($null -eq $rawExit -or $rawExit -ne 0 -or
+              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 8 tests in ') {
+              throw 'Eight focused source tests required'
+          }
+      - name: Compile unchanged P265 with P267; reject missing flags and Release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p267-evidence-' + $env:REVIEW_ARCH)
+          $build = Join-Path $env:RUNNER_TEMP ('p267-build-' + $env:REVIEW_ARCH)
+          New-Item -ItemType Directory -Path $build | Out-Null
+          $framework = Split-Path -Parent $env:REVIEW_CSC
+          $common = @('/nologo', '/noconfig', '/debug+', '/optimize-', '/warn:4', '/warnaserror+',
+              '/target:exe', ('/platform:' + $env:REVIEW_ARCH),
+              ('/reference:' + (Join-Path $framework 'System.dll')),
+              ('/reference:' + (Join-Path $framework 'System.Core.dll')),
+              ('/reference:' + (Join-Path $framework 'System.ServiceProcess.dll')))
+          $sources = @('native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'native_c1_successor/P267DevelopmentAtomicService.cs') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
+          $driver = (Resolve-Path -LiteralPath 'tests/p267_successor/P267DevelopmentAtomicTests.cs').Path
+          $flags = @('DEBUG', 'C1_P265_DEVELOPMENT_ONLY', 'C1_P267_DEVELOPMENT_ONLY')
+          $markers = @{
+              DEBUG = @('P265_NO_RELEASE_BUILD', 'P267_NO_RELEASE_BUILD')
+              C1_P265_DEVELOPMENT_ONLY = @('P265_DEVELOPMENT_ONLY_EXPLICIT_OPT_IN_REQUIRED', 'P267_REQUIRES_P265_DEVELOPMENT_ONLY')
+              C1_P267_DEVELOPMENT_ONLY = @('P267_DEVELOPMENT_ONLY_EXPLICIT_OPT_IN_REQUIRED')
+          }
+          $testMarkers = @{
+              DEBUG = 'P267_TESTS_NO_RELEASE_BUILD'
+              C1_P265_DEVELOPMENT_ONLY = 'P267_TESTS_REQUIRE_P265_DEVELOPMENT_BUILD'
+              C1_P267_DEVELOPMENT_ONLY = 'P267_TESTS_REQUIRE_DEVELOPMENT_BUILD'
+          }
+          foreach ($artifact in @('Service', 'Tests')) {
+              $inputs = @($sources)
+              $main = 'Nayeon.ByokC1.P267Development.DevelopmentAtomicService'
+              if ($artifact -eq 'Tests') { $inputs += $driver; $main = 'P267DevelopmentAtomicTests' }
+              foreach ($missing in (@('ALL') + $flags)) {
+                  $selected = @($flags | Where-Object { $missing -ne 'ALL' -and $_ -ne $missing })
+                  $stem = $artifact + '-missing-' + $missing
+                  $output = Join-Path $build ($stem + '.exe')
+                  $log = Join-Path $evidence ($stem + '.log')
+                  $define = @()
+                  if ($selected.Count) { $define = @('/define:' + ($selected -join ';')) }
+                  & $env:REVIEW_CSC @common @define ('/main:' + $main) ('/out:' + $output) @inputs *> $log
+                  $rawExit = $LASTEXITCODE
+                  Set-Content -LiteralPath (Join-Path $evidence ($stem + '.exit')) -Value $rawExit
+                  if ($null -eq $rawExit -or $rawExit -eq 0 -or (Test-Path -LiteralPath $output)) {
+                      throw 'Incomplete development flags admitted an artifact'
+                  }
+                  $required = @()
+                  foreach ($flag in $flags) {
+                      if ($flag -notin $selected) {
+                          $required += $markers[$flag]
+                          if ($artifact -eq 'Tests' -and $testMarkers.ContainsKey($flag)) { $required += $testMarkers[$flag] }
+                      }
+                  }
+                  $text = Get-Content -LiteralPath $log -Raw
+                  if (([regex]::Matches($text, 'error CS1029:')).Count -ne $required.Count -or
+                      ([regex]::Matches($text, 'error CS\d+:')).Count -ne $required.Count) {
+                      throw 'Unexpected guard failure; no policy workaround'
+                  }
+                  foreach ($marker in $required) {
+                      if ($text -notmatch ('error CS1029:.*' + $marker)) { throw 'Missing exact guard diagnostic' }
+                  }
+              }
+              $output = Join-Path $build ('P267.' + $artifact + '.' + $env:REVIEW_ARCH + '.exe')
+              $log = Join-Path $evidence ($artifact + '-compile.log')
+              & $env:REVIEW_CSC @common ('/define:' + ($flags -join ';')) ('/main:' + $main) ('/out:' + $output) @inputs *> $log
+              $rawExit = $LASTEXITCODE
+              Set-Content -LiteralPath (Join-Path $evidence ($artifact + '-compile.exit')) -Value $rawExit
+              if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Development compile failed' }
+          }
+      - name: Execute in-process lifecycle harness with real pipes and 40-second deadline
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p267-evidence-' + $env:REVIEW_ARCH)
+          $exe = Join-Path $env:RUNNER_TEMP ('p267-build-' + $env:REVIEW_ARCH + '/P267.Tests.' + $env:REVIEW_ARCH + '.exe')
+          $stdout = Join-Path $evidence 'native-runtime.log'
+          $stderr = Join-Path $evidence 'native-stderr.log'
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          try {
+              $process = Start-Process -FilePath $exe -ArgumentList '--permitted-disposable-runner' -WindowStyle Hidden -PassThru -ErrorAction Stop -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          } catch {
+              Set-Content -LiteralPath (Join-Path $evidence 'launch-status.log') -Value 'P267_NATIVE_LAUNCH=BLOCKED STOP_NO_RETRY'
+              throw 'Ordinary launch refused; no alternative loader'
+          }
+          $null = $process.Handle
+          $remaining = [Math]::Max(0, 40000 - [int]$watch.ElapsedMilliseconds)
+          $timedOut = -not $process.WaitForExit($remaining)
+          if ($timedOut) {
+              Stop-Process -Id $process.Id -ErrorAction Stop
+              if (-not $process.WaitForExit(5000)) { throw 'Timed-out harness did not terminate; HOLD' }
+          }
+          $rawExit = $process.ExitCode
+          Set-Content -LiteralPath (Join-Path $evidence 'native-runtime.exit') -Value $rawExit
+          Get-Content -LiteralPath $stdout
+          Get-Content -LiteralPath $stderr
+          if ($timedOut) { throw 'Native harness exceeded hard 40-second deadline; HOLD' }
+          if ($null -eq $rawExit -or $rawExit -ne 0) { throw 'Native failure or policy refusal; STOP, no retry' }
+          if ((Get-Item -LiteralPath $stderr).Length -ne 0) { throw 'Unexpected native stderr; HOLD' }
+          $lines = @(Get-Content -LiteralPath $stdout)
+          if ($lines.Count -ne 2 -or
+              $lines[0] -cnotmatch ('^P267_NATIVE_TESTS=PASS ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '$') -or
+              $lines[1] -cne 'P267_SAME_SID_APP_TRUST=UNTRUSTED P96=HOLD P76=HOLD REAL_KEY=NO_GO PRODUCTION=HOLD') {
+              throw 'Exact native receipt missing'
+          }
+      - name: Verify source hashes and clean exact HEAD after tests
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP ('p267-evidence-' + $env:REVIEW_ARCH)
+          $hashes = Get-Content -LiteralPath (Join-Path $evidence 'source-hashes.json') -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($entry in $hashes.GetEnumerator()) {
+              if ((Get-FileHash -LiteralPath $entry.Key -Algorithm SHA256).Hash -cne $entry.Value) { throw 'Source bytes changed' }
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace check failed' }
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Review checkout changed' }
+          Set-Content -LiteralPath (Join-Path $evidence 'post-source.log') -Value 'P267_SOURCE_HASHES_AFTER=UNCHANGED'
+      - name: Retain nonsecret text evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p267-atomic-ordering-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p267-evidence-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p267-evidence-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p267-evidence-${{ matrix.arch }}/*.json
+          if-no-files-found: error
