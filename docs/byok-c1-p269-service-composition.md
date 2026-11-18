@@ -46,7 +46,7 @@ registration or service launch is involved.
 Python checks source invariants, frozen SHA256 bytes for P95/P96/P265/P267/P268,
 and deliberately negative source mutations. These are structural checks, not a
 substitute for the native races. The pinned Actions workflow requires the exact
-branch, exact P268 base, a single child commit, exactly five additions, source
+branch, exact P268 base, exactly two commits since P268, exactly five additions, source
 hash custody, x64/x86 debug warning-as-error builds, missing-symbol compiler
 failures, and the actual native runner under a 40-second process watchdog.
 Artifacts contain only text logs, raw exits and SHA256 records, never executables.
@@ -59,3 +59,43 @@ Python results must be supplied by independent validation; no milestone seal is
 claimed. No Git commit/push or workbook/dashboard update was performed.
 
 Production service, real WinCred, issuer trust, and durable recovery remain HOLD.
+
+## Hosted failure remediation (2026-11-18)
+
+Failed candidate `50d43c2520fd8d1797c7e92ce6cc472112151c30` and Actions run
+`44257630856` remain preserved as failures. The reported Windows x64 native exit
+was 1: `P269_FAIL=System.ObjectDisposedException: Safe handle has been closed`,
+at `PipeStream.EndRead(IAsyncResult)`, Traffic line 37, called by Ordering line 66.
+Root cause is the test harness disposing `read.AsyncWaitHandle` before EndRead;
+this evidence does not identify a P96 coordinator defect.
+
+The repair holds the wait handle through exactly one EndRead. The 1500ms wait
+remains bounded; on timeout pipe disposal cancels pending I/O before EndRead,
+and the primary `reply deadline` error survives cancellation/disposal errors.
+Read errors after a successful wait still propagate. A narrow Python lifetime
+witness rejects the original bad ordering, moving EndRead outside the scope,
+unbounded waiting, missing cancellation, and masked timeout failures. Native
+assertions and the 23-case receipt remain unchanged.
+
+Workflow topology now requires HEAD^ to equal the failed candidate and HEAD^^
+to equal P268 `a7519059710fe5720dc55334e83d273ee8627e61`, both single-parent
+commits, with exactly two commits since P268. Nayeon must create one new focused
+repair commit; no amend or force-push. The aggregate P268 diff remains exactly
+the original five additive paths. SHA pins, both architectures, negative builds,
+and production HOLD remain in force.
+
+Open failure disposition: material harness failure; repair source prepared,
+independent review and fresh hosted x64/x86 runtime evidence pending, **HOLD**.
+The failed run is never counted as a pass. No milestone or production closure
+is claimed by compile-only or structural checks.
+
+Repair validation: workflow compile-only commands passed for x64 and x86 with
+all symbols and warning-as-error settings; all six missing-guard builds per
+architecture were rejected with the required diagnostics. An initial local
+compile rejected catch-filter syntax (CS1514/CS1002/CS1513); the final repair
+uses a framework-compiler-compatible conditional rethrow and both build sets
+were repeated successfully. No compiled executable was run locally.
+Evidence directory: `C:\Users\krist\AppData\Local\Temp\p269-repair-68308fbf158a475daa2768522355d714`.
+The authoritative Python invocation was unavailable (CommandNotFoundException);
+no alternate interpreter, installation or bypass was attempted. Five Python
+tests therefore remain unexecuted locally and required in hosted validation.

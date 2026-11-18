@@ -45,7 +45,49 @@ def violations(source):
         failures.append('uncertainty')
     return failures
 
+def read_lifetime_valid(source):
+    code = re.sub(r'//[^\n]*', '', source)
+    match = re.search(r'using\s*\(WaitHandle wait = read.AsyncWaitHandle\)\s*\{', code)
+    if not match:
+        return False
+    start = match.end()
+    depth = 1
+    end = start
+    while end < len(code) and depth:
+        depth += (code[end] == '{') - (code[end] == '}')
+        end += 1
+    scope = code[start:end - 1]
+    required = (
+        'bool completed = wait.WaitOne(1500);',
+        'try { if (!completed) pipe.Dispose(); } finally {',
+        'try { count = pipe.EndRead(read); }',
+        'catch (Exception) { if (completed) throw; count = 0; }',
+        'finally { if (!completed) throw new Exception("reply deadline"); }',
+    )
+    normalized = ' '.join(scope.split())
+    return (depth == 0 and code.count('pipe.EndRead(read)') == 1
+            and all(part in normalized for part in required))
+
+
 class CompositionSourceTests(unittest.TestCase):
+    def test_read_wait_handle_lifetime(self):
+        runner = (ROOT / 'tests/p269_successor/P269ComposedServiceTests.cs').read_text(encoding='utf-8-sig')
+        self.assertTrue(read_lifetime_valid(runner))
+        # Reproduce the failed candidate's disposal-before-EndRead ordering.
+        old = '''using (WaitHandle wait = read.AsyncWaitHandle)
+                { if (!wait.WaitOne(1500)) { pipe.Dispose(); throw new Exception("reply deadline"); } }
+                int count = pipe.EndRead(read);'''
+        self.assertFalse(read_lifetime_valid(old))
+        moved = runner.replace('try { count = pipe.EndRead(read); }', 'try { count = 0; }')
+        moved += '\npipe.EndRead(read);'
+        self.assertFalse(read_lifetime_valid(moved))
+        for old, new in (('wait.WaitOne(1500)', 'wait.WaitOne()'),
+                         ('if (!completed) pipe.Dispose();', ''),
+                         ('if (completed) throw;', ''),
+                         ('throw new Exception("reply deadline");', 'return;')):
+            self.assertIn(old, runner)
+            self.assertFalse(read_lifetime_valid(runner.replace(old, new)))
+
     def test_source_contract(self):
         self.assertEqual([], violations((ROOT / HOST).read_text(encoding='utf-8-sig')))
 

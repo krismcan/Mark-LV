@@ -47,12 +47,16 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP ('p269-evidence-' + $env:REVIEW_ARCH)
           New-Item -ItemType Directory -Path $evidence | Out-Null
           $parent = 'a7519059710fe5720dc55334e83d273ee8627e61'
+          $failedCandidate = '50d43c2520fd8d1797c7e92ce6cc472112151c30'
           if ((git rev-parse HEAD).Trim() -cne $env:REVIEW_HEAD -or
               $env:REVIEW_BASE -cne $parent -or
               $env:REVIEW_BRANCH -cne 'byok-c1-p269-service-owned-p96-composition-20261118' -or
               $env:REVIEW_TARGET -cne 'byok-c1-p268-p96-actual-successor-20261118' -or
-              (git rev-parse 'HEAD^').Trim() -cne $parent -or
-              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact one-child topology required' }
+              (git rev-parse 'HEAD^').Trim() -cne $failedCandidate -or
+              (git rev-parse 'HEAD^^').Trim() -cne $parent -or
+              (git rev-list --count ($parent + '..HEAD')).Trim() -cne '2' -or
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2 -or
+              ((git rev-list --parents -n 1 $failedCandidate) -split ' ').Count -ne 2) { throw 'Exact two-commit repair topology required' }
           $expected = @('native_c1_successor/P269ComposedDevelopmentService.cs',
               'tests/p269_successor/P269ComposedServiceTests.cs',
               'tests/test_byok_c1_p269_composition.py',
@@ -83,7 +87,7 @@ jobs:
           }
           $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'source-hashes.json')
           Set-Content -LiteralPath (Join-Path $evidence 'scope.log') -Value @(
-              ('HEAD=' + $env:REVIEW_HEAD), ('PARENT=' + $parent),
+              ('HEAD=' + $env:REVIEW_HEAD), ('PARENT=' + $parent), ('FAILED_CANDIDATE=' + $failedCandidate),
               'P269_SCOPE=DEVELOPMENT_ONLY DENIAL_ONLY PRODUCTION=HOLD')
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
@@ -100,7 +104,7 @@ jobs:
           Set-Content -LiteralPath (Join-Path $evidence 'source-tests.exit') -Value $rawExit
           Get-Content -LiteralPath $log
           if ($null -eq $rawExit -or $rawExit -ne 0 -or
-              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 4 tests in ') { throw 'Focused source checks failed' }
+              (Get-Content -LiteralPath $log -Raw) -notmatch '(?m)^Ran 5 tests in ') { throw 'Focused source checks failed' }
 
       - name: Compile guarded composition and negative guards
         run: |

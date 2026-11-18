@@ -33,8 +33,19 @@ internal static class P269ComposedServiceTests
             {
                 IAsyncResult read = pipe.BeginRead(reply, offset, reply.Length - offset, null, null);
                 using (WaitHandle wait = read.AsyncWaitHandle)
-                { if (!wait.WaitOne(1500)) { pipe.Dispose(); throw new Exception("reply deadline"); } }
-                int count = pipe.EndRead(read); Check(count > 0, "reply not EOF"); offset += count;
+                {
+                    bool completed = wait.WaitOne(1500);
+                    int count;
+                    try { if (!completed) pipe.Dispose(); }
+                    finally
+                    {
+                        // Complete exactly once before releasing the APM wait handle.
+                        try { count = pipe.EndRead(read); }
+                        catch (Exception) { if (completed) throw; count = 0; }
+                        finally { if (!completed) throw new Exception("reply deadline"); }
+                    }
+                    Check(count > 0, "reply not EOF"); offset += count;
+                }
             }
             Check(BitConverter.ToString(reply) == "43-31-44-4E-01-01-00-00", "wire is denial only");
             pipe.Write(new byte[] { 165 }, 0, 1);
