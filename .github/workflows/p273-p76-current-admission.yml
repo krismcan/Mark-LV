@@ -1,0 +1,88 @@
+name: P273 current P76 source evidence only (governance HOLD)
+on:
+  pull_request:
+    branches: [byok-c1-p272-os-bound-custody-admission-20261118]
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  source-evidence:
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == true &&
+          github.repository == 'krismcan/Mark-LV' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.base.repo.full_name == github.repository &&
+          github.event.pull_request.head.ref == 'byok-c1-p273-current-p76-admission-20261118' &&
+          github.event.pull_request.base.ref == 'byok-c1-p272-os-bound-custody-admission-20261118' &&
+          github.event.pull_request.base.sha == '67ce360667f51aad5891535120ab311907312371' }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      P273_ARCH: ${{ matrix.arch }}
+      P273_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      P273_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Select exact local branch without changing commit
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $branch = 'byok-c1-p273-current-p76-admission-20261118'
+          if ($env:GITHUB_REF -cnotmatch '\Arefs/pull/[1-9][0-9]*/merge\z' -or
+              $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:P273_BASE_SHA -cne '67ce360667f51aad5891535120ab311907312371' -or
+              $env:P273_HEAD_SHA -cnotmatch '\A[0-9a-f]{40}\z') { throw 'Wrong hosted source event' }
+          $actualHead = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actualHead -cne $env:P273_HEAD_SHA) { throw 'Wrong checkout HEAD' }
+          $actualBranch = git branch --show-current
+          if ($LASTEXITCODE -ne 0 -or $actualBranch) { throw 'Expected detached checkout' }
+          # Select a real local branch from the PR head, never the merge SHA.
+          git switch -c $branch
+          if ($LASTEXITCODE -ne 0) { throw 'Branch checkout refused' }
+          $actualHead = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actualHead -cne $env:P273_HEAD_SHA) { throw 'Branch HEAD differs' }
+          $actualBranch = git branch --show-current
+          if ($LASTEXITCODE -ne 0 -or $actualBranch -cne $branch) { throw 'Wrong local branch' }
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12.8'
+          architecture: ${{ matrix.arch }}
+      - name: Complete proofs and causal source mutation tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:RUNNER_TEMP ('p273-source-' + $env:P273_ARCH)
+          python -B -m scripts.p273_p76_hosted_suite $evidence
+          $native = $LASTEXITCODE
+          if ($null -eq $native -or $native -ne 0) { throw ('P273 source suite HOLD, runner exit=' + $native) }
+          $receipt = Get-Content -LiteralPath (Join-Path $evidence 'receipt.json') -Raw | ConvertFrom-Json
+          if ($receipt.source_candidate_tests_pass -ne $true -or $receipt.native_exit -ne 0 -or
+              $receipt.complete_source_equal -ne $true -or $receipt.expected_tests -ne 11) { throw 'Incomplete native receipt' }
+          Write-Output 'SOURCE EVIDENCE ONLY; original four FAIL unwaived; P76/P96 HOLD; real keys NO-GO; product 0/3'
+      - name: Preserve raw text evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p273-source-only-${{ matrix.arch }}
+          path: ${{ runner.temp }}/p273-source-${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
