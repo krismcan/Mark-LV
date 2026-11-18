@@ -1,6 +1,7 @@
 """P211 nondeployable high-assurance package *isolation* preflight.
 
-The current repo has REAL Python CredWrite/Delete capability (P132/P133).
+P275 retired the bundled native credential effects. The P132/P133 Python
+source-mode runtime route remains untrusted for high-assurance packaging.
 No genuine high-assurance signer, installer, kernel-enforced source isolation,
 trusted service or security review exists. This module is a fail-closed
 packaging INTAKE CANDIDATE, not a runtime security monitor or production
@@ -57,6 +58,19 @@ class P211SourceWitness:
         return (
             self.python_direct_native_credential_effect
             and self.p132_product_constructor_and_effect
+            and self.p133_source_mode_launcher
+        )
+
+    @property
+    def source_mode_runtime_risk_present(self) -> bool:
+        """Known controller/fixed Python child route, independent of native IO.
+
+        The factory and controller put/delete call sites remain source
+        evidence even when the default backend refuses mutation. This is
+        untrusted executable-path risk, not proof of a native effect.
+        """
+        return (
+            self.p132_product_constructor_and_effect
             and self.p133_source_mode_launcher
         )
 
@@ -147,19 +161,28 @@ def inspect_current_source_tree(root: Path) -> P211SourceWitness:
     """Return source-derived risk evidence; missing/changed source is NOT safe."""
     raw = {path: _source(root, path) for path in _FIXED_LEGACY_FILES}
     present = all(text is not None for text in raw.values())
-    try:
-        backend = ast.parse(raw["nayeon/secrets/windows_credential.py"] or "")
-        user = ast.parse(raw["nayeon/brain/local_byok_user_scope.py"] or "")
-    except (SyntaxError, ValueError):
-        backend = ast.parse("")
-        user = ast.parse("")
+    trees = {}
+    for path, text in raw.items():
+        if not path.endswith(".py") or text is None:
+            continue
+        try:
+            tree = ast.parse(text, filename=path)
+            compile(tree, path, "exec")
+        except (SyntaxError, ValueError, TypeError, UnicodeError):
+            present = False
+        else:
+            trees[path] = tree
+    # Parse/compile only in memory; never execute or import reviewed source.
+    # C# remains text-only evidence, with no syntax/compiler verification.
+    backend = trees.get("nayeon/secrets/windows_credential.py", ast.parse(""))
+    user = trees.get("nayeon/brain/local_byok_user_scope.py", ast.parse(""))
     original = raw["nayeon/secrets/windows_credential.py"] or ""
     scope = raw["nayeon/brain/local_byok_user_scope.py"] or ""
     launch = raw["nayeon/desktop_alpha/local_byok_launch_bridge.py"] or ""
     frozen = raw["nayeon/desktop_alpha/frozen_signed_byok_companion.py"] or ""
     native = raw["native_c1_candidate/CustodyService.cs"] or ""
-    # A negative signal due to tampering/missing source is SOURCE_UNPROVEN,
-    # never evidence that legacy effects were successfully removed.
+    # These are bounded source signals, not trusted runtime isolation proof.
+    # Unreadable/invalid Python is SOURCE_UNPROVEN; an absent route cannot GO.
     direct = (
         _has_class_method(backend, "_Advapi32Adapter", "write")
         and _has_class_method(backend, "_Advapi32Adapter", "delete")
@@ -231,12 +254,16 @@ def review_high_assurance_package_plan(
     source = inspect_current_source_tree(root)
     if not source.exact_legacy_source_readable:
         return P211PackageRefusalReceipt(P211Refusal.SOURCE_UNPROVEN,len(names),source)
-    if source.high_assurance_legacy_risk_present and any(
+    # LEGACY_EFFECT_PATH identifies an untrusted executable route; it does
+    # not assert that P275's retired native write/delete methods still exist.
+    if (source.high_assurance_legacy_risk_present
+        or source.source_mode_runtime_risk_present) and any(
         n.casefold().startswith((
             "nayeon/","native_c1_candidate/","core/",
             "tests/","scripts/","build/","dist/"
         )) or n.casefold().endswith((".py",".pyc",".pyd",".dll",".exe",
-                                    ".zip",".whl",".msi",".msix",".ps1"))
+                                    ".zip",".whl",".msi",".msix",".ps1",
+                                    ".pyw",".bat",".cmd",".vbs",".js",".sh"))
         for n in names
     ):
         return P211PackageRefusalReceipt(P211Refusal.LEGACY_EFFECT_PATH,len(names),source)
