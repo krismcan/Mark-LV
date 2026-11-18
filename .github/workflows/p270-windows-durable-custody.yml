@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
       - name: Exact parent five additions and frozen source
         env:
@@ -45,10 +45,12 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP ('p270-evidence-' + $env:REVIEW_ARCH)
           New-Item -ItemType Directory -Path $evidence | Out-Null
           $parent = 'b160244c26dda096e86ec03ca0bd23b10ed29679'
+          $first = '815dda613602ec47ec1e5c539ab31d795b2329ee'
           if ((git rev-parse HEAD).Trim() -cne $env:REVIEW_HEAD -or
-              (git rev-parse 'HEAD^').Trim() -cne $parent -or $env:REVIEW_BASE -cne $parent -or
+              (git rev-parse 'HEAD^').Trim() -cne $first -or
+              (git rev-parse 'HEAD^^').Trim() -cne $parent -or $env:REVIEW_BASE -cne $parent -or
               $env:REVIEW_BRANCH -cne 'byok-c1-p270-durable-protected-custody-20261118' -or
-              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact P269 parent required' }
+              ((git rev-list --parents -n 1 HEAD) -split ' ').Count -ne 2) { throw 'Exact P270 remediation ancestry required' }
           $expected = @('native_c1_successor/P270DevelopmentDurableWitness.cs',
             'tests/p270_successor/P270DurableWitnessTests.cs', 'tests/test_byok_c1_p270_durable_witness.py',
             '.github/workflows/p270-windows-durable-custody.yml', 'docs/byok-c1-p270-durable-custody.md')

@@ -13,6 +13,7 @@ PATHS = {
     '.github/workflows/p270-windows-durable-custody.yml',
     'docs/byok-c1-p270-durable-custody.md',
 }
+FIRST_P270 = '815dda613602ec47ec1e5c539ab31d795b2329ee'
 PARENT = 'b160244c26dda096e86ec03ca0bd23b10ed29679'
 FROZEN = {
     'tests/p95_native_custody_preflight/CustodyLedger.cs': '93a5eeec6ee6cc4f6fff5146b5709f57cbdd37559d62de0bd4691bf678d5ce0b',
@@ -27,6 +28,8 @@ def contract(source):
         '#if !DEBUG', '#error P270_NO_RELEASE_BUILD',
         '#if !C1_P270_DEVELOPMENT_ONLY', '#error P270_DEVELOPMENT_OPT_IN_REQUIRED',
         'internal sealed class DurableWitness : IDisposable',
+        'internal static string TestStage = "not-started";',
+        'TestStage = "file-owner";', 'TestStage = "dpapi-protect";',
         'Environment.OSVersion.Platform == PlatformID.Win32NT',
         'Path.GetDirectoryName(root), temp, StringComparison.OrdinalIgnoreCase',
         'DriveType == DriveType.Fixed', 'Guid.TryParseExact', 'Directory.GetFileSystemEntries(root).Length == 0',
@@ -72,6 +75,7 @@ class P270SourceTests(unittest.TestCase):
     def test_mutations_red(self):
         original = (ROOT / SOURCE).read_text(encoding='utf-8-sig')
         for old, new in (
+            ('TestStage = "file-owner";', 'TestStage = "unknown";'),
             ('stream.Flush(true)', 'stream.Flush()'),
             ('0x80200000', '0x80000000'),
             ('Require(info.Links == 1)', 'Require(true)'),
@@ -103,8 +107,12 @@ class P270SourceTests(unittest.TestCase):
         def git(*args):
             return subprocess.check_output(['git', *args], cwd=ROOT, text=True).strip()
         head = git('rev-parse', 'HEAD')
-        if head != PARENT:
+        if head == FIRST_P270:  # Local precommit diagnostics only.
             self.assertEqual(git('rev-parse', 'HEAD^'), PARENT)
+        else:
+            self.assertEqual(git('rev-parse', 'HEAD^'), FIRST_P270)
+            self.assertEqual(git('rev-parse', 'HEAD^^'), PARENT)
+        self.assertEqual(len(git('rev-list', '--parents', '-n', '1', 'HEAD').split()), 2)
         changed = set(filter(None, git('diff', '--name-only', PARENT).splitlines()))
         untracked = set(filter(None, git('ls-files', '--others', '--exclude-standard').splitlines()))
         self.assertEqual(changed | untracked, PATHS)
@@ -113,7 +121,7 @@ class P270SourceTests(unittest.TestCase):
 
     def test_hosted_runner_safety_and_cases(self):
         text = (ROOT / 'tests/p270_successor/P270DurableWitnessTests.cs').read_text(encoding='utf-8-sig')
-        for token in ('github-hosted', 'P270_HOSTED_DISPOSABLE', 'WindowsIdentity.GetCurrent().IsSystem',
+        for token in ('P270_FAIL_CASE=', 'P270_FAIL_STAGE=', 'finally { if (blocked) DurableWitness.TestStage = stage; }', 'github-hosted', 'P270_HOSTED_DISPOSABLE', 'WindowsIdentity.GetCurrent().IsSystem',
                       'Directory.Delete(Root, false)', 'File.Delete(path)', 'torn-half-journal-flushed',
                       'journal-only-crash', 'same-process-stale-cas-latches', 'repeat-enrollment',
                       'cross-root-entropy', 'file-reparse-denied-if-supported', 'same-sid-replay-never-restarts'):
@@ -123,7 +131,7 @@ class P270SourceTests(unittest.TestCase):
 
     def test_workflow_pins_guards_and_watchdog(self):
         text = (ROOT / '.github/workflows/p270-windows-durable-custody.yml').read_text(encoding='utf-8-sig')
-        for token in (PARENT, 'windows-latest', 'arch: x64', 'arch: x86', '/warnaserror+',
+        for token in (PARENT, FIRST_P270, 'HEAD^^', 'fetch-depth: 3', 'windows-latest', 'arch: x64', 'arch: x86', '/warnaserror+',
                       'System.Security.dll', '40000', 'runtime.exit', 'Get-FileHash',
                       'P270_NO_RELEASE_BUILD', 'P270_DEVELOPMENT_OPT_IN_REQUIRED', 'P270_HOSTED_DISPOSABLE',
                       '11bd71901bbe5b1630ceea73d27597364c9af683',

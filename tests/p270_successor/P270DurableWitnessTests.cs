@@ -11,23 +11,29 @@ using Nayeon.ByokC1.P270Development;
 internal static class P270DurableWitnessTests
 {
     private static int cases, assertions;
+    private static string testCase = "hosted-entry-gates";
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool CreateSymbolicLink(string link, string target, uint flags);
     private static void Assert(bool value) { assertions++; if (!value) throw new Exception("P270 assertion " + assertions); }
     private static void Block(Action action)
-    { bool blocked = false; try { action(); } catch (LedgerBlocked) { blocked = true; } Assert(blocked); }
+    { string stage = DurableWitness.TestStage;
+      bool blocked = false; try { action(); } catch (LedgerBlocked) { blocked = true; }
+      finally { if (blocked) DurableWitness.TestStage = stage; } Assert(blocked); }
     private sealed class Scope : IDisposable
     {
         internal readonly string Root;
         internal Scope()
         {
+            DurableWitness.TestStage = "scope-root";
             Root = Path.Combine(Path.GetTempPath(), "nayeon-p270-" + Guid.NewGuid().ToString("N"));
+            DurableWitness.TestStage = "scope-acl";
             DirectorySecurity acl = new DirectorySecurity();
             SecurityIdentifier sid = WindowsIdentity.GetCurrent().User;
             acl.SetOwner(sid); acl.SetAccessRuleProtection(true, false);
             acl.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
                 PropagationFlags.None, AccessControlType.Allow));
+            DurableWitness.TestStage = "scope-create";
             Directory.CreateDirectory(Root, acl);
         }
         internal string FilePath(string name) { return Path.Combine(Root, name); }
@@ -41,7 +47,8 @@ internal static class P270DurableWitnessTests
         }
     }
     private static void Run(string name, Action test)
-    { test(); cases++; Console.WriteLine("PASS " + name); }
+    { testCase = name; DurableWitness.TestStage = "case-entry";
+      test(); cases++; Console.WriteLine("PASS " + name); }
     private static void ReopenDenied(Scope scope, bool consistent)
     {
         using (DurableWitness witness = new DurableWitness(scope.Root, false))
@@ -239,6 +246,12 @@ internal static class P270DurableWitnessTests
             Console.WriteLine("P270_SCOPE=DEVELOPMENT_ONLY SYNTHETIC_ONLY PRODUCTION=HOLD");
             return 0;
         }
-        catch (Exception error) { Console.Error.WriteLine("P270_HOLD " + error.GetType().Name + " " + error.Message); return 1; }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("P270_HOLD " + error.GetType().Name);
+            Console.Error.WriteLine("P270_FAIL_CASE=" + testCase);
+            Console.Error.WriteLine("P270_FAIL_STAGE=" + DurableWitness.TestStage);
+            return 1;
+        }
     }
 }

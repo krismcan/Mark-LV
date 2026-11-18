@@ -91,12 +91,12 @@ Cleanup deletes only immediate files (including links themselves) in the exact
 new root and deletes that root nonrecursively. No user input or user files.
 
 `tests/test_byok_c1_p270_durable_witness.py` supplies five focused source,
-frozen-hash, scope, runner, workflow and red mutation checks. The 20 mutation
+frozen-hash, scope, runner, workflow and red mutation checks. The 21 mutation
 probes remove or weaken explicit source protections; these are static guard
 checks, not substitutes for Windows execution or independent security review.
 
 `.github/workflows/p270-windows-durable-custody.yml` pins checkout/setup-python
-by full SHA; requires a clean one-child commit over exact P269 and exactly
+by full SHA; requires a clean remediation child of the first P270 commit over exact P269 and exactly
 five added paths; pins P95/P96/P269 source plus P269 workflow hashes; and thus
 freezes all other historical source via the exact-parent delta restriction.
 It runs Python checks and x64/x86 .NET Framework C# warning-as-error builds,
@@ -148,3 +148,43 @@ reviewed real WinCred effect port to repaired P268; real recovery authorization,
 crash/power-loss assurance, independent review and all required regressions.
 Real keys NO-GO. Production RELEASE HOLD. No OS-enforced antirollback,
 production journal, installed service or real service acceptance claim.
+
+
+## First hosted failure and bounded diagnostic follow-up (2026-11-18)
+
+User-supplied evidence: draft PR #190, first Actions run 44267760065,
+immutable first P270 commit 815dda613602ec47ec1e5c539ab31d795b2329ee
+(parent P269 b160244c26dda096e86ec03ca0bd23b10ed29679).
+Both x64/x86 native runtimes exited 1 at or before the first PASS receipt:
+`P270_HOLD LedgerBlocked Pending custody recovery required`.
+Python source checks passed 5/5 and positive/negative compiler guards passed.
+This is an unclassified native fail-closed refusal, not an accepted negative.
+
+Severity: material verification blocker. Root cause UNKNOWN. Limited source
+inspection covered Scope provisioning, constructor ancestor handles/root ACL,
+file handles/owner, DPAPI persistence/readback and initial-case expectations.
+No source-proven OS API defect was established. No ACL, handle, reparse,
+hard-link, framing, restart, CAS or fail-closed check is removed or relaxed.
+The affected route is this isolated hosted harness into DurableWitness;
+frozen P95/P96/P265-P269 and production entrypoints remain unchanged.
+
+Follow-up adds TEST-ONLY fixed stage state and a literal current case label.
+Only the top-level failing catch prints P270_FAIL_CASE and P270_FAIL_STAGE;
+it retains the fixed LedgerBlocked HOLD message and never prints exception
+messages, paths, SIDs, usernames, ciphertext or sensitive bytes. Expected
+LedgerBlocked probes restore stage state and emit no stderr. Stage values
+are diagnostic breadcrumbs, not proof of the failed predicate or authority.
+The original 22 cases, hosted guards, watchdog and empty-stderr pass gate remain.
+
+CI now requires HEAD^ to equal the preserved first P270 commit and HEAD^^
+to equal P269, with depth 3 and the same exact five additive paths from P269.
+The Python guard permits that first P270 HEAD during local precommit checks;
+a subsequent HEAD must have the exact two-commit ancestry. Frozen hashes remain.
+No amend, tag movement, commit, push, CI launch or workbook/dashboard update.
+
+Disposition: diagnostic source candidate only; native root-cause closure,
+hosted x64/x86 22-case rerun and independent review OPEN. Production and
+milestone HOLD. Nayeon may review/stage/commit and run hosted diagnostics;
+use its fixed first failing case/stage to guide a separately reviewed repair.
+Authoritative Python is unavailable in this sandbox; no replacement installed.
+Local compile-only outcomes are reported in the handoff, never runtime proof.
