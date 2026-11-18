@@ -52,7 +52,10 @@ def _load_advapi32():
 
 
 class _Advapi32Adapter:
-    """Private native seam. Returned CredRead buffers have one finally owner."""
+    """Presence-only native seam; returned buffers have one finally owner.
+
+    This source retirement is not OS isolation from hostile same-user code.
+    """
 
     def __init__(self) -> None:
         try:
@@ -60,68 +63,33 @@ class _Advapi32Adapter:
             self._dll.CredReadW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32,
                                             ctypes.c_uint32, ctypes.POINTER(_PCREDENTIALW)]
             self._dll.CredReadW.restype = ctypes.c_int32
-            self._dll.CredWriteW.argtypes = [_PCREDENTIALW, ctypes.c_uint32]
-            self._dll.CredWriteW.restype = ctypes.c_int32
-            self._dll.CredDeleteW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32]
-            self._dll.CredDeleteW.restype = ctypes.c_int32
             self._dll.CredFree.argtypes = [ctypes.c_void_p]
             self._dll.CredFree.restype = None
         except Exception:
             raise SecretStorageError(_FAILURE) from None
 
-    def _acquire(self, target: str):
-        pointer = _PCREDENTIALW()
-        if not self._dll.CredReadW(target, _CRED_TYPE_GENERIC, 0, ctypes.byref(pointer)):
-            if ctypes.get_last_error() == _ERROR_NOT_FOUND:
-                return None
-            raise SecretStorageError(_FAILURE)
-        return pointer
-
     def read(self, target: str) -> bytes | None:
-        pointer = self._acquire(target)
-        if pointer is None:
-            return None
-        try:
-            credential = pointer.contents
-            size = credential.CredentialBlobSize
-            if not 1 <= size <= _MAX_BLOB_BYTES or not credential.CredentialBlob:
-                raise SecretStorageError(_FAILURE)
-            return ctypes.string_at(credential.CredentialBlob, size)
-        finally:
-            self._dll.CredFree(pointer)
+        # Inert compatibility shim for original P258 mock-patch semantics.
+        # No setup, reader call, buffer acquisition or plaintext extraction.
+        raise SecretStorageError(_FAILURE)
 
     def contains(self, target: str) -> bool:
-        pointer = self._acquire(target)
-        if pointer is None:
-            return False
+        pointer = _PCREDENTIALW()
         try:
-            return True
-        finally:
-            self._dll.CredFree(pointer)
-
-    def write(self, target: str, blob: bytes, credential_type: int,
-              persist: int, username: str) -> None:
-        buffer = (ctypes.c_ubyte * len(blob)).from_buffer_copy(blob)
-        credential = _CREDENTIALW()
-        credential.Type = credential_type
-        credential.TargetName = target
-        credential.CredentialBlobSize = len(blob)
-        credential.CredentialBlob = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))
-        credential.Persist = persist
-        credential.UserName = username
-        try:
-            if not self._dll.CredWriteW(ctypes.byref(credential), 0):
-                raise SecretStorageError(_FAILURE)
-        finally:
-            # Best-effort cleanup of this ctypes copy, not all Python plaintext.
-            ctypes.memset(buffer, 0, len(blob))
-
-    def delete(self, target: str) -> bool:
-        if self._dll.CredDeleteW(target, _CRED_TYPE_GENERIC, 0):
-            return True
-        if ctypes.get_last_error() == _ERROR_NOT_FOUND:
-            return False
-        raise SecretStorageError(_FAILURE)
+            try:
+                if not self._dll.CredReadW(target, _CRED_TYPE_GENERIC, 0, ctypes.byref(pointer)):
+                    if ctypes.get_last_error() == _ERROR_NOT_FOUND and not pointer:
+                        return False
+                    raise SecretStorageError(_FAILURE)
+                if not pointer:
+                    raise SecretStorageError(_FAILURE)
+                return True
+            finally:
+                # Partial output belongs here even on false/exception paths.
+                if pointer:
+                    self._dll.CredFree(pointer)
+        except Exception:
+            raise SecretStorageError(_FAILURE) from None
 
 
 class WindowsCredentialBackend:
