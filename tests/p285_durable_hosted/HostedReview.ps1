@@ -31,12 +31,29 @@ function Assert-NoLinks([string]$Path) {
     }
 }
 $head = [string](Git-Read @('rev-parse','HEAD'))
-if ($head -cne $pr.head.sha -or
-    [string](Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $parent)) { throw 'Exact single P284 child required' }
+if ($head -cne $pr.head.sha) { throw 'Exact PR head HOLD' }
 $added = @('tests/p285_durable_hosted/P285HostedDurableRunner.cs',
     'tests/p285_durable_hosted/HostedReview.ps1',
     '.github/workflows/p285-windows-disposable-durable-review.yml',
     'docs/byok-c1-p285-durable-hosted-test-boundary.md')
+# Exact original child, then at most four linear repairs to existing P285 files.
+$original = '050106426a4fe3c64d8943558df2ff372cf988bf'
+$history = @(Git-Read @('rev-list','--reverse','--parents',($parent + '..' + $head)))
+if ($history.Count -lt 1 -or $history.Count -gt 5) { throw 'Bounded P285 history HOLD' }
+$previous = $parent
+for ($i = 0; $i -lt $history.Count; $i++) {
+    if ($history[$i] -cnotmatch '\A([0-9a-f]{40}) ([0-9a-f]{40})\z') { throw 'Linear P285 history HOLD' }
+    $commit = $Matches[1]; $commitParent = $Matches[2]
+    if ($commitParent -cne $previous -or ($i -eq 0 -and $commit -cne $original)) { throw 'Exact P285 ancestry HOLD' }
+    if ($i -gt 0) {
+        foreach ($change in @(Git-Read @('diff','--name-status','--no-renames',$previous,$commit))) {
+            if ($change -cnotmatch '\AM\t([a-zA-Z0-9_./-]+)\z' -or
+                $Matches[1] -cnotin $added) { throw 'P285 repair scope HOLD' }
+        }
+    }
+    $previous = $commit
+}
+if ($previous -cne $head) { throw 'Exact P285 tip HOLD' }
 $actual = @(Git-Read @('diff','--name-status','--no-renames',$parent,$head) | Sort-Object)
 if (@(Compare-Object @($added | ForEach-Object { "A`t$_" } | Sort-Object) $actual -CaseSensitive).Count) { throw 'Additive scope HOLD' }
 $before = @(Git-Read @('ls-tree','-r',$parent))
