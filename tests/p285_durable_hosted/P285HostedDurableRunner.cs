@@ -159,17 +159,11 @@ internal static class P285HostedDurableRunner
                 else
                 {
                     // Never retain messages, arguments or source locations. One type
-                    // and two distinct literal-allowlisted methods bound diagnostics.
+                    // and two distinct namespace-allowlisted methods bound diagnostics.
                     Match exception = Regex.Match(line,
                         @"\A(?:Unhandled Exception: |Unhandled exception\. )(System\.[A-Za-z][A-Za-z0-9.]{0,100}Exception):");
                     Match frame = childException ? Regex.Match(line,
-                        @"\A[ \t]*at ((?:Nayeon\.ByokC1\.(?:" +
-                        @"P270Development\.DurableWitness\.(?:Require|CheckHandle|Open|CheckLayout|Entropy|Read|Persist|InspectConsistent|ReadJournal|ReadAnchor|Snapshot|WriteJournal|WriteAnchor|Dispose)|" +
-                        @"P271Development\.DurableDevelopmentBridge\.(?:Require|PersistPrior|CheckSnapshots|CheckComplete|Probe|Start|Prepare|Submit|Revoke|Stop|Fault|Observe|TestConsistent|TestPhase|TestCloseWitness|TestSkew|TestUntrust|TestEffectFailure|TestPoisonWitness|Dispose)|" +
-                        @"P284Development\.DurableOperationAdmission\.(?:TestOnlyCreate|Start|TestMarkerDigest|Valid|Same|Issue|Submit|ProbeInsidePendingGate|Control|Revoke|Stop|Fault|Observe|TestConsistent|TestFailEffect|TestCloseWitness|TestPhase|Dispose)|" +
-                        @"P282ExecutingServiceCustody\.(?:NoImpersonation|Capture|IsSyntheticRunnerUser|IsSyntheticRunner|BindSyntheticRunner))|" +
-                        @"DurableOperationAdmissionTests\.(?:Create|Check|Run|Marker|Request|Later|Success|Control|Join|NoReplay|MetadataOnly|Mismatch|InvalidIssue|Foreign|Ordering|Expiry|Callback|DoubleSubmit|CallbackControlTimeout|Lifecycle|UncertainEffect|AtPoint|ExtraCases|Main)|" +
-                        @"System\.(?:Threading\.(?:ThreadHelper\.(?:ThreadStart|ThreadStart_Context)|ExecutionContext\.(?:Run|RunInternal))|Security\.Principal\.(?:WindowsIdentity\.Impersonate|WindowsImpersonationContext\.(?:Undo|Dispose)))))\(") : Match.Empty;
+                        @"\A[ \t]+at ((?=[A-Za-z0-9._+]{1,120}\()(?:System\.|Microsoft\.Win32\.|Microsoft\.|Nayeon\.ByokC1\.|DurableOperationAdmissionTests\.)[A-Za-z0-9_+]+(?:\.[A-Za-z0-9_+]+)*)\(") : Match.Empty;
                     if (exception.Success)
                     {
                         if (!childException) stderr.AppendLine("P285_CHILD_EXCEPTION_TYPE=" + exception.Groups[1].Value);
