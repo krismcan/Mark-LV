@@ -368,7 +368,7 @@ jobs:
               foreach ($entry in $entries) {
                   $exe = Join-Path $build.FullName ($entry + '.exe')
                   $result = Compile ('compile-' + $entry) ($common +
-                      @('/define:' + ($flags -join ';'), '/main:' + $entry, '/out:' + $exe) + $inputs)
+                      @(('/define:' + ($flags -join ';')), ('/main:' + $entry), ('/out:' + $exe)) + $inputs)
                   if ($result.code -ne 0 -or !(Test-Path -LiteralPath $exe -PathType Leaf)) { $buildFailed = $true }
                   else { Receipt ($entry + '.exe.sha256') ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) }
               }
@@ -377,7 +377,7 @@ jobs:
                   $define = @(); if ($selected.Count) { $define = @('/define:' + ($selected -join ';')) }
                   $exe = Join-Path $build.FullName ('guard-' + $missing + '.exe')
                   $result = Compile ('guard-' + $missing) ($common + $define +
-                      @('/main:ExecutingServiceCustodyTests','/out:' + $exe) + $inputs)
+                      @('/main:ExecutingServiceCustodyTests',('/out:' + $exe)) + $inputs)
                   if ($result.code -ne 1 -or (Test-Path -LiteralPath $exe) -or
                       ($result.stdout + $result.stderr) -notmatch 'error CS1029:.*P282_IDENTITY_CUSTODY_REVIEW_ONLY_NONDEPLOYABLE') { $buildFailed = $true }
               }
@@ -389,7 +389,7 @@ jobs:
                   'tests/p261_scm_readonly/ScmReadOnlyTests.cs') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
               $scmExe = Join-Path $build.FullName 'ScmReadOnlyTests.exe'
               $result = Compile 'compile-ScmReadOnlyTests' ($common +
-                  @('/define:C1_REVIEW_ISOLATED_ASSEMBLY','/main:ScmReadOnlyTests','/out:' + $scmExe) + $scmInputs)
+                  @('/define:C1_REVIEW_ISOLATED_ASSEMBLY','/main:ScmReadOnlyTests',('/out:' + $scmExe)) + $scmInputs)
               if ($result.code -ne 0 -or !(Test-Path -LiteralPath $scmExe -PathType Leaf)) { throw 'Original SCM compile HOLD' }
               Receipt 'ScmReadOnlyTests.exe.sha256' ((Get-FileHash -LiteralPath $scmExe -Algorithm SHA256).Hash)
               $runtimeFailed = $false
