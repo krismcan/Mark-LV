@@ -25,7 +25,7 @@ internal static class P285HostedDurableRunner
     private static int passed, aggregates, holds, outputChars;
     private static bool invalidOutput;
     private static bool childException, redactedStderr;
-    private static readonly List<string> childStack = new List<string>(2);
+    private static readonly List<string> childStack = new List<string>(6);
     private static string temp, evidence;
     private static SecurityIdentifier sid;
     private static void Require(bool value) { if (!value) throw new InvalidOperationException(); }
@@ -159,7 +159,7 @@ internal static class P285HostedDurableRunner
                 else
                 {
                     // Never retain messages, arguments or source locations. One type
-                    // and two distinct namespace-allowlisted methods bound diagnostics.
+                    // and six distinct namespace-allowlisted methods bound diagnostics.
                     Match exception = Regex.Match(line,
                         @"\A(?:Unhandled Exception: |Unhandled exception\. )(System\.[A-Za-z][A-Za-z0-9.]{0,100}Exception):");
                     Match frame = childException ? Regex.Match(line,
@@ -173,7 +173,7 @@ internal static class P285HostedDurableRunner
                     {
                         string method = frame.Groups[1].Value;
                         method = method.Substring(0, Math.Min(method.Length, 120));
-                        if (childStack.Count < 2 && !childStack.Contains(method))
+                        if (childStack.Count < 6 && !childStack.Contains(method))
                         { childStack.Add(method); stderr.AppendLine("P285_CHILD_STACK_METHOD=" + method); }
                     }
                     else if (!redactedStderr)
