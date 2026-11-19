@@ -1,0 +1,205 @@
+name: P284 draft-PR read-only denials (durable runtime HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [byok-c1-p283-operation-bound-admission-20261119]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  read-only-denials:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            framework: Framework64
+          - arch: x86
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - name: Admit only the exact same-repository draft PR
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV') { throw 'Draft PR event required' }
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $pr = $event.pull_request
+          if ($event.action -cnotin @('opened','synchronize','reopened') -or
+              $pr.draft -isnot [bool] -or $pr.draft -ne $true -or
+              $event.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.head.repo.full_name -cne $event.repository.full_name -or
+              $pr.base.repo.full_name -cne $event.repository.full_name -or
+              $pr.head.ref -cne 'byok-c1-p284-durable-operation-bound-admission-20261119' -or
+              $pr.base.ref -cne 'byok-c1-p283-operation-bound-admission-20261119' -or
+              $env:GITHUB_HEAD_REF -cne $pr.head.ref -or $env:GITHUB_BASE_REF -cne $pr.base.ref -or
+              $pr.base.sha -cne '9730d810670023909aa1fc3213a4c1130ad6ffb0' -or
+              $pr.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'Exact same-repository draft PR required' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Compile exact source and run only pre-witness denials
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          Set-StrictMode -Version Latest
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cne 'win22' -or
+              $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:REVIEW_ARCH -cnotin @('x64','x86') -or
+              $env:REVIEW_FRAMEWORK -cne (@{x64='Framework64';x86='Framework'}[$env:REVIEW_ARCH])) { throw 'Hosted draft PR review required' }
+          $parent = '9730d810670023909aa1fc3213a4c1130ad6ffb0'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          function Git-Read([string[]]$Arguments) {
+              $result = @(& git @Arguments)
+              if ($LASTEXITCODE -ne 0) { throw 'Git read failed' }
+              return $result
+          }
+          $head = Git-Read @('rev-parse','HEAD')
+          # PR GITHUB_SHA may identify a merge commit; custody binds the event head.
+          if ($head -cne $event.pull_request.head.sha -or $event.pull_request.base.sha -cne $parent -or
+              (Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $parent)) { throw 'Exact single child of P283 required' }
+          $added = @('native_c1_successor/P284DurableOperationAdmission.cs',
+              'tests/p284_durable_operation/DurableOperationAdmissionTests.cs',
+              'tests/p284_durable_operation/CompileReview.ps1',
+              'docs/byok-c1-p284-durable-operation-admission.md',
+              '.github/workflows/p284-windows-read-only-admission-review.yml')
+          $expected = @($added | ForEach-Object { "A`t$_" } | Sort-Object)
+          $actual = @(Git-Read @('diff','--name-status','--no-renames',$parent,$head) | Sort-Object)
+          if (@(Compare-Object $expected $actual -CaseSensitive).Count -ne 0 -or
+              @(Git-Read @('status','--porcelain=v1','--untracked-files=all','--ignored')).Count -ne 0) { throw 'Unexpected source scope' }
+          $pins = @{
+              'native_c1_successor/P284DurableOperationAdmission.cs' = 'FC951E6F515A1803D1405129616BCDDCBF8F3A1E93FC0BC761F72FFFF09F0951'
+              'tests/p284_durable_operation/DurableOperationAdmissionTests.cs' = 'E6D91A8B95B85B22F62AE6EE206CE37C2D0C990B2016553F9C7A5D583B68E340'
+              'tests/p284_durable_operation/CompileReview.ps1' = '1B5CF9E774E7C6AFF059A2489F7A2729CB1041E7C519C47DDBF0BAAFECE783E1'
+          }
+          # Every inherited tree entry must survive unchanged; verify disk raw blobs too.
+          $before = @(Git-Read @('ls-tree','-r',$parent))
+          $after = @(Git-Read @('ls-tree','-r',$head))
+          $inherited = @($after | Where-Object { ($_ -split "`t",2)[1] -cnotin $added })
+          if ($before.Count -ne 1143 -or $after.Count -ne 1148 -or
+              @(Compare-Object $before $inherited -CaseSensitive).Count -ne 0) { throw 'Inherited source changed' }
+          $evidence = Join-Path $env:RUNNER_TEMP ('p284-read-only-' + $env:REVIEW_ARCH)
+          if (Test-Path -LiteralPath $evidence) { throw 'Evidence root exists' }
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          $hashes = @()
+          foreach ($entry in $after) {
+              if ($entry -cnotmatch '\A100644 blob ([0-9a-f]{40})\t([a-zA-Z0-9_./-]+)\z') { throw 'Unexpected source entry' }
+              $oid = $Matches[1]; $path = $Matches[2]
+              $item = Get-Item -LiteralPath $path -Force
+              if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                  (Git-Read @('hash-object','--no-filters','--',$path)) -cne $oid) { throw 'Disk/blob mismatch' }
+              $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+              if ($pins.ContainsKey($path) -and $sha -cne $pins[$path]) { throw 'Candidate pin mismatch' }
+              $hashes += "$sha $path"
+          }
+          $hashes | Set-Content -LiteralPath (Join-Path $evidence 'source.sha256')
+          $sources = @('tests/p95_native_custody_preflight/CustodyLedger.cs',
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+              'tests/p99_original_native_c1_denial/ServiceGate.cs', 'tests/p99_original_native_c1_denial/ProtectedAcl.cs',
+              'native_c1_candidate/P261ScmReadOnlyAdmission.cs', 'native_c1_candidate/P279RunningServiceTokenReadOnly.cs',
+              'native_c1_candidate/ServiceBoundRequestIdentity.cs', 'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'native_c1_successor/P267DevelopmentAtomicService.cs', 'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+              'native_c1_successor/P269ComposedDevelopmentService.cs', 'native_c1_successor/P270DevelopmentDurableWitness.cs',
+              'native_c1_successor/P271DurableDevelopmentBridge.cs', 'native_c1_successor/P282ExecutingServiceCustody.cs',
+              'native_c1_successor/P284DurableOperationAdmission.cs', 'tests/p284_durable_operation/DurableOperationAdmissionTests.cs')
+          $inputs = @($sources | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+          $dir = Join-Path $env:WINDIR ('Microsoft.NET/' + $env:REVIEW_FRAMEWORK + '/v4.0.30319')
+          $csc = (Resolve-Path -LiteralPath (Join-Path $dir 'csc.exe')).Path
+          $flags = @('DEBUG','C1_REVIEW_ISOLATED_ASSEMBLY','C1_P265_DEVELOPMENT_ONLY','C1_P267_DEVELOPMENT_ONLY',
+              'C1_P268_DEVELOPMENT_ONLY','C1_P269_DEVELOPMENT_ONLY','C1_P270_DEVELOPMENT_ONLY',
+              'C1_P271_DEVELOPMENT_ONLY','C1_P282_IDENTITY_CUSTODY_REVIEW_ONLY','C1_P284_DURABLE_OPERATION_REVIEW_ONLY')
+          $exe = Join-Path $env:RUNNER_TEMP ('p284-denials-' + $env:REVIEW_ARCH + '.exe')
+          if (Test-Path -LiteralPath $exe) { throw 'Binary exists' }
+          $invokeArgs = @('/nologo','/noconfig','/warn:4','/warnaserror+','/target:exe','/debug+','/optimize-')
+          $invokeArgs += '/platform:' + $env:REVIEW_ARCH
+          foreach ($r in @('System.dll','System.Core.dll','System.Security.dll','System.ServiceProcess.dll')) { $invokeArgs += '/reference:' + (Join-Path $dir $r) }
+          $invokeArgs += '/define:' + ($flags -join ';')
+          $invokeArgs += '/main:P284ReadOnlyNegativeTests'
+          $invokeArgs += '/out:' + $exe
+          $invokeArgs += $inputs
+          # Only this entrypoint runs. Never execute CompileReview.ps1 or any durable harness.
+          $rawLog = Join-Path $env:RUNNER_TEMP ('p284-csc-' + $env:REVIEW_ARCH + '.raw')
+          & $csc @invokeArgs *> $rawLog
+          $raw = $LASTEXITCODE
+          Set-Content -LiteralPath (Join-Path $evidence 'compile.exit') -Value $raw
+          $log = [IO.File]::ReadAllText($rawLog)
+          foreach ($p in @($env:GITHUB_WORKSPACE,$env:RUNNER_TEMP,$env:WINDIR)) { $log = $log.Replace($p,'<PATH>') }
+          Set-Content -LiteralPath (Join-Path $evidence 'compile.log') -Value $log
+          if ($raw -ne 0 -or !(Test-Path -LiteralPath $exe)) { throw 'Compile HOLD' }
+          (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash |
+              Set-Content -LiteralPath (Join-Path $evidence 'binary.sha256')
+          $si = [Diagnostics.ProcessStartInfo]::new($exe)
+          $si.UseShellExecute = $false; $si.CreateNoWindow = $true
+          $si.RedirectStandardOutput = $true; $si.RedirectStandardError = $true
+          $si.WorkingDirectory = $env:RUNNER_TEMP
+          $si.Environment.Clear()
+          foreach ($pair in @(@('SystemRoot',$env:WINDIR),@('WINDIR',$env:WINDIR),
+              @('PATH',(Join-Path $env:WINDIR 'System32')),@('TEMP',$env:RUNNER_TEMP),@('TMP',$env:RUNNER_TEMP),
+              @('GITHUB_ACTIONS','true'),@('RUNNER_ENVIRONMENT','github-hosted'),@('RUNNER_OS','Windows'),
+              @('P284_READ_ONLY_NEGATIVES','1'))) { $si.Environment[$pair[0]] = $pair[1] }
+          # No P270/P271 opt-in, reviewed-durable opt-in, root list, or credentials inherited.
+          $p = [Diagnostics.Process]::new(); $p.StartInfo = $si
+          try {
+              if (!$p.Start()) { throw 'Launch denied; no bypass' }
+              $stdout = $p.StandardOutput.ReadToEndAsync(); $stderr = $p.StandardError.ReadToEndAsync()
+              if (!$p.WaitForExit(30000)) { $p.Kill($true); throw 'Read-only timeout HOLD' }
+              $out = $stdout.GetAwaiter().GetResult(); $err = $stderr.GetAwaiter().GetResult()
+              Set-Content -LiteralPath (Join-Path $evidence 'runtime.exit') -Value $p.ExitCode
+              if ($out.Trim() -cne 'P284_READ_ONLY_NEGATIVES=PASS CASES=8 DURABLE_RUNTIME=NOT_RUN PRODUCTION=HOLD' -or
+                  $err.Length -ne 0 -or $p.ExitCode -ne 0) { throw 'Read-only runtime HOLD' }
+              # Only the validated fixed marker and empty stderr enter evidence.
+              'P284_READ_ONLY_NEGATIVES=PASS CASES=8 DURABLE_RUNTIME=NOT_RUN PRODUCTION=HOLD' |
+                  Set-Content -LiteralPath (Join-Path $evidence 'runtime.stdout.log')
+              Set-Content -LiteralPath (Join-Path $evidence 'runtime.stderr.log') -Value ''
+          } finally { $p.Dispose() }
+          if ((Git-Read @('rev-parse','HEAD')) -cne $head -or
+              @(Git-Read @('status','--porcelain=v1','--untracked-files=all','--ignored')).Count -ne 0) { throw 'Post-run source changed' }
+          foreach ($entry in $after) {
+              $parts = $entry -split "`t",2
+              if ((Git-Read @('hash-object','--no-filters','--',$parts[1])) -cne ($parts[0] -split ' ')[2]) {
+                  throw 'Post-run disk/blob mismatch'
+              }
+          }
+          'DURABLE_POSITIVE=NOT_RUN SEC03_04=OPEN ALL_SECURITY_GATES=HOLD APPROVALS=0/7 FULL_REGRESSIONS=0/3' |
+              Set-Content -LiteralPath (Join-Path $evidence 'scope.log')
+          $allowed = @('source.sha256','compile.exit','compile.log','binary.sha256',
+              'runtime.exit','runtime.stdout.log','runtime.stderr.log','scope.log')
+          $files = @(Get-ChildItem -LiteralPath $evidence -Force)
+          if (@(Compare-Object ($allowed | Sort-Object) @($files.Name | Sort-Object) -CaseSensitive).Count -ne 0) {
+              throw 'Missing or unexpected evidence'
+          }
+          foreach ($file in $files) {
+              if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid evidence file' }
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p284-read-only-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/source.sha256
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/compile.exit
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/compile.log
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/binary.sha256
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/runtime.exit
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/runtime.stdout.log
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/runtime.stderr.log
+            ${{ runner.temp }}/p284-read-only-${{ matrix.arch }}/scope.log
+          if-no-files-found: error
+          retention-days: 30
