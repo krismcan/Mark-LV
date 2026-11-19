@@ -276,6 +276,9 @@ jobs:
                       ($r.stdout + $r.stderr) -cnotmatch 'error CS1029:.*P283_TEST_ONLY_ALL_DEVELOPMENT_FLAGS_REQUIRED') {
                       throw 'Omitted-define compiler guard failed'
                   }
+                  $diagnostic = [regex]::Match(($r.stdout + $r.stderr), 'error CS1029:[^\r\n]*P283_TEST_ONLY_ALL_DEVELOPMENT_FLAGS_REQUIRED')
+                  if (!$diagnostic.Success) { throw 'Omitted-define diagnostic extraction failed' }
+                  Receipt ('guard-' + $missing + '.diagnostic.log') $diagnostic.Value
               }
               # P269 starts only its existing denial-only disposable pipe worker, no privileged service.
               foreach ($entry in $entries) {
