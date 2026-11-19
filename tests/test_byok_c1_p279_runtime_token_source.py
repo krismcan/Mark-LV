@@ -182,6 +182,7 @@ def _sid_and_recheck(source):
          "if (!ReadStatus(service, buffer, out after) || !SameRunningProcess(before, after)) break;",
          "rechecked = true;",
          "status = matches ? P279RuntimeTokenStatus.RuntimeTokenObserved : P279RuntimeTokenStatus.TokenMismatch;")
+    _need('Release(process, false)' in observe, 'missing required process-handle cleanup')
     _need(observe.index("matches = actual.Equals") < observe.index("out after)") <
           observe.index("rechecked = true;") < observe.index("finally") <
           observe.index("Release(process, false)"), "second SCM snapshot under live process handle")
