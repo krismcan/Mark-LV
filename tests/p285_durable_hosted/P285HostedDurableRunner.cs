@@ -24,6 +24,8 @@ internal static class P285HostedDurableRunner
     private static readonly StringBuilder stdout = new StringBuilder(), stderr = new StringBuilder();
     private static int passed, aggregates, holds, outputChars;
     private static bool invalidOutput;
+    private static bool childException, redactedStderr;
+    private static readonly List<string> childStack = new List<string>(2);
     private static string temp, evidence;
     private static SecurityIdentifier sid;
     private static void Require(bool value) { if (!value) throw new InvalidOperationException(); }
@@ -154,7 +156,35 @@ internal static class P285HostedDurableRunner
             {
                 invalidOutput = true;
                 if (line == "P284_HOLD DEADLINE") stderr.AppendLine(line);
-                else if (stderr.Length == 0) stderr.AppendLine("P285_REDACTED_STDERR=HOLD");
+                else
+                {
+                    // Never retain messages, arguments or source locations. One type
+                    // and two distinct literal-allowlisted methods bound diagnostics.
+                    Match exception = Regex.Match(line,
+                        @"\A(?:Unhandled Exception: |Unhandled exception\. )(System\.[A-Za-z][A-Za-z0-9.]{0,100}Exception):");
+                    Match frame = childException ? Regex.Match(line,
+                        @"\A[ \t]*at ((?:Nayeon\.ByokC1\.(?:" +
+                        @"P270Development\.DurableWitness\.(?:Require|CheckHandle|Open|CheckLayout|Entropy|Read|Persist|InspectConsistent|ReadJournal|ReadAnchor|Snapshot|WriteJournal|WriteAnchor|Dispose)|" +
+                        @"P271Development\.DurableDevelopmentBridge\.(?:Require|PersistPrior|CheckSnapshots|CheckComplete|Probe|Start|Prepare|Submit|Revoke|Stop|Fault|Observe|TestConsistent|TestPhase|TestCloseWitness|TestSkew|TestUntrust|TestEffectFailure|TestPoisonWitness|Dispose)|" +
+                        @"P284Development\.DurableOperationAdmission\.(?:TestOnlyCreate|Start|TestMarkerDigest|Valid|Same|Issue|Submit|ProbeInsidePendingGate|Control|Revoke|Stop|Fault|Observe|TestConsistent|TestFailEffect|TestCloseWitness|TestPhase|Dispose)|" +
+                        @"P282ExecutingServiceCustody\.(?:NoImpersonation|Capture|IsSyntheticRunnerUser|IsSyntheticRunner|BindSyntheticRunner))|" +
+                        @"DurableOperationAdmissionTests\.(?:Create|Check|Run|Marker|Request|Later|Success|Control|Join|NoReplay|MetadataOnly|Mismatch|InvalidIssue|Foreign|Ordering|Expiry|Callback|DoubleSubmit|CallbackControlTimeout|Lifecycle|UncertainEffect|AtPoint|ExtraCases|Main)|" +
+                        @"System\.(?:Threading\.(?:ThreadHelper\.(?:ThreadStart|ThreadStart_Context)|ExecutionContext\.(?:Run|RunInternal))|Security\.Principal\.(?:WindowsIdentity\.Impersonate|WindowsImpersonationContext\.(?:Undo|Dispose)))))\(") : Match.Empty;
+                    if (exception.Success)
+                    {
+                        if (!childException) stderr.AppendLine("P285_CHILD_EXCEPTION_TYPE=" + exception.Groups[1].Value);
+                        childException = true;
+                    }
+                    else if (frame.Success)
+                    {
+                        string method = frame.Groups[1].Value;
+                        method = method.Substring(0, Math.Min(method.Length, 120));
+                        if (childStack.Count < 2 && !childStack.Contains(method))
+                        { childStack.Add(method); stderr.AppendLine("P285_CHILD_STACK_METHOD=" + method); }
+                    }
+                    else if (!redactedStderr)
+                    { stderr.AppendLine("P285_REDACTED_STDERR=HOLD"); redactedStderr = true; }
+                }
                 return;
             }
             if (passed < expected.Count && line == "PASS " + expected[passed] && aggregates == 0 && holds == 0)
