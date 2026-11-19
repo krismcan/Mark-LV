@@ -47,8 +47,11 @@ guard, execution, cleanup or source checks leave the job RED; no waiver occurs.
 Only the P285 host is launched by CI. It requires real Windows, the hosted
 runner claims, `ImageOS=win22`, and explicit
 `P285_HOSTED_ROOTS_REVIEW_ONLY=1`; actual process identity must be non-SYSTEM,
-non-impersonated and non-Kristian. The current user's OS temp directory must
-be owned by that actual user, on a fixed drive, with no reparse ancestor.
+non-impersonated and non-Kristian. The existing OS temp parent must be a
+directory on a fixed local drive, with no reparse point at any ancestor or
+the directory itself. Its owner need not equal the actual user; no existing
+parent owner or ACL is changed. Ownership and protected DACL requirements
+apply to each newly provisioned root, as in the frozen P270 contract.
 It prepares exactly 129 distinct, previously absent direct children named
 `nayeon-p270-<Guid.NewGuid().ToString("N")>`. Creation uses the proven P270
 Scope pattern: DirectorySecurity, actual SID owner, protected DACL, single
@@ -120,10 +123,11 @@ Application Control bypass or policy change is performed by this work.
 
 ## Actual validation
 
-Hosted P285 execution: **NOT RUN**. The 128 cases remain authored but unexecuted
-in this task; future CI results must be recorded from actual runs, never inferred
-from compiler success. Local validation invokes compilers only, and parses the
-hosted manifest as data without executing/dot-sourcing/evaluating it.
+Hosted P285 attempts are **RED**; no P284 durable test executed. The current
+remediation and its evidence are recorded below. The original compile-only
+evidence that follows is historical, not validation of this repair. Local
+validation invokes compilers only, and parses the hosted manifest as data
+without executing/dot-sourcing/evaluating it.
 
 Final C# compiler evidence: four positive x64/x86 builds, raw exits 0;
 32 negative builds, raw exits 1 with the required CS1029 diagnostic and no EXE.
@@ -149,3 +153,74 @@ tracked/index delta. Exactly four additive paths remain unstaged/uncommitted.
 Self-review hardened absent-entry checks, failed-launch cleanup and final
 evidence PASS ordering; runtime adversarial validation and independent review
 remain OPEN. No runtime/full-product PASS is implied.
+
+## TEMP parent contract correction, 19 November 2026
+
+User-supplied hosted evidence: GitHub run **44608891668**, x64 job
+**135859861650** and x86 job **135859861282**, both compiled and failed exactly
+at `P285_HOST_HOLD_STAGE=temp-owner`. These RED runs remain failure evidence;
+neither reached P284 durable execution. Draft PR #205 remains under review.
+
+The clean repair starting point was branch
+`byok-c1-p285-durable-hosted-test-boundary-20261119`, HEAD
+`28ee6ab40bf04d39444eda4972e5fb41ef931954`, index/worktree clean, 1,152 tracked
+files and no tag at HEAD. Git confirms original P285 child
+`050106426a4fe3c64d8943558df2ff372cf988bf`, followed by reviewed repairs
+`19694601b3315a9656bdc3c6e06f233d6832de46` and the starting HEAD. The existing
+CI topology permits at most four repair descendants; two are committed at this
+checkpoint. This unstaged candidate would be the third repair if independently
+accepted and committed by Nayeon. No CI topology change is required.
+
+| Issue / severity | Root cause / boundary / repair / evidence / disposition |
+| --- | --- |
+| P285 TEMP parent-owner rejection, material hosted blocker | P285 alone required the existing OS TEMP parent's owner to equal the process SID. Hosted Windows may give that parent an administrative/system owner. P270 requires actual-user ownership of each new direct GUID child, not of the existing parent. The extra parent assumption prevented both architectures from reaching root provisioning. Replace it with an explicit existing-directory attribute check under `temp-shape`; retain `Full`, fixed-drive and all-ancestor `NoLinks` checks. No parent ACL is read for authorization or changed. Compiler-only evidence cannot close hosted behavior; independent review and fresh hosted runtime remain OPEN/HOLD. |
+
+Only `tests/p285_durable_hosted/P285HostedDurableRunner.cs` and this document
+are authorized to change. `Prepare`, `RootShape`, owner provisioning and cleanup
+remain byte-identical: each of 129 roots is a unique, previously absent direct
+`Path.GetTempPath()` GUID child, created with the actual SID owner and a protected
+single explicit Allow FullControl ACE with the exact inheritance/propagation
+shape, then checked for that owner, DACL, directory type, no links and emptiness.
+Pre-existing entries, new-root owner mismatch, surprising ACEs and reparse points
+still fail closed. Frozen P270 retains its independent directory/file handle and
+ancestor validation. No existing ACL/owner, machine policy or permission is
+modified, and no service/key/alternate execution route is introduced.
+
+The obsolete `temp-owner` stage is removed; the replacement directory check uses
+the already admitted `temp-shape` stage. `HostedReview.ps1` and the workflow,
+including their exact stage sanitizer and bounded repair admission, are unchanged.
+The P270 -> P271 -> P284 trust path and all 1,148 inherited blobs remain frozen.
+This is a bounded test-contract correction, not a product phase or seal.
+
+Final candidate validation on Kristian used direct Framework64/Framework
+`v4.0.30319/csc.exe`, `/warn:4 /warnaserror+`, and the unchanged manifest's
+17 P284 source literals / ten defines, extracted from its AST as data only.
+Both P284 and P285 positive builds passed for x64/x86: **4 raw exits 0**.
+All **32 negative builds had raw exit 1**, the exact required `error CS1029`
+guard and no generated EXE. These include missing DEBUG, added RELEASE,
+missing hosted opt-in and all missing inherited defines. No generated EXE or
+PowerShell manifest/script was executed; no ExecutionPolicy bypass was used.
+Arguments, logs, per-invocation raw exits and guard checks are retained in
+`C:\Users\krist\AppData\Local\Temp\nayeon-p285-temp-parent-compile-0c4fb19e243d4d0cadb9af8bca4a7b23`.
+`raw-exits.txt` SHA256:
+`5EE7C3B1AEBB5D73C00907EBF720DC7C6061DFBDF7CC6EC82B69C39587D91397`.
+Host source SHA256 before/after compilation:
+`DAF943F60C2C586F12ABDF6E926C4E372535480D13C43EDB03D0C41ED68A5AF6`.
+
+The manifest still parses with zero AST errors and its raw disk blob exactly
+matches HEAD, preserving the parser input/AST and stage sanitizer. Unchanged
+manifest SHA256:
+`5250184BEFE1F1CDCA886E1BC8A5CD96216F02B350B20402C00A4575523D34BE`;
+unchanged workflow SHA256:
+`280EC79EE2E3A2C86AA13A11C44AC318E7BEDF63023EDF79803CA9A50F23D982`.
+Git verification confirms all **1,148/1,148 inherited tree entries and raw disk
+blobs**, and **1,150/1,150 unchanged current files**, match their frozen Git
+objects. Total tracked files remain **1,152**; exactly the two authorized paths
+are modified, the index is clean, no untracked files exist and `git diff --check`
+passes. Root provisioning/check/cleanup code and the remaining host are unchanged.
+
+Disposition: bounded source/compile correction ready for Nayeon's independent
+review; runtime repair **NOT VERIFIED / HOLD**. Independent exact-source review
+and disposable x64/x86 execution remain OPEN. Full product / real keys HOLD;
+P96 original HIGH OPEN; P76/P216 unwaived; external approvals 0/7 and full
+regressions 0/3. No staging, commit, push, PR action, workbook or dashboard update.

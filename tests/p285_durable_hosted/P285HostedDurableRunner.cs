@@ -202,8 +202,11 @@ internal static class P285HostedDurableRunner
                 !String.Equals(Environment.UserName, "Kristian", StringComparison.OrdinalIgnoreCase));
             stage = "temp-shape";
             temp = Full(Path.GetTempPath()); NoLinks(temp);
-            stage = "temp-owner";
-            Require(Directory.GetAccessControl(temp).GetOwner(typeof(SecurityIdentifier)).Equals(sid));
+            // Existing OS TEMP may have an administrative/system owner. Only
+            // require an existing directory on a fixed drive with no links;
+            // never change its ACL. Prepare/RootShape enforce actual-user owner,
+            // protected single ACE and emptiness on each new direct GUID child.
+            Require((File.GetAttributes(temp) & FileAttributes.Directory) != 0);
             stage = "runner-temp";
             string runnerTemp = Full(Env("RUNNER_TEMP")); NoLinks(runnerTemp);
             string arch = IntPtr.Size == 8 ? "x64" : "x86";
