@@ -140,9 +140,27 @@ jobs:
               if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
                   $env:RUNNER_OS -cne 'Windows' -or $env:GITHUB_EVENT_NAME -cne 'pull_request') { throw 'Hosted context changed' }
               $head = Read-Git -Arguments @('rev-parse','HEAD')
-              $parents = (Read-Git -Arguments @('rev-list','--parents','-n','1','HEAD')) -split ' '
-              if ($head -cne $env:REVIEW_HEAD -or $parents.Count -ne 2 -or $parents[0] -cne $head -or
-                  $parents[1] -cne $parent -or $env:REVIEW_BASE -cne $parent) { throw 'Exact one-child topology required' }
+              if ($head -cne $env:REVIEW_HEAD -or $env:REVIEW_BASE -cne $parent) { throw 'Wrong exact PR head/base' }
+              # The original P282 source candidate is the immutable direct child of P281.
+              # Later repair commits may change ONLY this workflow, never reviewed source.
+              $firstP282 = '1623d387ec248d3638c9d7c9cc9b2286f681539d'
+              $history = @(Read-Git -Arguments @('rev-list','--first-parent','HEAD',('^' + $parent)))
+              if ($history.Count -lt 2 -or $history.Count -gt 6 -or
+                  $history[0] -cne $head -or $history[-1] -cne $firstP282) { throw 'Unapproved P282 history topology' }
+              for ($i = 0; $i -lt $history.Count; $i++) {
+                  $rev = $history[$i]
+                  $expectedParent = if ($i -lt $history.Count - 1) { $history[$i + 1] } else { $parent }
+                  $links = (Read-Git -Arguments @('rev-list','--parents','-n','1',$rev)) -split ' '
+                  if ($links.Count -ne 2 -or $links[0] -cne $rev -or
+                      $links[1] -cne $expectedParent) { throw 'Merge or changed historical ancestry' }
+                  if ($rev -cne $firstP282) {
+                      $paths = @(Read-Git -Arguments @('diff-tree','--no-commit-id','--name-only','-r',$rev))
+                      if ($paths.Count -ne 1 -or
+                          $paths[0] -cne '.github/workflows/p282-windows-service-boundary-review.yml') {
+                          throw 'Workflow-only repair scope violated'
+                      }
+                  }
+              }
               $parentTree = Read-Git -Arguments @('rev-parse',($parent + '^{tree}'))
               if ($parentTree -cne '2f875b91a63593404efb2fef16a3e50dbb27ce6c') { throw 'P281 parent tree mismatch' }
               $eventItem = Get-Item -LiteralPath $env:GITHUB_EVENT_PATH
