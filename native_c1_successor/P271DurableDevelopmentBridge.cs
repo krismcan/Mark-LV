@@ -20,11 +20,13 @@ namespace Nayeon.ByokC1.P271Development
         private readonly DurableWitness witness;
         private readonly ComposedDevelopmentService service;
         private readonly LedgerOperation operation;
+        private readonly P282ExecutingServiceCustody.SyntheticRunnerBinding runnerIdentity;
         private string knownJournal, knownAnchor;
         private bool awaitingAnchor, expectedPresent;
         private int failed, disposed;
         // Trusted harness adversaries only; always run BEFORE the relevant checks.
         internal Action<string> TestProbe;
+        // Disposable synthetic fixture admission only; never protected-store approval.
         internal static void RequireHosted()
         {
             Require(Environment.OSVersion.Platform == PlatformID.Win32NT &&
@@ -32,11 +34,20 @@ namespace Nayeon.ByokC1.P271Development
                 Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") == "github-hosted" &&
                 Environment.GetEnvironmentVariable("P271_HOSTED_DISPOSABLE") == "1");
             using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) Require(!identity.IsSystem);
+            P282ExecutingServiceCustody.BindSyntheticRunner().DemandUnchanged();
+        }
+        // Explicit protected-scope route: reject BEFORE constructing a witness,
+        // opening a file, issuing consent, acquiring custody or calling P268.
+        internal static DurableDevelopmentBridge OpenProtectedService(string root, LedgerOperation op, bool fresh)
+        {
+            P282ExecutingServiceCustody.DemandProtectedStore();
+            throw new LedgerBlocked(); // There is intentionally no admitted implementation.
         }
         private static void Require(bool value) { if (!value) throw new LedgerBlocked(); }
         internal DurableDevelopmentBridge(string root, LedgerOperation op, bool fresh)
         {
             RequireHosted();
+            runnerIdentity = P282ExecutingServiceCustody.BindSyntheticRunner();
             Require(op == LedgerOperation.Save || op == LedgerOperation.Replace || op == LedgerOperation.Delete);
             operation = op;
             try
@@ -71,12 +82,15 @@ namespace Nayeon.ByokC1.P271Development
         }
         private void PersistPrior(string next)
         {
+            runnerIdentity.DemandUnchanged();
             witness.WriteJournal(witness.ReadJournal(), next);
+            runnerIdentity.DemandUnchanged();
             witness.WriteAnchor(witness.ReadAnchor(), CustodyLedger.Anchor(next));
             Require(!witness.RecoveryRequired && witness.InspectConsistent());
         }
         private void CheckSnapshots()
         {
+            runnerIdentity.DemandUnchanged();
             Require(Volatile.Read(ref failed) == 0 && Volatile.Read(ref disposed) == 0);
             Require(service.TestAdapter.Enrolled && service.TestState.Trusted);
             Require(service.TestState.Journal == knownJournal && service.TestState.Anchor == knownAnchor);
@@ -95,6 +109,7 @@ namespace Nayeon.ByokC1.P271Development
             try
             {
                 Action<string> inject = TestProbe; if (inject != null) inject(point);
+                runnerIdentity.DemandUnchanged();
                 Require(Volatile.Read(ref failed) == 0 && Volatile.Read(ref disposed) == 0);
                 Require(service.TestAdapter.Enrolled && service.TestState.Trusted);
                 if (point == "after-journal")
