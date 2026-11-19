@@ -147,10 +147,16 @@ try {
         $raw = $p.ExitCode
         Set-Content -LiteralPath (Join-Path $evidence 'host.exit') -Value $raw
         $out = $stdout.GetAwaiter().GetResult(); $err = $stderr.GetAwaiter().GetResult()
-        # Host emits only these fixed lines. Unexpected text is never published.
+        # Success requires these exact lines. Unexpected text is never published.
         $bits = if ($env:REVIEW_ARCH -eq 'x64') { 64 } else { 32 }
         $expected = "P285_HOST=PASS BITS=$bits`r`nALL_SECURITY_GATES=HOLD APPROVALS=0/7 FULL_REGRESSIONS=0/3 P96_ORIGINAL=OPEN P76_P216=UNWAIVED`r`n"
-        if ($raw -ne 0 -or $out -cne $expected -or $err.Length) { throw 'Durable hosted runtime HOLD' }
+        if ($raw -ne 0 -or $out -cne $expected -or $err.Length) {
+            $stage = 'unknown'
+            $stageMatch = [regex]::Match($out, '(?m)^P285_HOST_HOLD_STAGE=(host-claims|process-identity|temp-shape|temp-owner|runner-temp|build-path|exe-identity|exe-sha|evidence-root|root-create|child-launch|child-completion|cleanup|evidence-write)\r?$')
+            if ($stageMatch.Success) { $stage = $stageMatch.Groups[1].Value }
+            Write-Output ('P285_HOST_HOLD_STAGE=' + $stage)
+            throw 'Durable hosted runtime HOLD'
+        }
     } finally { $p.Dispose() }
     $ok = $true
 } finally {

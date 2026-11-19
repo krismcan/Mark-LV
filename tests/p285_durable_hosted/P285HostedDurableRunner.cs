@@ -185,12 +185,14 @@ internal static class P285HostedDurableRunner
     {
         bool success = false, clean = false, childStopped = true, childStarted = false;
         Process child = null;
-        string rawExit = "NOT_STARTED", failure = "NONE";
+        string rawExit = "NOT_STARTED", failure = "NONE", stage = "host-claims", holdStage = null;
         try
         {
+            stage = "host-claims";
             Require(args.Length == 0 && expected.Count == 128 && Environment.OSVersion.Platform == PlatformID.Win32NT &&
                 Env("GITHUB_ACTIONS") == "true" && Env("RUNNER_ENVIRONMENT") == "github-hosted" &&
                 Env("RUNNER_OS") == "Windows" && Env("ImageOS") == "win22" && Env("P285_HOSTED_ROOTS_REVIEW_ONLY") == "1");
+            stage = "process-identity";
             using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
             {
                 Require(!identity.IsSystem && identity.User != null && identity.ImpersonationLevel == TokenImpersonationLevel.None);
@@ -198,22 +200,31 @@ internal static class P285HostedDurableRunner
             }
             Require(!String.Equals(Environment.UserName, "krist", StringComparison.OrdinalIgnoreCase) &&
                 !String.Equals(Environment.UserName, "Kristian", StringComparison.OrdinalIgnoreCase));
+            stage = "temp-shape";
             temp = Full(Path.GetTempPath()); NoLinks(temp);
+            stage = "temp-owner";
             Require(Directory.GetAccessControl(temp).GetOwner(typeof(SecurityIdentifier)).Equals(sid));
+            stage = "runner-temp";
             string runnerTemp = Full(Env("RUNNER_TEMP")); NoLinks(runnerTemp);
             string arch = IntPtr.Size == 8 ? "x64" : "x86";
+            stage = "build-path";
             string build = Path.Combine(runnerTemp, "p285-build-" + arch); NoLinks(build);
+            stage = "exe-identity";
             NoLinks(Assembly.GetExecutingAssembly().Location);
             string exe = Full(Env("P285_DURABLE_EXE")); NoLinks(exe);
             Require(String.Equals(exe, Path.Combine(build, "P284Durable.exe"), StringComparison.OrdinalIgnoreCase) &&
                 String.Equals(Assembly.GetExecutingAssembly().Location, Path.Combine(build, "P285Host.exe"), StringComparison.OrdinalIgnoreCase));
+            stage = "exe-sha";
             string pin = Env("P285_DURABLE_SHA256");
             Require(pin != null && Regex.IsMatch(pin, "\\A[A-F0-9]{64}\\z") && Hash(exe) == pin);
+            stage = "evidence-root";
             string destination = Path.Combine(runnerTemp, "p285-evidence-" + arch); NoLinks(destination);
             foreach (string name in new[] { "runtime.stdout.log", "runtime.stderr.log", "runtime.exit", "host.log" })
                 RequireAbsent(Path.Combine(destination, name));
             evidence = destination;
+            stage = "root-create";
             Prepare();
+            stage = "child-launch";
             ProcessStartInfo start = new ProcessStartInfo(exe);
             start.UseShellExecute = false; start.CreateNoWindow = true;
             start.RedirectStandardOutput = true; start.RedirectStandardError = true;
@@ -237,6 +248,7 @@ internal static class P285HostedDurableRunner
                 child.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data == null) Interlocked.Exchange(ref errDone, 1); else Capture(e.Data, true); };
                 childStarted = child.Start(); Require(childStarted); childStopped = false;
                 child.BeginOutputReadLine(); child.BeginErrorReadLine();
+                stage = "child-completion";
                 Require(child.WaitForExit(145000)); childStopped = true;
                 rawExit = child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 Require(SpinWait.SpinUntil(() => Volatile.Read(ref outDone) == 1 && Volatile.Read(ref errDone) == 1, 5000));
@@ -244,7 +256,7 @@ internal static class P285HostedDurableRunner
             }
             success = true;
         }
-        catch (Exception error) { failure = error.GetType().Name; }
+        catch (Exception error) { failure = error.GetType().Name; holdStage = stage; }
         finally
         {
             if (child != null)
@@ -257,14 +269,17 @@ internal static class P285HostedDurableRunner
                         if (childStopped) rawExit = child.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     }
                 }
-                catch (Exception) { success = false; childStopped = false; }
+                catch (Exception) { success = false; childStopped = false; if (holdStage == null) holdStage = "child-completion"; }
                 child.Dispose();
             }
             // Never touch a root while a failed-to-terminate writer may own it.
+            stage = "cleanup";
             clean = childStopped && Cleanup();
+            if (!clean && holdStage == null) holdStage = stage;
             success = success && clean;
             if (evidence != null)
             {
+                stage = "evidence-write";
                 try
                 {
                     lock (outputGate) { Write("runtime.stdout.log", stdout.ToString()); Write("runtime.stderr.log", stderr.ToString()); }
@@ -272,11 +287,12 @@ internal static class P285HostedDurableRunner
                     Write("host.log", "P285_HOST=" + (success ? "PASS" : "HOLD") + " ROOTS_CREATED=" + roots.Count +
                         " CLEANUP=" + (clean ? "PASS" : "HOLD") + " ERROR_TYPE=" + failure + "\n" + Holds + "\n");
                 }
-                catch (Exception) { success = false; }
+                catch (Exception) { success = false; if (holdStage == null) holdStage = stage; }
             }
         }
         Console.WriteLine("P285_HOST=" + (success ? "PASS" : "HOLD") + " BITS=" + (IntPtr.Size * 8));
         Console.WriteLine(Holds);
+        if (!success) Console.WriteLine("P285_HOST_HOLD_STAGE=" + (holdStage ?? stage));
         return success ? 0 : 1;
     }
 }
