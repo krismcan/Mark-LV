@@ -1,0 +1,362 @@
+name: P283 hosted synthetic operation admission (focused development, HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  operation-review:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            bits: 64
+            framework: Framework64
+          - arch: x86
+            bits: 32
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_BITS: ${{ matrix.bits }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify exact source, compile and run only disposable synthetic harnesses
+        id: review
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          Set-StrictMode -Version Latest
+          # Never execute CompileReview.ps1: its exact source/defines are transcribed below.
+          # P96/P76/P216 and the P282 omitted hazardous suites remain HOLD, not waived.
+          $parent = '0f22089b918f428bca8347eff31c563cf17571d2'
+          $parentTree = '815729bc1c9836d27cb8a3949c796b6b6e9d5ffe'
+          $repository = 'krismcan/Mark-LV'
+          $branch = 'byok-c1-p283-operation-bound-admission-20261119'
+          $baseBranch = 'byok-c1-p282-service-identity-custody-20261119'
+          $workflow = '.github/workflows/p283-windows-operation-admission-review.yml'
+          $pins = [ordered]@{
+              'native_c1_successor/P283SyntheticOperationAdmission.cs' = 'E0359FF685B295472D36D458F6D07D01EA7D9FA4CF564104E3F1C76FE78B524A'
+              'tests/p283_operation_admission/SyntheticOperationAdmissionTests.cs' = '75345890C589D45079F2968525BB7EF127578186625B489E885676488F91E58B'
+              'tests/p283_operation_admission/CompileReview.ps1' = '64E4080C83AF0167E032A9C6E2DBB0F70C4DA28AAE7AF40E294E308F5CBD99A5'
+              'docs/byok-c1-p283-synthetic-operation-admission.md' = 'EE98777B230F3C7D36086718A8CACA9707045A76552FFFEDF5347C2810D22EBC'
+          }
+          $added = @($pins.Keys) + @($workflow)
+          function Check-Event {
+              $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+              if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+                  $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or $env:ImageOS -cne 'win22' -or
+                  [Environment]::OSVersion.Version.Build -ne 20348 -or
+                  $env:GITHUB_EVENT_NAME -cne 'pull_request' -or $env:GITHUB_REPOSITORY -cne $repository -or
+                  $e.action -cnotin @('opened','synchronize','reopened') -or $e.pull_request.draft -ne $true -or
+                  $e.repository.full_name -cne $repository -or $e.pull_request.head.repo.full_name -cne $repository -or
+                  $e.pull_request.base.repo.full_name -cne $repository -or $e.pull_request.head.repo.fork -ne $false -or
+                  $e.pull_request.head.ref -cne $branch -or $e.pull_request.base.ref -cne $baseBranch -or
+                  $e.pull_request.base.sha -cne $parent -or $e.pull_request.head.sha -cnotmatch '\A[0-9a-f]{40}\z' -or
+                  $env:REVIEW_ARCH -cnotin @('x64','x86') -or
+                  $env:REVIEW_BITS -cne (@{x64='64';x86='32'}[$env:REVIEW_ARCH]) -or
+                  $env:REVIEW_FRAMEWORK -cne (@{x64='Framework64';x86='Framework'}[$env:REVIEW_ARCH])) {
+                  throw 'Exact same-repository hosted Windows-2022 draft PR required'
+              }
+              return $e.pull_request.head.sha
+          }
+          $head = Check-Event
+          # No account name or SID is exported. This is a restriction, never an authority grant.
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          try { if ($identity.IsSystem) { throw 'SYSTEM execution refused' } } finally { $identity.Dispose() }
+          $suffix = $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT + '-' + $env:REVIEW_ARCH
+          if ($suffix -cnotmatch '\A[0-9]+-[0-9]+-(x64|x86)\z') { throw 'Invalid run identity' }
+          foreach ($p in @($env:RUNNER_TEMP,$env:GITHUB_WORKSPACE)) {
+              $item = Get-Item -LiteralPath $p
+              if (!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid runner root' }
+          }
+          $private = Join-Path $env:RUNNER_TEMP ('p283-private-' + $suffix)
+          $textRoot = Join-Path $env:RUNNER_TEMP ('p283-text-' + $suffix)
+          if ((Test-Path -LiteralPath $private) -or (Test-Path -LiteralPath $textRoot)) { throw 'Run directory exists' }
+          New-Item -ItemType Directory -Path $private,$textRoot | Out-Null
+          $build = (New-Item -ItemType Directory -Path (Join-Path $private 'build')).FullName
+          $rawRoot = (New-Item -ItemType Directory -Path (Join-Path $private 'raw')).FullName
+          $work = (New-Item -ItemType Directory -Path (Join-Path $private 'runner')).FullName
+          $evidence = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          function Receipt([string]$Name, [string]$Value) {
+              if ($Name -cnotmatch '\A[a-zA-Z0-9_.-]+\.(log|exit|sha256)\z' -or !$evidence.Add($Name)) { throw 'Invalid receipt name' }
+              # Preserve diagnostic text and raw-byte hashes, remove machine paths/SIDs/control characters.
+              foreach ($p in @($env:GITHUB_WORKSPACE,$env:RUNNER_TEMP,$env:WINDIR)) {
+                  $Value = $Value.Replace($p,'<PATH>').Replace($p.Replace('\','/'),'<PATH>')
+              }
+              $Value = $Value -replace '(?i)\bS-1-\d+(?:-\d+)+','<SID>'
+              $Value = $Value -replace '(?i)[a-z]:[\\/][^\r\n"<>]*','<PATH>'
+              $Value = $Value -replace '\\\\[^\s"<>]+','<PATH>'
+              $Value = $Value -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]',''
+              [IO.File]::WriteAllText((Join-Path $textRoot $Name),$Value + "`n",[Text.UTF8Encoding]::new($false))
+          }
+          function Read-Git([string[]]$Arguments) {
+              $answer = @(& git @Arguments)
+              if ($LASTEXITCODE -ne 0) { throw 'Read-only Git query failed' }
+              return $answer
+          }
+          function Hash([byte[]]$Bytes, [string]$Algorithm = 'SHA256') {
+              $h = [Security.Cryptography.HashAlgorithm]::Create($Algorithm)
+              try { return [Convert]::ToHexString($h.ComputeHash($Bytes)) } finally { $h.Dispose() }
+          }
+          function ObjectId([string]$Kind, [byte[]]$Bytes) {
+              $header = [Text.Encoding]::ASCII.GetBytes($Kind + ' ' + $Bytes.Length + [char]0)
+              return (Hash ([byte[]]($header + $Bytes)) 'SHA1').ToLowerInvariant()
+          }
+          function Commit([string]$Oid) {
+              # Binary read avoids PowerShell newline/encoding conversion of commit objects.
+              $si = [Diagnostics.ProcessStartInfo]::new('git')
+              $si.UseShellExecute = $false; $si.CreateNoWindow = $true
+              $si.RedirectStandardOutput = $true; $si.RedirectStandardError = $true
+              foreach ($a in @('cat-file','commit',$Oid)) { $si.ArgumentList.Add($a) }
+              $p = [Diagnostics.Process]::new(); $p.StartInfo = $si
+              $m = [IO.MemoryStream]::new()
+              try {
+                  if (!$p.Start()) { throw 'Commit read failed' }
+                  $copy = $p.StandardOutput.BaseStream.CopyToAsync($m)
+                  $err = $p.StandardError.ReadToEndAsync()
+                  if (!$p.WaitForExit(30000)) { $p.Kill($true); throw 'Commit read timeout' }
+                  $copy.GetAwaiter().GetResult()
+                  if ($p.ExitCode -ne 0 -or $err.GetAwaiter().GetResult().Length -ne 0 -or $m.Length -gt 1048576) { throw 'Invalid commit read' }
+                  $bytes = $m.ToArray()
+                  if ((ObjectId 'commit' $bytes) -cne $Oid) { throw 'Commit object checksum mismatch' }
+                  return Hash $bytes
+              } finally { $m.Dispose(); $p.Dispose() }
+          }
+          function Custody([string]$When) {
+              if ((Check-Event) -cne $head -or (Read-Git @('rev-parse','HEAD')) -cne $head -or
+                  (Read-Git @('rev-parse',($parent + '^{tree}'))) -cne $parentTree -or
+                  @(Read-Git @('status','--porcelain=v1','--untracked-files=all','--ignored')).Count -ne 0) { throw 'Dirty or wrong source checkout' }
+              $commits = @(Read-Git @('rev-list','--reverse',($parent + '..' + $head)))
+              if ($commits.Count -lt 1 -or $commits.Count -gt 20) { throw 'One initial child plus bounded workflow-only repairs required' }
+              $manifest = [Collections.Generic.List[string]]::new()
+              $manifest.Add('PARENT=' + $parent + ' COMMIT_SHA256=' + (Commit $parent))
+              $previous = $parent
+              for ($i = 0; $i -lt $commits.Count; $i++) {
+                  $c = $commits[$i]
+                  if ((Read-Git @('rev-list','--parents','-n','1',$c)) -cne ($c + ' ' + $previous)) { throw 'Nonlinear or unrelated history' }
+                  $delta = @(Read-Git @('diff','--name-status','--no-renames',$previous,$c))
+                  $expected = if ($i -eq 0) { @($added | ForEach-Object { "A`t$_" }) } else { @("M`t$workflow") }
+                  if (@(Compare-Object ($expected | Sort-Object) ($delta | Sort-Object) -CaseSensitive).Count -ne 0) { throw 'Unexpected commit scope' }
+                  $manifest.Add('COMMIT=' + $c + ' SHA256=' + (Commit $c)); $previous = $c
+              }
+              $old = @(Read-Git @('ls-tree','-r',$parent))
+              $now = @(Read-Git @('ls-tree','-r',$head))
+              if ($old.Count -ne 1138 -or $now.Count -ne 1143 -or
+                  @(Compare-Object ($old | Sort-Object) (@($now | Where-Object { ($_ -split "`t",2)[1] -cnotin $added }) | Sort-Object) -CaseSensitive).Count -ne 0) {
+                  throw 'Original 1138 inherited entries must be unchanged; current count must be 1143'
+              }
+              foreach ($line in $now) {
+                  if ($line -cnotmatch '\A100644 blob ([0-9a-f]{40})\t([a-zA-Z0-9_./-]+)\z') { throw 'Unexpected tree entry' }
+                  $oid = $Matches[1]; $path = $Matches[2]
+                  if ($path -match '(^|/)\.\.(/|$)') { throw 'Invalid source path' }
+                  $disk = Join-Path $env:GITHUB_WORKSPACE $path
+                  $item = Get-Item -LiteralPath $disk -Force
+                  if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Source must be a regular file' }
+                  $bytes = [IO.File]::ReadAllBytes($disk)
+                  $sha = Hash $bytes
+                  if ((ObjectId 'blob' $bytes) -cne $oid -or
+                      ($pins.Contains($path) -and $sha -cne $pins[$path])) { throw 'Git blob/disk/pinned SHA256 mismatch' }
+                  $manifest.Add($path + ' BLOB=' + $oid + ' DISK_SHA256=' + $sha)
+              }
+              $value = $manifest -join "`n"
+              Receipt ($When + '-source.log') $value
+              return Hash ([Text.Encoding]::UTF8.GetBytes($value))
+          }
+          function Child([string]$Label, [string]$Exe, [string[]]$Arguments) {
+              # Direct absolute compiler/EXE invocation, no shell, inherited secrets or uncontrolled environment.
+              $si = [Diagnostics.ProcessStartInfo]::new($Exe)
+              $si.UseShellExecute = $false; $si.CreateNoWindow = $true; $si.WorkingDirectory = $work
+              $si.RedirectStandardOutput = $true; $si.RedirectStandardError = $true
+              $si.Environment.Clear()
+              foreach ($pair in @(@('SystemRoot',$env:WINDIR),@('WINDIR',$env:WINDIR),
+                  @('PATH',(Join-Path $env:WINDIR 'System32')),@('TEMP',$work),@('TMP',$work),
+                  @('GITHUB_ACTIONS','true'),@('RUNNER_ENVIRONMENT','github-hosted'),@('RUNNER_OS','Windows'),
+                  @('P283_HOSTED_SYNTHETIC_ONLY','1'))) { $si.Environment[$pair[0]] = $pair[1] }
+              foreach ($a in $Arguments) { $si.ArgumentList.Add($a) }
+              $stdout = Join-Path $rawRoot ($Label + '.stdout'); $stderr = Join-Path $rawRoot ($Label + '.stderr')
+              $outFile = [IO.File]::Create($stdout); $errFile = [IO.File]::Create($stderr)
+              $p = [Diagnostics.Process]::new(); $p.StartInfo = $si
+              $watch = [Diagnostics.Stopwatch]::StartNew(); $timeout = $false; $overflow = $false
+              $started = $false; $code = $null
+              try {
+                  $started = $p.Start()
+                  if (!$started) { throw 'Ordinary child launch failed; no bypass or retry' }
+                  $outCopy = $p.StandardOutput.BaseStream.CopyToAsync($outFile)
+                  $errCopy = $p.StandardError.BaseStream.CopyToAsync($errFile)
+                  while (!$p.WaitForExit(250)) {
+                      $timeout = $watch.ElapsedMilliseconds -ge 120000
+                      $overflow = $outFile.Length -gt 4194304 -or $errFile.Length -gt 4194304
+                      if ($timeout -or $overflow) { $p.Kill($true); break }
+                  }
+                  if (!$p.WaitForExit(5000) -or !$outCopy.Wait(5000) -or !$errCopy.Wait(5000)) { throw 'Child/drain did not terminate' }
+                  $code = $p.ExitCode
+              } finally {
+                  try {
+                      if ($started -and !$p.HasExited) { $p.Kill($true); $null = $p.WaitForExit(5000) }
+                      if ($started -and $p.HasExited) { $code = $p.ExitCode }
+                  } finally {
+                      $outFile.Dispose(); $errFile.Dispose(); $p.Dispose()
+                      $exitText = if ($null -eq $code) { 'UNAVAILABLE_NO_EXIT_OBSERVED' } else { [string]$code }
+                      Receipt ($Label + '.exit') $exitText
+                      Receipt ($Label + '.status.log') ('STARTED=' + $started + ' TIMEOUT=' + $timeout + ' OUTPUT_LIMIT=' + $overflow)
+                      foreach ($stream in @('stdout','stderr')) {
+                          $file = Join-Path $rawRoot ($Label + '.' + $stream)
+                          Receipt ($Label + '.' + $stream + '.sha256') (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+                          Receipt ($Label + '.' + $stream + '.log') ([IO.File]::ReadAllText($file))
+                      }
+                  }
+              }
+              return @{ code=$code; timeout=$timeout; overflow=$overflow;
+                  stdout=[IO.File]::ReadAllText($stdout); stderr=[IO.File]::ReadAllText($stderr) }
+          }
+          $before = $null
+          try {
+              $before = Custody 'before'
+              # Exact twelve inputs and seven defines from the pinned P283 CompileReview.ps1.
+              $sources = @('tests/p95_native_custody_preflight/CustodyLedger.cs',
+                  'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+                  'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+                  'native_c1_candidate/ServiceBoundRequestIdentity.cs',
+                  'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+                  'native_c1_successor/P267DevelopmentAtomicService.cs',
+                  'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+                  'native_c1_successor/P269ComposedDevelopmentService.cs',
+                  'native_c1_successor/P283SyntheticOperationAdmission.cs',
+                  'tests/p268_successor/P268RemediationTests.cs',
+                  'tests/p269_successor/P269ComposedServiceTests.cs',
+                  'tests/p283_operation_admission/SyntheticOperationAdmissionTests.cs')
+              $inputs = @($sources | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+              $flags = @('DEBUG','C1_REVIEW_ISOLATED_ASSEMBLY','C1_P265_DEVELOPMENT_ONLY',
+                  'C1_P267_DEVELOPMENT_ONLY','C1_P268_DEVELOPMENT_ONLY','C1_P269_DEVELOPMENT_ONLY',
+                  'C1_P283_SYNTHETIC_OPERATION_REVIEW_ONLY')
+              $framework = Join-Path $env:WINDIR ('Microsoft.NET/' + $env:REVIEW_FRAMEWORK + '/v4.0.30319')
+              $csc = Join-Path $framework 'csc.exe'
+              $common = @('/nologo','/noconfig','/warn:4','/warnaserror+','/target:exe',
+                  '/debug+','/optimize-',('/platform:' + $env:REVIEW_ARCH))
+              foreach ($reference in @('System.dll','System.Core.dll','System.Security.dll','System.ServiceProcess.dll')) {
+                  $common += '/reference:' + (Join-Path $framework $reference)
+              }
+              $entries = @('SyntheticOperationAdmissionTests','P268RemediationTests','P269ComposedServiceTests')
+              foreach ($entry in $entries) {
+                  $output = Join-Path $build ($entry + '.exe')
+                  $invokeArgs = @($common) + @('/define:' + ($flags -join ';'))
+                  $invokeArgs += "/main:$entry"; $invokeArgs += "/out:$output"; $invokeArgs += $inputs
+                  Receipt ('compile-' + $entry + '.command.log') (($csc + "`n") + ($invokeArgs -join "`n"))
+                  $r = Child ('compile-' + $entry) $csc $invokeArgs
+                  if ($r.code -ne 0 -or $r.timeout -or $r.overflow -or !(Test-Path -LiteralPath $output -PathType Leaf)) { throw 'Positive compilation failed' }
+                  Receipt ($entry + '.exe.sha256') (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
+              }
+              foreach ($missing in @('ALL') + $flags) {
+                  $selected = @($flags | Where-Object { $missing -ne 'ALL' -and $_ -cne $missing })
+                  $invokeArgs = @($common)
+                  if ($selected.Count) { $invokeArgs += '/define:' + ($selected -join ';') }
+                  $output = Join-Path $build ('guard-' + $missing + '.exe')
+                  $invokeArgs += '/main:SyntheticOperationAdmissionTests'; $invokeArgs += "/out:$output"; $invokeArgs += $inputs
+                  Receipt ('guard-' + $missing + '.command.log') (($csc + "`n") + ($invokeArgs -join "`n"))
+                  $r = Child ('guard-' + $missing) $csc $invokeArgs
+                  if ($r.code -ne 1 -or $r.timeout -or $r.overflow -or (Test-Path -LiteralPath $output) -or
+                      ($r.stdout + $r.stderr) -cnotmatch 'error CS1029:.*P283_TEST_ONLY_ALL_DEVELOPMENT_FLAGS_REQUIRED') {
+                      throw 'Omitted-define compiler guard failed'
+                  }
+              }
+              # P269 starts only its existing denial-only disposable pipe worker, no privileged service.
+              foreach ($entry in $entries) {
+                  $exe = Join-Path $build ($entry + '.exe')
+                  if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -cne
+                      (Get-Content -LiteralPath (Join-Path $textRoot ($entry + '.exe.sha256')) -Raw).Trim()) { throw 'Built executable changed' }
+                  $r = Child ('runtime-' + $entry) $exe @()
+                  $lines = @($r.stdout -split '\r?\n' | Where-Object { $_.Length -gt 0 })
+                  $clean = $r.code -eq 0 -and !$r.timeout -and !$r.overflow -and $r.stderr.Length -eq 0
+                  # Exact line contracts reject extra errors/skips; callback-control-timeout is an authored case.
+                  if ($entry -ceq 'SyntheticOperationAdmissionTests') {
+                      $ok = $clean -and
+                          $lines.Count -eq 51 -and @($lines | Where-Object { $_ -cmatch '^PASS [a-zA-Z0-9-]+$' }).Count -eq 49 -and
+                          $lines[-2] -cmatch ('^P283_SYNTHETIC_ONLY=PASS CASES=49 ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '$') -and
+                          $lines[-1] -ceq 'ALL_SECURITY_GATES=HOLD APPROVALS=0/7 FULL_REGRESSIONS=0/3 P96_ORIGINAL=OPEN P76_P216=UNWAIVED'
+                  } elseif ($entry -ceq 'P268RemediationTests') {
+                      $ok = $clean -and
+                          $lines.Count -eq 35 -and @($lines | Where-Object { $_ -cmatch '^PASS [a-zA-Z0-9-]+$' }).Count -eq 33 -and
+                          $lines[-2] -ceq ('P268_SUCCESSOR=PASS CASES=33 ASSERTIONS=341 BITS=' + $env:REVIEW_BITS) -and
+                          $lines[-1] -ceq 'P268_FIXED_PATH=ISOLATED_FAKE_ONLY PRODUCTION=HOLD TRUSTED_ISSUER=NOT_CONNECTED'
+                  } else {
+                      $ok = $clean -and $lines.Count -eq 20 -and
+                          @($lines | Where-Object { $_ -cmatch '^PASS order (Save|Replace|Delete) [012] (True|False)$' }).Count -eq 18 -and
+                          $lines[-2] -cmatch ('^P269_COMPOSITION=PASS CASES=23 ASSERTIONS=[1-9][0-9]* BITS=' + $env:REVIEW_BITS + '$') -and
+                          $lines[-1] -ceq 'P269_SCOPE=DEVELOPMENT_ONLY DENIAL_ONLY PRODUCTION=HOLD'
+                  }
+                  Receipt ('runtime-' + $entry + '.validation.log') ('RECEIPTS_VALID=' + $ok)
+                  if (!$ok) { throw 'Actual native runtime RED; preserve logs, no retry or waiver' }
+              }
+              Receipt 'focused-result.log' 'GREEN: P283/P268/P269 focused synthetic development only; no release approval'
+          } catch {
+              Receipt 'failure.log' 'RED: incomplete or failing evidence; raw exits/hashes and sanitized streams preserved; all security gates HOLD'
+              throw 'P283 focused review RED; see sanitized text receipts'
+          } finally {
+              try {
+                  if ($null -ne $before) {
+                      $after = Custody 'after'
+                      Receipt 'custody.sha256' ("BEFORE=$before`nAFTER=$after")
+                      if ($before -cne $after) { throw 'Before/after Git/disk identity mismatch' }
+                  } else { Receipt 'custody.log' 'HOLD: initial source custody failed; no native execution admitted' }
+              } catch {
+                  Receipt 'custody-failure.log' 'RED: final source custody incomplete or changed; before/after equality NOT proven'
+                  throw 'Final source custody RED'
+              } finally {
+                  # Export only allowlisted text; private raw logs, compiler outputs and EXEs never uploaded.
+                  $files = @(Get-ChildItem -LiteralPath $textRoot -Force)
+                  if ($files.Count -ne $evidence.Count) { throw 'Unexpected evidence inventory' }
+                  $manifest = @()
+                  foreach ($file in ($files | Sort-Object Name)) {
+                      if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                          !$evidence.Contains($file.Name) -or $file.Length -gt 8388608) { throw 'Unsafe evidence file' }
+                      $bytes = [IO.File]::ReadAllBytes($file.FullName)
+                      if ($bytes -contains 0) { throw 'Binary evidence refused' }
+                      $null = [Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+                      $manifest += (Hash $bytes) + '  ' + $file.Name
+                  }
+                  Receipt 'evidence-manifest.sha256' ($manifest -join "`n")
+                  'safe=true' >> $env:GITHUB_OUTPUT
+              }
+          }
+      - name: Fixed development status (even on RED)
+        if: always()
+        run: |
+          @'
+          FOCUSED DEVELOPMENT ONLY
+          REAL KEYS NO-GO
+          P96 ORIGINAL OPEN
+          P76/P216 UNWAIVED
+          PRODUCTION HOLD
+          WORKBOOK DEFERRED
+          Qualified approvals: 0/7. Full product regressions: 0/3.
+          Focused GREEN applies only when both architecture jobs actually pass.
+          '@ >> $env:GITHUB_STEP_SUMMARY
+      - name: Preserve sanitized text receipts on GREEN or RED
+        if: ${{ always() && steps.review.outputs.safe == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p283-hosted-text-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p283-text-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/*.log
+            ${{ runner.temp }}/p283-text-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/*.exit
+            ${{ runner.temp }}/p283-text-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/*.sha256
+          if-no-files-found: error
+          retention-days: 30
