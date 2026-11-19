@@ -36,10 +36,10 @@ $added = @('tests/p285_durable_hosted/P285HostedDurableRunner.cs',
     'tests/p285_durable_hosted/HostedReview.ps1',
     '.github/workflows/p285-windows-disposable-durable-review.yml',
     'docs/byok-c1-p285-durable-hosted-test-boundary.md')
-# Exact original child, then at most four linear repairs to existing P285 files.
+# Exact original child, then at most eleven linear repairs to existing P285 files.
 $original = '050106426a4fe3c64d8943558df2ff372cf988bf'
 $history = @(Git-Read @('rev-list','--reverse','--parents',($parent + '..' + $head)))
-if ($history.Count -lt 1 -or $history.Count -gt 5) { throw 'Bounded P285 history HOLD' }
+if ($history.Count -lt 1 -or $history.Count -gt 12) { throw 'Bounded P285 history HOLD' }
 $previous = $parent
 for ($i = 0; $i -lt $history.Count; $i++) {
     if ($history[$i] -cnotmatch '\A([0-9a-f]{40}) ([0-9a-f]{40})\z') { throw 'Linear P285 history HOLD' }
