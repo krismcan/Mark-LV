@@ -1,0 +1,64 @@
+name: P291 draft refusal boundary experiment (production HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [byok-c1-p290-message-token-observation-20261120]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  boundary-experiment:
+    if: >-
+      github.event.pull_request.draft == true &&
+      github.repository == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.head.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.sha == '3451352b57ef50dcc757580b43625af759712b79' &&
+      github.event.pull_request.base.ref == 'byok-c1-p290-message-token-observation-20261120' &&
+      github.event.pull_request.head.ref == 'byok-c1-p291-shared-revocation-effect-owner-20261120'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+        arch: [x64, x86]
+        include:
+          - arch: x64
+            framework: Framework64
+          - arch: x86
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify exact source, guards, frozen P96/P268/P269, P290 and P291
+        run: ./tests/p291_boundary/HostedReview.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p291-boundary-${{ matrix.arch }}-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/source-before.sha256
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/source-after.sha256
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/compiler.log
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/compiler-exits.txt
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/test-binary.sha256
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/runtime.exit
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/runtime.log
+            ${{ runner.temp }}/p291-evidence-${{ matrix.arch }}/scope.log
+          if-no-files-found: error
+          retention-days: 30
