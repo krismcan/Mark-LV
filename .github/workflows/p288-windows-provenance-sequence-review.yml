@@ -1,0 +1,64 @@
+name: P288 draft synthetic provenance sequence (live HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [byok-c1-p287-service-client-pipe-boundary-20261119]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  synthetic-provenance:
+    if: >-
+      github.event.pull_request.draft == true &&
+      github.repository == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.head.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.sha == '3edf7130daa41c2ac240f9a92d6745ac5a726eaa' &&
+      github.event.pull_request.base.ref == 'byok-c1-p287-service-client-pipe-boundary-20261119' &&
+      github.event.pull_request.head.ref == 'byok-c1-p288-trusted-role-provenance-20261120'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+        arch: [x64, x86]
+        include:
+          - arch: x64
+            framework: Framework64
+          - arch: x86
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify exact source, compiler guards and synthetic event sequence
+        run: ./tests/p288_provenance/HostedReview.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p288-provenance-${{ matrix.arch }}-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/source-before.sha256
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/source-after.sha256
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/compiler.log
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/compiler-exits.txt
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/test-binary.sha256
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/runtime.exit
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/runtime.log
+            ${{ runner.temp }}/p288-evidence-${{ matrix.arch }}/scope.log
+          if-no-files-found: error
+          retention-days: 30
