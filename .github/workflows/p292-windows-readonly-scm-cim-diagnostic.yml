@@ -1,0 +1,64 @@
+name: P292 read-only SCM vs CIM diagnostic (P292 HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [byok-c1-p292-ephemeral-scm-service-witness-20261120]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  readonly-controls:
+    if: >-
+      github.event.pull_request.draft == true &&
+      github.repository == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.head.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.sha == '1083919da53f808105522dd8e11dba9fdf844fa0' &&
+      github.event.pull_request.base.ref == 'byok-c1-p292-ephemeral-scm-service-witness-20261120' &&
+      github.event.pull_request.head.ref == 'byok-c1-p292-readonly-scm-cim-diagnostic-20261120'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+        arch: [x64, x86]
+        include:
+          - arch: x64
+            framework: Framework64
+          - arch: x86
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      P292_READONLY_DIAG_ONLY: '1'
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+      REVIEW_TRIAL: ${{ matrix.trial }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Run fixed read-only controls on exact draft child
+        run: ./tests/p292_readonly_observer/HostedReadOnlyReview.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p292-readonly-${{ matrix.arch }}-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/source-before.sha256
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/source-after.sha256
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/compiler.txt
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/binary.sha256
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/controls.txt
+            ${{ runner.temp }}/p292-readonly-evidence-${{ matrix.arch }}/summary.txt
+          if-no-files-found: error
+          retention-days: 30
