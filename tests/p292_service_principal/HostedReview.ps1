@@ -6,6 +6,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 $parent = '4f4f4fe4d2c0afb5afc1acec48dae1b463fb4d9f'
 $failedFirst = '8b2ca2bf24b3ca388abc2268ede27f7d319ad093'
+$failedSecond = 'ab7999076cc0c07e2ca0e19d0a28e2a513de0e93'
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
     $env:ImageOS -cne 'win22' -or $env:RUNNER_OS -cne 'Windows' -or
     $env:P292_DISPOSABLE_SCM_WITNESS -cne '1' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
@@ -32,14 +33,14 @@ function Assert-NoLinks([string]$Path) {
 }
 $head = [string](Git-Read @('rev-parse','HEAD'))
 if ($head -cne $pr.head.sha) { throw 'Event head HOLD' }
-# Checkout deliberately has depth two. Read only the exact event head's three
+# Checkout deliberately has depth two. Read only the exact event head's four
 # commits; no checkout/ref rewrite, credentials persistence, or workflow change.
 $fetchInfo = [Diagnostics.ProcessStartInfo]::new('git')
 $fetchInfo.UseShellExecute = $false; $fetchInfo.CreateNoWindow = $true
 $fetchInfo.RedirectStandardOutput = $true; $fetchInfo.RedirectStandardError = $true
 $fetchInfo.Environment['GIT_TERMINAL_PROMPT'] = '0'
 foreach ($argument in @('-c','credential.helper=','-c','core.askPass=','-c','credential.interactive=false',
-    'fetch','--no-tags','--depth=3','origin',$head)) {
+    'fetch','--no-tags','--depth=4','origin',$head)) {
     $fetchInfo.ArgumentList.Add($argument)
 }
 $fetch = [Diagnostics.Process]::new(); $fetch.StartInfo = $fetchInfo; $fetchStarted = $false
@@ -57,13 +58,15 @@ try {
         }
     } finally { $fetch.Dispose() }
 }
-if ([string](Git-Read @('rev-parse','HEAD^')) -cne $failedFirst -or
-    [string](Git-Read @('rev-parse','HEAD^^')) -cne $parent -or
-    [string](Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $failedFirst) -or
+if ([string](Git-Read @('rev-parse','HEAD^')) -cne $failedSecond -or
+    [string](Git-Read @('rev-parse','HEAD^^')) -cne $failedFirst -or
+    [string](Git-Read @('rev-parse','HEAD^^^')) -cne $parent -or
+    [string](Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $failedSecond) -or
+    [string](Git-Read @('rev-list','--parents','-n','1',$failedSecond)) -cne ($failedSecond + ' ' + $failedFirst) -or
     [string](Git-Read @('rev-list','--parents','-n','1',$failedFirst)) -cne ($failedFirst + ' ' + $parent) -or
-    [string](Git-Read @('rev-list','--count',($parent + '..' + $head))) -cne '2') { throw 'Two commit repair HOLD' }
+    [string](Git-Read @('rev-list','--count',($parent + '..' + $head))) -cne '3') { throw 'Three commit repair HOLD' }
 $repairPaths = @('tests/p292_service_principal/HostedReview.ps1','docs/byok-c1-p292-service-principal-review.md')
-$repairDelta = @(Git-Read @('diff','--name-status','--no-renames',$failedFirst,$head) | Sort-Object)
+$repairDelta = @(Git-Read @('diff','--name-status','--no-renames',$failedSecond,$head) | Sort-Object)
 if (@(Compare-Object @($repairPaths | ForEach-Object { "M`t$_" } | Sort-Object) $repairDelta -CaseSensitive).Count) {
     throw 'Two path repair HOLD'
 }
@@ -199,6 +202,64 @@ function Metadata {
         $row.PathName -cne $command) { throw 'Configuration HOLD' }
     return $row
 }
+function Create-Metadata {
+    # Only zero rows may cause another read. OperationTimeoutSec alone is not
+    # a wall-clock bound: isolate CIM in one eight-second child-command window.
+    # This observer is called once, only after native create returned zero.
+    $code = @'
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+try {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        if ($clock.Elapsed.TotalSeconds -ge 8) { exit 10 }
+        $rows = @(Get-CimInstance -ClassName Win32_Service -Filter ("Name='" + $serviceName + "'") -OperationTimeoutSec 5 -ErrorAction Stop)
+        if ($rows.Count -gt 1) { exit 12 }
+        if ($rows.Count -eq 1) {
+            $row = $rows[0]
+            if ($row.Name -cne $serviceName) { exit 13 }
+            if ($row.StartName -cne ('NT SERVICE\' + $serviceName)) { exit 14 }
+            if ($row.PathName -cne $imageCommand) { exit 15 }
+            if ($clock.Elapsed.TotalSeconds -ge 8) { exit 16 }
+            exit 0
+        }
+        # No visible configuration mismatch, multiplicity or query error is
+        # transient. This branch is reachable ONLY for a successful empty read.
+        if ($clock.Elapsed.TotalSeconds -ge 8) { exit 10 }
+        Start-Sleep -Milliseconds 100
+    } while ($true)
+} catch { exit 11 }
+'@
+    $code = '$serviceName = ''' + $name.Replace("'","''") + "'`n" +
+        '$imageCommand = ''' + $command.Replace("'","''") + "'`n" + $code
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $result = Child 'create-metadata' (Join-Path $PSHOME 'pwsh.exe') @('-NoLogo','-NoProfile',
+            '-NonInteractive','-EncodedCommand',$encoded) 8
+    } catch {
+        Record 'runtime.log' 'CREATE_METADATA_OBSERVER_ERROR_OR_TIMEOUT HOLD'
+        throw 'Create metadata observer HOLD'
+    }
+    $category = switch ($result.Exit) {
+        0 { 'CREATE_METADATA_CONFIRMED' }
+        10 { 'CREATE_METADATA_NOT_VISIBLE' }
+        11 { 'CREATE_METADATA_QUERY_ERROR' }
+        12 { 'CREATE_METADATA_MULTIPLE' }
+        13 { 'CREATE_NAME_MISMATCH' }
+        14 { 'CREATE_ACCOUNT_MISMATCH' }
+        15 { 'CREATE_IMAGE_MISMATCH' }
+        16 { 'CREATE_METADATA_DEADLINE' }
+        default { 'CREATE_METADATA_PROTOCOL_ERROR' }
+    }
+    if ($result.Out.Length -or $result.Err.Length) { $category = 'CREATE_METADATA_PROTOCOL_ERROR' }
+    if ($result.Exit -eq 0 -and $clock.Elapsed.TotalSeconds -ge 8) { $category = 'CREATE_METADATA_DEADLINE' }
+    if ($category -cne 'CREATE_METADATA_CONFIRMED') {
+        Record 'runtime.log' ($category + ' HOLD')
+        throw 'Create metadata HOLD'
+    }
+    Record 'runtime.log' 'CREATE_METADATA_CONFIRMED PASS'
+}
 function Running-Metadata {
     # The entire read-only poll, including potentially blocking CIM calls and
     # PowerShell startup, shares ONE eight-second child-command window.
@@ -283,7 +344,7 @@ try {
         'obj=',('NT SERVICE\' + $name)) 'sc-create'
     if ($result.Exit -ne 0) { throw 'Virtual account create HOLD' }
     $created = $true
-    $null = Metadata
+    Create-Metadata
     $stage = 'CONFIGURE_RESTRICTED_SID'
     $result = Sc 'sidtype' @('restricted') 'sc-restricted'
     if ($result.Exit -ne 0) { throw 'Restricted SID configuration HOLD' }
