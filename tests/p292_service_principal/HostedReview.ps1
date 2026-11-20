@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Set-StrictMode -Version Latest
 $parent = '4f4f4fe4d2c0afb5afc1acec48dae1b463fb4d9f'
+$failedFirst = '8b2ca2bf24b3ca388abc2268ede27f7d319ad093'
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
     $env:ImageOS -cne 'win22' -or $env:RUNNER_OS -cne 'Windows' -or
     $env:P292_DISPOSABLE_SCM_WITNESS -cne '1' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
@@ -30,8 +31,42 @@ function Assert-NoLinks([string]$Path) {
     }
 }
 $head = [string](Git-Read @('rev-parse','HEAD'))
-if ($head -cne $pr.head.sha -or
-    [string](Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $parent)) { throw 'Single child HOLD' }
+if ($head -cne $pr.head.sha) { throw 'Event head HOLD' }
+# Checkout deliberately has depth two. Read only the exact event head's three
+# commits; no checkout/ref rewrite, credentials persistence, or workflow change.
+$fetchInfo = [Diagnostics.ProcessStartInfo]::new('git')
+$fetchInfo.UseShellExecute = $false; $fetchInfo.CreateNoWindow = $true
+$fetchInfo.RedirectStandardOutput = $true; $fetchInfo.RedirectStandardError = $true
+$fetchInfo.Environment['GIT_TERMINAL_PROMPT'] = '0'
+foreach ($argument in @('-c','credential.helper=','-c','core.askPass=','-c','credential.interactive=false',
+    'fetch','--no-tags','--depth=3','origin',$head)) {
+    $fetchInfo.ArgumentList.Add($argument)
+}
+$fetch = [Diagnostics.Process]::new(); $fetch.StartInfo = $fetchInfo; $fetchStarted = $false
+try {
+    $fetchStarted = $fetch.Start()
+    if (!$fetchStarted) { throw 'History fetch HOLD' }
+    $fetchOut = $fetch.StandardOutput.ReadToEndAsync(); $fetchErr = $fetch.StandardError.ReadToEndAsync()
+    if (!$fetch.WaitForExit(20000) -or $fetch.ExitCode -ne 0) { throw 'History fetch HOLD' }
+    $null = $fetchOut.GetAwaiter().GetResult(); $null = $fetchErr.GetAwaiter().GetResult()
+} finally {
+    try {
+        if ($fetchStarted -and !$fetch.HasExited) {
+            $fetch.Kill($true)
+            if (!$fetch.WaitForExit(5000)) { throw 'History fetch cleanup HOLD' }
+        }
+    } finally { $fetch.Dispose() }
+}
+if ([string](Git-Read @('rev-parse','HEAD^')) -cne $failedFirst -or
+    [string](Git-Read @('rev-parse','HEAD^^')) -cne $parent -or
+    [string](Git-Read @('rev-list','--parents','-n','1',$head)) -cne ($head + ' ' + $failedFirst) -or
+    [string](Git-Read @('rev-list','--parents','-n','1',$failedFirst)) -cne ($failedFirst + ' ' + $parent) -or
+    [string](Git-Read @('rev-list','--count',($parent + '..' + $head))) -cne '2') { throw 'Two commit repair HOLD' }
+$repairPaths = @('tests/p292_service_principal/HostedReview.ps1','docs/byok-c1-p292-service-principal-review.md')
+$repairDelta = @(Git-Read @('diff','--name-status','--no-renames',$failedFirst,$head) | Sort-Object)
+if (@(Compare-Object @($repairPaths | ForEach-Object { "M`t$_" } | Sort-Object) $repairDelta -CaseSensitive).Count) {
+    throw 'Two path repair HOLD'
+}
 $added = @('tests/p292_service_principal/P292DisposableService.cs','tests/p292_service_principal/P292ServiceIdentityProbe.cs',
     'tests/p292_service_principal/HostedReview.ps1','.github/workflows/p292-windows-disposable-service-review.yml',
     'docs/byok-c1-p292-service-principal-review.md')
@@ -113,6 +148,7 @@ function Child([string]$Label, [string]$Exe, [string[]]$Arguments, [int]$Seconds
         $outTask = $process.StandardOutput.ReadToEndAsync(); $errTask = $process.StandardError.ReadToEndAsync()
         if (!$process.WaitForExit($Seconds * 1000)) {
             Record 'runtime.exit' ($Label + ' TIMEOUT RAW_EXIT=UNAVAILABLE NO_RETRY')
+            if ($Label -ceq 'sc-start') { Record 'runtime.log' 'SC_START_TIMEOUT HOLD' }
             throw 'Child watchdog HOLD'
         }
         $raw = $process.ExitCode
@@ -143,7 +179,10 @@ $sc = Join-Path $env:WINDIR 'System32/sc.exe'
 function Sc([string]$Verb, [string[]]$Tail, [string]$Label) {
     # No generic public name or command input; only this run's random service.
     if ($name -cnotmatch '\ANayeonP292_[0-9a-f]{12}\z' -or $Verb -cnotin @('create','sidtype','start','stop','delete')) { throw 'SCM bound HOLD' }
-    Child $Label $sc (@($Verb,$name) + $Tail) 8
+    # Only the sc START client gets more time to return a native result.
+    # This is not the subsequent eight-second RUNNING/token success window.
+    $seconds = if ($Verb -ceq 'start') { 40 } else { 8 }
+    Child $Label $sc (@($Verb,$name) + $Tail) $seconds
 }
 function Probe([string]$Label, [string[]]$Arguments, [bool]$ExpectedPass) {
     $result = Child $Label $probeExe $Arguments 8
@@ -158,6 +197,41 @@ function Metadata {
     $row = $rows[0]
     if ($row.Name -cne $name -or $row.StartName -cne ('NT SERVICE\' + $name) -or
         $row.PathName -cne $command) { throw 'Configuration HOLD' }
+    return $row
+}
+function Running-Metadata {
+    # The entire read-only poll, including potentially blocking CIM calls and
+    # PowerShell startup, shares ONE eight-second child-command window.
+    $code = @'
+$ErrorActionPreference = 'Stop'
+try {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $rows = @(Get-CimInstance Win32_Service -Filter ("Name='" + $serviceName + "'") -OperationTimeoutSec 5)
+        if ($clock.Elapsed.TotalSeconds -ge 8 -or $rows.Count -ne 1) { exit 1 }
+        $row = $rows[0]
+        if ($row.Name -cne $serviceName -or $row.StartName -cne ('NT SERVICE\' + $serviceName) -or
+            $row.PathName -cne $imageCommand -or $row.State -ceq 'Stopped') { exit 1 }
+        if ($row.State -ceq 'Running' -and $row.ProcessId -ne 0) {
+            $row | Select-Object Name,StartName,PathName,State,ProcessId | ConvertTo-Json -Compress
+            exit 0
+        }
+        Start-Sleep -Milliseconds 100
+    } while ($clock.Elapsed.TotalSeconds -lt 8)
+    exit 1
+} catch { exit 2 }
+'@
+    $code = '$serviceName = ''' + $name.Replace("'","''") + "'`n" +
+        '$imageCommand = ''' + $command.Replace("'","''") + "'`n" + $code
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $result = Child 'running-status' (Join-Path $PSHOME 'pwsh.exe') @('-NoLogo','-NoProfile',
+        '-NonInteractive','-EncodedCommand',$encoded) 8
+    if ($clock.Elapsed.TotalSeconds -ge 8 -or $result.Exit -ne 0 -or $result.Err.Length) { throw 'Running deadline HOLD' }
+    # Raw metadata stays in disposable build custody, never in uploaded evidence.
+    $row = $result.Out | ConvertFrom-Json
+    if ($row.Name -cne $name -or $row.StartName -cne ('NT SERVICE\' + $name) -or $row.PathName -cne $command -or
+        $row.State -cne 'Running' -or $row.ProcessId -le 0) { throw 'Running metadata HOLD' }
     return $row
 }
 function Find-DisposableChild {
@@ -216,22 +290,25 @@ try {
     $startAttempted = $true
     $stage = 'START'; $startBoundary = [DateTime]::UtcNow
     $result = Sc 'start' @() 'sc-start'
+    $category = switch ($result.Exit) {
+        0 { 'SCM_RETURNED_SUCCESS' }
+        5 { 'ACCESS_DENIED' }
+        1053 { 'SERVICE_REQUEST_TIMEOUT' }
+        1067 { 'PROCESS_TERMINATED' }
+        1069 { 'SERVICE_LOGON_FAILURE' }
+        default { 'OTHER_NATIVE_ERROR' }
+    }
+    Record 'runtime.log' ('SC_START_EXIT_' + $result.Exit + ' CATEGORY=' + $category)
     if ($result.Exit -ne 0) { throw 'Virtual account start HOLD' }
     # Poll status only; NEVER retry start/create/configure after failure.
     $stage = 'RUNNING'
-    $clock = [Diagnostics.Stopwatch]::StartNew()
-    do {
-        $row = Metadata
-        if ($row.State -ceq 'Running' -and $row.ProcessId -ne 0) { break }
-        if ($row.State -ceq 'Stopped' -or $clock.Elapsed.TotalSeconds -ge 8) { throw 'Running deadline HOLD' }
-        Start-Sleep -Milliseconds 100
-    } while ($true)
+    $row = Running-Metadata
     $serviceProcess = [Diagnostics.Process]::GetProcessById([int]$row.ProcessId)
     $null = $serviceProcess.Handle # Retain kernel handle, no PID-only kill/reacquisition.
     $processBirth = $serviceProcess.StartTime.ToUniversalTime().ToFileTimeUtc()
     if ($serviceProcess.MainModule.FileName -ine $serviceExe -or $serviceProcess.HasExited) { throw 'Process binding HOLD' }
     $arguments = @('witness',$name,[string]$row.ProcessId,[string]$processBirth,$serviceExe,$command)
-    $stage = 'KERNEL_WITNESS'
+    $stage = 'SERVICE_TOKEN'
     Probe 'kernel-witness' $arguments $true
     # Live negative controls on the actual service: wrong lifetime / PID / image / account name.
     $stage = 'NEGATIVE_CONTROLS'
@@ -259,6 +336,7 @@ try {
 } finally {
     # Cleanup is attempted even on partial create/start failure; never another name.
     $cleanupErrors = 0
+    $deleteClock = $null
     try {
         if ($createAttempted) {
             # If create failed, only metadata matching OUR exact ImagePath/account may be cleaned.
@@ -312,6 +390,7 @@ try {
         if ($created) {
             $result = Sc 'delete' @() 'sc-delete'
             if ($result.Exit -notin @(0,1060)) { throw 'Delete HOLD' }
+            $deleteClock = [Diagnostics.Stopwatch]::StartNew()
         }
     } catch { $cleanupErrors++ }
     try {
@@ -331,13 +410,48 @@ try {
     } catch { $cleanupErrors++ }
     try {
         if ($null -ne $serviceProcess -and !$serviceProcess.HasExited) { throw 'Live child HOLD' }
-        Probe 'after-absent' @('absent',$name) $true
-        # Independent enumeration rejects a late/marked-for-delete service.
-        if (@(Get-CimInstance Win32_Service -Filter ("Name='" + $name + "'") -OperationTimeoutSec 5).Count) { throw 'Service remains HOLD' }
-        $escapedImage = $serviceExe.Replace('\','\\')
-        if (@(Get-CimInstance Win32_Process -Filter ("ExecutablePath='" + $escapedImage + "'") -OperationTimeoutSec 5).Count) { throw 'Orphan child HOLD' }
+        if ($null -eq $deleteClock) { $deleteClock = [Diagnostics.Stopwatch]::StartNew() }
+        # CIM is read-only in a separately bounded child: OperationTimeoutSec
+        # alone cannot enforce the enclosing wall-clock observation deadline.
+        $absenceCode = @'
+$ErrorActionPreference = 'Stop'
+try {
+    $services = @(Get-CimInstance Win32_Service -Filter ("Name='" + $serviceName + "'") -OperationTimeoutSec 5)
+    $escapedImage = $image.Replace('\','\\')
+    $children = @(Get-CimInstance Win32_Process -Filter ("ExecutablePath='" + $escapedImage + "'") -OperationTimeoutSec 5)
+    if ($services.Count -or $children.Count) { exit 1 }
+    exit 0
+} catch { exit 2 }
+'@
+        $absenceCode = '$serviceName = ''' + $name.Replace("'","''") + "'`n" +
+            '$image = ''' + $serviceExe.Replace("'","''") + "'`n" + $absenceCode
+        $encodedAbsence = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($absenceCode))
+        $observedAbsent = $false; $pendingLogged = $false
+        do {
+            # Reserve five seconds for Child's kill/join if an observer hangs.
+            $remaining = [int][Math]::Floor(25 - $deleteClock.Elapsed.TotalSeconds - 5)
+            if ($remaining -lt 1) { break }
+            $native = Child 'after-absent' $probeExe @('absent',$name) ([Math]::Min(8,$remaining))
+            if ($native.Err.Length -or $native.Exit -notin @(0,1) -or
+                ($native.Exit -eq 0 -and $native.Out -cne "P292_PROBE=PASS`r`n") -or
+                ($native.Exit -eq 1 -and $native.Out -cne "P292_PROBE=HOLD`r`n")) { throw 'Absence observer HOLD' }
+            $remaining = [int][Math]::Floor(25 - $deleteClock.Elapsed.TotalSeconds - 5)
+            if ($remaining -lt 1) { break }
+            $cim = Child 'after-cim-absent' (Join-Path $PSHOME 'pwsh.exe') @('-NoLogo','-NoProfile',
+                '-NonInteractive','-EncodedCommand',$encodedAbsence) ([Math]::Min(8,$remaining))
+            if ($cim.Exit -notin @(0,1) -or $cim.Out.Length -or $cim.Err.Length) { throw 'CIM observer HOLD' }
+            if ($deleteClock.Elapsed.TotalSeconds -ge 25) { break }
+            if ($native.Exit -eq 0 -and $cim.Exit -eq 0) { $observedAbsent = $true; break }
+            if (!$pendingLogged) { Record 'runtime.log' 'POST_DELETE_PENDING OBSERVATION_ONLY'; $pendingLogged = $true }
+            Start-Sleep -Milliseconds 100
+        } while ($true)
+        if (!$observedAbsent) {
+            Record 'runtime.log' 'POST_DELETE_DEADLINE HOLD'
+            throw 'Post delete deadline HOLD'
+        }
+        Record 'runtime.log' 'POST_DELETE_ABSENT PASS'
         $cleanup = $cleanupErrors -eq 0
-    } catch { $cleanup = $false }
+    } catch { $cleanup = $false; Record 'runtime.log' 'POST_DELETE_UNPROVEN HOLD RUNNER_TEARDOWN_UNVERIFIED' }
     finally { if ($null -ne $serviceProcess) { $serviceProcess.Dispose(); $serviceProcess = $null } }
     Record 'runtime.log' $(if ($cleanup) { 'CLEANUP PASS' } else { 'CLEANUP HOLD' })
     try {

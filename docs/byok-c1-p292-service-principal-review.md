@@ -13,14 +13,27 @@ push, PR creation, tag, seal, merge, workbook or dashboard update by Codex.
 
 ## Frozen source and mandatory preview
 
-Verified clean branch `byok-c1-p292-ephemeral-scm-service-witness-20261120`,
-HEAD `4f4f4fe4d2c0afb5afc1acec48dae1b463fb4d9f`, single parent
-`3451352b57ef50dcc757580b43625af759712b79`, 1,180 tracked paths, no tag at HEAD.
-The user identifies this as P291 draft PR #211; no remote publication/runtime
-receipt is inferred from that statement. `.codex/CURRENT_STATE.md` still starts
-with November 3 Phase 10.2 notes. Git is authoritative here; the entire inherited
+Repair checkpoint verified before editing: pristine branch
+`byok-c1-p292-ephemeral-scm-service-witness-20261120`, failed FIRST P292 HEAD
+`8b2ca2bf24b3ca388abc2268ede27f7d319ad093`, single direct parent P291
+`4f4f4fe4d2c0afb5afc1acec48dae1b463fb4d9f`, 1,185 tracked paths, no tag at HEAD.
+Draft PR #212 and hosted run 44739845249 are the user-supplied failed evidence
+checkpoint; their six failures remain preserved. No amended/replacement first
+commit or rewritten hosted logs. `.codex/CURRENT_STATE.md` still starts with
+November 3 Phase 10.2 notes. Git is authoritative here; the entire inherited
 tree, including that stale state, is frozen. This experiment is not a completed
 product phase or a new regression baseline.
+
+Only `HostedReview.ps1` and this document may change in the repair. After
+independent review Nayeon alone may make ONE incremental single-parent repair
+commit. Required topology: new event/checkout HEAD -> exact failed FIRST P292
+`8b2ca2bf24b3ca388abc2268ede27f7d319ad093` -> exact P291
+`4f4f4fe4d2c0afb5afc1acec48dae1b463fb4d9f`. Both P292 commits must be
+single-parent, exactly two commits ahead of P291. The immediate repair delta
+must be exactly these two modified paths; the cumulative P291 delta remains
+exactly the five original additions below, with 1,180 inherited entries intact.
+The new repair SHA is unknown until Nayeon commits; it is taken from the new
+same-repository draft PR event, never substituted for the failed SHA.
 
 Mandatory preview: P281 principal/store decision, P291 trusted-owner boundary,
 P290 message-identity decision, original P96 coordinator and negative fixture,
@@ -49,13 +62,19 @@ Exactly five additive paths:
 This is an actual SCM launch experiment, not a synthetic positive identity.
 Three independent x64 and three x86 Windows-2022 jobs each have a nine-minute
 limit. The script checks same-repository DRAFT event, exact base SHA and base/head
-branches, actual head checkout, sole direct parent, exactly five additions,
+branches, actual head checkout, exact two-commit repair topology, exactly five additions,
 all 1,180 inherited tree entries, all 1,185 raw disk/Git blob hashes and clean,
 unignored, unlinked source before/after. Source SHA256 manifests and before/after
 binary hashes bind the experiment to that head. Checkout and upload are pinned
 to `11bd71901bbe5b1630ceea73d27597364c9af683` and
 `ea165f8d65b6e75b540449e92b4886f43607fa02`. Contents is read-only, checkout
 persists no credentials. No download, dependency restore or setup.
+The unchanged checkout uses depth two. The script makes one bounded, exact-event
+head `git fetch --no-tags --depth=3` to obtain P291 for ancestry/tree checks;
+20-second command wait, five-second kill/join allowance, captured output,
+credential helpers/askpass and terminal prompts disabled. Fetch failure is HOLD;
+no checkout, branch rewrite or workflow change is made. This history read is not
+a dependency download or a retry of any SCM operation.
 
 Before SCM mutation, orchestration requires GITHUB_ACTIONS=true,
 RUNNER_ENVIRONMENT=github-hosted, ImageOS=win22, Windows,
@@ -116,14 +135,47 @@ launch must refuse. Final recheck cannot erase any failure. There is no positive
 client request or credential effect; all admission/effect/provenance/release
 booleans are hard false.
 
-Children are hidden, output-captured and bounded: compiler 20 seconds, probe/sc
-8 seconds. No operation retries. Finally separately attempts stop, exact-image
-and creation-time-bound retained-handle termination, delete, native absence,
-CIM absence and orphan enumeration. A late launch is eligible only under this
-run's unique image and start-time boundary. Forced kill keeps the witness HOLD.
-Any cleanup failure is HOLD; the service additionally has its 55-second lifetime
-cap. Job timeout/runner loss is not a cleanup proof. Per-process deadlines stay
-below the five-minute no-progress watchdog; inspect/pivot on stalled local work.
+Children are hidden, output-captured and bounded: compiler 20 seconds; probes
+and sc create/sidtype/stop/delete eight seconds. ONLY the sc start client gets a
+40-second command wait to obtain a native result. A timeout records
+`SC_START_TIMEOUT`, raw exit UNAVAILABLE, NO_RETRY and HOLD. A returned result
+records `SC_START_EXIT_<integer>` and fixed category: 0 SCM_RETURNED_SUCCESS,
+5 ACCESS_DENIED, 1053 SERVICE_REQUEST_TIMEOUT, 1067 PROCESS_TERMINATED,
+1069 SERVICE_LOGON_FAILURE, otherwise OTHER_NATIVE_ERROR. These are native
+result categories, not a diagnosis from raw text. Start exit 0 alone proves no
+mechanism PASS. No create/start/configure retry or account/ACL workaround.
+
+Only after sc start returns 0, one separate read-only CIM child polls exact
+account/ImagePath/RUNNING/nonzero PID within an eight-second command window,
+including PowerShell startup and CIM blocking. The parent also rejects results
+arriving at/after eight seconds. Raw metadata stays in build custody, not
+uploaded logs. The retained process/token probes, negative controls and recheck
+are unchanged; token-stage failure is `SERVICE_TOKEN HOLD`. The unchanged
+55-second service hard timer is never extended. A slow start leaves less time
+for the complete proof and can still yield HOLD; no partial/token-expired proof
+can become PASS. Child timeouts separately allow five seconds for kill/join;
+that teardown allowance never extends a success window.
+
+Finally separately attempts stop, exact-image and creation-time-bound retained
+handle termination, ONE delete, then read-only absence observations. After a
+returned delete success (or the pre-existing accepted 1060 already-absent
+result), a single 25-second stopwatch covers late-child handling and absence
+observations. Repeated native `absent` probes must return the unchanged probe's
+exact PASS/exit 0, which requires OpenService ERROR_SERVICE_DOES_NOT_EXIST (1060).
+A separately bounded read-only CIM child must find no exact-name service and
+no exact-image process. Retained-child exit is also required. The observer uses
+at most eight seconds per child and reserves five seconds of the 25 for a hung
+observer's kill/join; active observation may therefore end earlier. No second
+delete, start, configuration or credential effect. Native HOLD/exit 1 is merely
+unproven absence, not proof of the reason; only read-only observations repeat.
+`POST_DELETE_PENDING OBSERVATION_ONLY` may resolve to `POST_DELETE_ABSENT PASS`.
+Malformed output, observer error/timeout, prior cleanup error or deadline keeps
+`CLEANUP HOLD`. Unproven absence records `RUNNER_TEARDOWN_UNVERIFIED`: serious
+limitation, ephemeral runner teardown is not verified. Delete exit or process
+exit alone never proves cleanup. Late launch termination remains eligible only
+under this run's unique image/start-time boundary; forced kill keeps the witness
+HOLD. Job timeout/runner loss is not cleanup proof. No progress watchdog is
+extended.
 
 Exactly eight text artifacts: source-before.sha256, source-after.sha256,
 compiler.log, compiler-exits.txt, test-binary.sha256, runtime.exit, runtime.log,
@@ -138,7 +190,7 @@ uploaded. Unknown output remains in disposable build custody.
 Preimplementation disposition: GO only for explicitly authorized isolated
 engineering; HOLD for product phase progression, security closure and release.
 This experiment does not defer or waive inherited material failures. Independent
-Nayeon source review and hosted runtime proof remain OPEN.
+Nayeon repair-source review and new hosted runtime proof remain OPEN.
 
 | Issue / severity / source | Root cause, evidence and affected path | Containment, test, review and disposition |
 | --- | --- | --- |
@@ -147,7 +199,8 @@ Nayeon source review and hosted runtime proof remain OPEN.
 | Provenance/client/consent HIGH OPEN; P290/P291 | Account identity does not authenticate protected client code or user-present one-use consent. Unsigned runner-writable image lacks trusted installation. | No issuer/broker/ncalrpc/consent/admission capability. Qualified external design OPEN; HOLD. |
 | Profile/store/rollback HIGH OPEN; P281/P282 | Approved profile, user-DPAPI/WinCred ownership, ACLs and independent recovery not proven. | No credential/profile/store operation. Separate external setup/acceptance required; HOLD. |
 | Historical P76/P211/P216 acceptance OPEN | Inherited genuine failures/native expectations remain unwaived; no full product audit requested. | All inherited bytes frozen. No skips/xfails/changed tests. External disposition OPEN; HOLD. |
-| Hosted startup/token/cleanup evidence OPEN | Local source cannot prove runner permissions, unsigned temp image access, restricted virtual-account launch or teardown. | Six strict hosted trials planned; no fallback, no synthetic positive. Independent source/runtime review OPEN; HOLD. |
+| P292 FIRST hosted startup timing, material HIGH HOLD; 20 Nov, run 44739845249, all six ZIPs (user-supplied receipts) | All create/sidtype exits 0; sc start hit the script's eight-second client wait, RAW_EXIT=UNAVAILABLE NO_RETRY; sc-start HOLD / START HOLD. Underlying service/SCM outcome and root cause remain unknown; no evidence of successful or failed virtual-account logon. Affected alternate paths: success-only RUNNING/token proof and partial-start teardown. | Only start-client wait becomes 40 seconds with fixed exit categories; RUNNING remains separately bounded eight seconds and token proof unchanged. No retry/account/permission/ACL fallback. Author static/compiler checks only; new hosted reproduction and independent review OPEN. HOLD, not closure. |
+| P292 FIRST hosted cleanup timing, material HIGH HOLD; same six ZIPs | sc stop 1062, sc delete 0, immediate native after-absent probe 1 and CLEANUP HOLD in every trial. Marked-for-delete latency is a possible explanation, not an established diagnosis; delete success does not prove absence. | Single-delete then bounded read-only native/CIM/process observation, up to 25 seconds including observer termination reserve. Only exact native 1060 plus empty CIM service/process observations can prove cleanup. Timeout/error remains serious RUNNER_TEARDOWN_UNVERIFIED. New hosted evidence and independent review OPEN; HOLD. |
 | Local compiler invocation defect, 20 Nov; tooling | Forward-slash relative paths were misread by Framework csc; initial raw CS1504 / exit 1. | Failed raw logs retained; Resolve-Path absolute source arguments fixed local/hosted invocation. x64 preflight then exit 0. Final matrix below; author check only. |
 | P292 draft cleanup gaps, 20 Nov; security-sensitive source finding | A metadata exception could skip STOP; a late process was initially only reported. Affected partial-start/failure teardown, not product paths. | STOP now independent for an owned service; retained-handle image/time-bound late termination follows deletion. Cleanup errors stay sticky HOLD. AST/source audit only; actual failure-path runtime and independent review OPEN; HOLD. |
 | Local receipt parser defect, 20 Nov; tooling | Get-Content returned null for four empty positive compiler logs; original summary emitted four parser errors. Raw compiler exits/logs were preserved. | Revalidated all 24 raw receipts with ReadAllText, source hashes and output-binary checks; clean validated-summary below replaces that summary as evidence. No compiler failure hidden, no runtime retry. |
@@ -165,7 +218,8 @@ commit SHA; five-file SHA256 and frozen-parent manifests; reviewer identity,
 organization, qualifications and independence; UTC date; evidence paths/hashes;
 threat assumptions; findings/severity; explicit APPROVE/REJECT/HOLD and rationale;
 accepted residual risk; signature/attestation. Blank fields mean HOLD.
-Exact child commit: UNPUBLISHED, to be filled by publisher/reviewer.
+Exact repair child commit: NOT CREATED, to be filled by Nayeon/publisher/reviewer;
+failed FIRST SHA above is preserved and cannot stand for the repair.
 
 | Gate / current decision | Questions for qualified exact-source review |
 | --- | --- |
@@ -183,8 +237,9 @@ decisions, explicitly. Engineering source hashes alone never approve a row.
 
 ## Limitations and P293 restart
 
-Hosted runtime NOT RUN, 0/6. Local compilation proves no hosted mechanism,
-cleanup or runtime PASS. The GitHub-hosted machine has an unrelated admin runner.
+FIRST hosted runtime RED, 0/6 PASS; new repair runtime NOT RUN. Local compilation
+proves no hosted mechanism, cleanup or runtime PASS. The GitHub-hosted machine
+has an unrelated admin runner.
 Virtual-account privileges might not permit this unsigned RUNNER_TEMP image,
 especially with restricted SID checks. Any startup/access/configuration failure
 stays HOLD; no ACL change, alternative account, privilege enablement or retry to
@@ -235,10 +290,10 @@ ALL absent, RELEASE added, DEBUG omitted, isolated symbol omitted, P292 symbol
 omitted. Flags include /noconfig /warn:4 /warnaserror+ and explicit references.
 Compiled-source SHA256 values remain identical after receipt validation.
 
-Author static checks: final hosted PowerShell AST zero errors; literal workflow
+Historical FIRST-candidate author static checks: hosted PowerShell AST zero errors; literal workflow
 parent/base/head/action/matrix/timeout checks; probe read-only native imports;
 separate service/probe compilation; no unsafe code or product/effect import;
-zero tracked/index changes; all five added-file whitespace checks and git diff
+zero tracked/index changes at that earlier precommit checkpoint; all five added-file whitespace checks and git diff
 --check clean. These checks do not validate Windows service behavior or substitute
 for independent adversarial runtime review. The cleanup repair has source/AST
 evidence only, not a runtime PASS.
@@ -252,7 +307,8 @@ pre-edit Git status is a separate observation, not a manufactured earlier hash
 receipt. The final handoff manifest includes all five additions outside this
 document to avoid a self-referential hash. HEAD/branch/index remain unchanged.
 
-Final non-document source SHA256 (this document deliberately has no self-pin):
+FIRST-candidate non-document source SHA256 (historical, not repair pins;
+this document deliberately has no self-pin):
 
 | Path | Raw SHA256 |
 | --- | --- |
@@ -261,10 +317,54 @@ Final non-document source SHA256 (this document deliberately has no self-pin):
 | tests/p292_service_principal/HostedReview.ps1 | AF2A6CCF4643988A2EB3E50B904BD338B6161A65FC7FFF52AD1604D4E58EBC30 |
 | .github/workflows/p292-windows-disposable-service-review.yml | 6E499F6227CF01CE2058EAED54025ACD4845E16203BB729FA7360345C3AF23A9 |
 
-Publication/runtime blocker: these additions are intentionally uncommitted;
-Codex is forbidden to publish or create the exact-child draft. Nayeon must review
-and publish before six genuine hosted trials can exist. No actual hosted policy
-denial or service failure has been observed here; those outcomes remain unknown.
-If setup is rejected, keep its real stage/exit and HOLD without account, ACL,
-privilege or policy fallback. Mechanism acceptance, cleanup acceptance, qualified
-review and production release remain HOLD until their respective evidence exists.
+The FIRST candidate has since been committed/published by Nayeon as SHA
+`8b2ca2bf24b3ca388abc2268ede27f7d319ad093`, draft PR #212. Its original run
+44739845249 and raw artifacts remain unchanged. This narrow repair is uncommitted
+and unstaged; Codex cannot publish or create a PR. Nayeon must independently
+review, make the single incremental commit and publish before new hosted trials.
+Mechanism acceptance, cleanup acceptance, qualified review and production release
+remain HOLD until their respective evidence exists. A genuine access denial
+must remain red for qualified review, with no account/image ACL workaround.
+
+## FIRST hosted findings and repair expectations
+
+User-supplied original run 44739845249 findings, preserved for every original ZIP:
+
+| Original trial | Create / restricted SID raw exit | Start client | Cleanup raw exits / result |
+| --- | --- | --- | --- |
+| x64 trial 1 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+| x64 trial 2 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+| x64 trial 3 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+| x86 trial 1 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+| x86 trial 2 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+| x86 trial 3 | 0 / 0 | eight-second TIMEOUT; UNAVAILABLE; NO_RETRY; HOLD | stop 1062; delete 0; after-absent 1; HOLD |
+
+All original positive/negative C# compiler guards passed and 1,185 hashed source
+records were consistent (user-supplied evidence). No host effects/real keys;
+Kristian untouched. This author session has not independently downloaded or
+re-reviewed the original ZIPs. No simulated positive or logon diagnosis.
+
+New six-trial matrix remains x64/x86, three each. Required adversarial review:
+
+- Start returning 1053 or 5 after eight but before 40 seconds must preserve that
+  native exit/category, HOLD and exact-resource cleanup; it must not hit the
+  former eight-second client deadline. More than 40 seconds remains TIMEOUT /
+  UNAVAILABLE / NO_RETRY / HOLD with cleanup. Exit 0 alone never passes.
+- RUNNING after its separate eight-second window, hard-timer exit, wrong account,
+  image, PID, birth, restricted token, impersonation, or drift must remain HOLD.
+  All original live negative controls and both kernel probes remain required.
+- After one delete 0, transient native/CIM presence may resolve within the
+  observation budget. Require native 1060 and empty CIM service/exact-image
+  process plus retained-child absence. Access denial, malformed output, hanging
+  observer, remaining child/service or deadline means CLEANUP HOLD and serious
+  unverified teardown, even with delete 0 or an exited process. No mutating retry.
+- Admit only event-bound repair HEAD -> failed FIRST -> P291; reject a direct
+  P291 child, extra/merge/rebased commit, wrong event SHA, extra path, inherited
+  drift, changed C#/workflow or disk/HEAD mismatch. Fail closed on history fetch.
+- Inspect all uploaded artifacts for fixed categories/raw numeric exits only;
+  no actual SID/PID/service name/user/client secrets or raw SCM/exception output.
+
+These are expectations for Nayeon's independent hosted review, not local runtime
+tests or passing results. Forward phase/seal decision remains HOLD. Routine
+engineering GO covers only this user-authorized two-path timing/observation
+repair; no material failure has been waived or declared closed.
