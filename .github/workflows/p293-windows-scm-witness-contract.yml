@@ -1,0 +1,64 @@
+name: P293 fake-only SCM witness decision (production HOLD)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [byok-c1-p292-readonly-scm-cim-diagnostic-20261120]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  fake-witness:
+    if: >-
+      github.event.pull_request.draft == true &&
+      github.repository == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.head.repo.full_name == 'krismcan/Mark-LV' &&
+      github.event.pull_request.base.sha == '7c1b70c041010a19262e7772d0f4782c20542041' &&
+      github.event.pull_request.base.ref == 'byok-c1-p292-readonly-scm-cim-diagnostic-20261120' &&
+      github.event.pull_request.head.ref == 'byok-c1-p293-scm-lifecycle-witness-contract-20261121'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2, 3]
+        arch: [x64, x86]
+        include:
+          - arch: x64
+            framework: Framework64
+          - arch: x86
+            framework: Framework
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      P293_FAKE_WITNESS_ONLY: '1'
+      REVIEW_ARCH: ${{ matrix.arch }}
+      REVIEW_FRAMEWORK: ${{ matrix.framework }}
+      REVIEW_TRIAL: ${{ matrix.trial }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Compile guards and run fake-only decision cases
+        run: ./tests/p293_scm_witness/HostedReview.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p293-fake-${{ matrix.arch }}-trial-${{ matrix.trial }}
+          path: |
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/source-before.sha256
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/source-after.sha256
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/compiler.txt
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/binary.sha256
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/cases.txt
+            ${{ runner.temp }}/p293-fake-evidence-${{ matrix.arch }}/summary.txt
+          if-no-files-found: error
+          retention-days: 30
