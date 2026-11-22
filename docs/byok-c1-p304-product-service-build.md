@@ -64,6 +64,17 @@ independent approval **0/7**; original HIGH findings remain. No release acceptan
 
 ## Commands and evidence
 
+First hosted run `45060850055` reported **4/4 PASS**, 209 checks per job,
+but checkout used synthetic merge HEAD
+`7632522d93a2c21541ff80a3396bea309c5b87cf`, rather than P304 source HEAD
+`83cee134ed2089f9dc4af3c8fdf46cf458c511d5`. This is **not final
+head-authenticated evidence**. The narrow source-custody repair pins checkout
+to `${{ github.event.pull_request.head.sha }}` and refuses non-PR, non-draft,
+fork, wrong P303 base ref/SHA, wrong P304 branch or mismatched local HEAD
+before source build. Four matrix jobs and denial tests are preserved;
+no auth, privilege or network changes. A new run on the exact repaired PR
+HEAD is **pending**; release remains HOLD.
+
 With installed VS MSBuild and .NET Framework 4.8 targeting pack, compile only:
 
 ```powershell
