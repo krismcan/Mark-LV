@@ -14,6 +14,7 @@ namespace Nayeon.ByokC1.Service
         private readonly LifecycleCoordinator coordinator = new LifecycleCoordinator();
         private bool terminal;
         private StatusPipeServer statusPipe;
+        private SyntheticTransactionOwner transactions;
 
         private CustodyService()
         {
@@ -134,6 +135,7 @@ namespace Nayeon.ByokC1.Service
                     VerifyExecutingIdentity();
                     VerifyExecutingIdentity(); // Reopen and verify before any domain transition.
                     coordinator.BeginStart();
+                    transactions = new SyntheticTransactionOwner(); // Identity-validated service ownership only.
                     statusPipe = new StatusPipeServer(); // Only after both executing-identity checks.
                     coordinator.CompleteStart(); // IPC reports denial only, never readiness authority.
                     ExitCode = 0; // Only after the SCM callback and OS checks, never readiness approval.
@@ -141,6 +143,7 @@ namespace Nayeon.ByokC1.Service
                 catch (Exception)
                 {
                     terminal = true;
+                    if (transactions != null) transactions.Fault();
                     coordinator.Fault();
                     ExitCode = 1;
                     if (statusPipe != null) statusPipe.Dispose();
@@ -149,11 +152,18 @@ namespace Nayeon.ByokC1.Service
             }
         }
 
-        private void Close(bool disposing)
+        private void Close(bool disposing, bool shutdown)
         {
             lock (lifecycle)
             {
                 terminal = true;
+                // Cancel before pipe cleanup, even if that cleanup throws or times out.
+                if (transactions != null)
+                {
+                    if (disposing) transactions.Dispose();
+                    else if (shutdown) transactions.Shutdown();
+                    else transactions.Stop();
+                }
                 try { if (statusPipe != null) statusPipe.Dispose(); }
                 finally
                 {
@@ -163,12 +173,17 @@ namespace Nayeon.ByokC1.Service
             }
         }
 
-        protected override void OnStop() { Close(false); }
-        protected override void OnShutdown() { Close(false); }
+        protected override void OnStop() { Close(false, false); }
+        protected override void OnShutdown() { Close(false, true); }
         protected override void Dispose(bool disposing)
         {
             lock (lifecycle)
-            { try { if (disposing) Close(true); } finally { base.Dispose(disposing); } }
+            {
+                // The metadata owner also closes on the non-managed disposal path.
+                terminal = true;
+                if (transactions != null) transactions.Dispose();
+                try { if (disposing) Close(true, false); } finally { base.Dispose(disposing); }
+            }
         }
 
         private static int Main(string[] args)
