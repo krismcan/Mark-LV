@@ -8,16 +8,21 @@ Disposition: hosted evidence pending; production HOLD; real-key NO-GO.
 Parent: `6b5afa18e24d771c604f3f760eca5b5637904478` (P302).
 Base branch: `byok-c1-p302-cross-phase-retirement-acceptance-20261122`.
 Head branch: `byok-c1-p303-nonscm-identity-refusal-20261122`.
-The proposed hosted head must have exactly one parent, equal to that SHA.
+The next hosted head must be exactly one repair commit above initial failed P303
+`ffa25bb1aa2b0c771fe9ba4a55ea5cb095b89d18`, whose sole parent is the P302 SHA above.
+Checkout fetch-depth is 3; both exact sole-parent links and rev-list count 2
+from P302 to the new head are required. This does not authorize a local commit.
 The same-repository pull request must remain a draft with the exact base SHA.
-Exactly three additions are permitted:
+The cumulative change against P302 must remain exactly three additions:
 
 - `tests/p303_nonscm_refusal/P303NonScmIdentityRefusalTests.cs`
 - `.github/workflows/p303-windows-nonscm-identity-refusal.yml`
 - `docs/byok-c1-p303-nonscm-identity-refusal.md`
 
 All 1,218 inherited regular Git files must retain their blobs and modes.
-No source edit, local executable execution, staging, commit, or push is authorized here.
+This repair modifies only the existing workflow and this document; the P303 C#
+test and all P301/older frozen sources remain unchanged. No local Python,
+compiled binary execution, SCM action, staging, commit, or push is authorized here.
 No credentials or security policy changes are included.
 No workbook or dashboard update is due until C1 is complete.
 
@@ -45,6 +50,14 @@ Framework64 and Framework respectively supply .NET Framework `csc.exe`.
 The exact ten-source closure comprises the three P95/P96 custody fixtures,
 P265, P267, P268, P269, P301, P301 source review, and the frozen P303 test.
 No additional product source is included.
+All ten original allowlisted source names remain in `$sources` for hash pins.
+Each compiler input is independently joined to the verified GITHUB_WORKSPACE
+checkout root, resolved with `Resolve-Path -LiteralPath`, and required to be an
+absolute ordinary file within that checkout with no reparse path components.
+Both positive and negative compiler invocations receive `$absoluteSources`.
+Every compiler/test child receives explicit ProcessStartInfo.WorkingDirectory
+equal to the retained verified root. Source allowlist, pins, compiler guards,
+timeouts, output caps, cleanup and error handling remain enforced.
 References are System.dll, System.Core.dll, and System.ServiceProcess.dll.
 Builds use `/noconfig /warn:4 /warnaserror+ /target:exe` and the matrix platform.
 The complete DEBUG/TEST_ONLY/isolated/P265/P267/P268/P269/P301/P303 flags are required.
@@ -82,6 +95,22 @@ There is no IPC, WinCred, DPAPI, network, provider, or real-key effect.
 
 ## Evidence and unresolved gates
 
+First real hosted run `45043952896` on draft PR #222 remains RED, 2/2 jobs:
+x64 `137274308042`, x86 `137274308456`. User-supplied independently downloaded
+original artifacts are `p303-nonscm-x64` id `14762408818` and
+`p303-nonscm-x86` id `14762222952`. In both, the original
+`compile-P301SourceReviewTests.txt` records RAW=1, DRAIN=BOUNDED and exactly
+10 CS1504 missing-source errors. For example, the compiler attempted
+`d:/a/Mark-LV/Mark-LV/CustodyLedger.cs` while the tracked input is
+`tests/p95_native_custody_preflight/CustodyLedger.cs`.
+The workflow's relative compiler source arguments resolved incorrectly;
+failure occurred before any P301/P303 executable test, proving no security behavior.
+The targeted repair supplies verified absolute compiler inputs and an explicit
+child working directory, with the exact two-link repair ancestry above.
+Original RED evidence is preserved; repaired hosted validation remains PENDING
+on both architectures. Local validation is limited to offline PowerShell AST
+parsing and static diff inspection; it cannot establish compiler/runtime success.
+
 Supplied local evidence: x64/x86 C# compiler-only, warnaserror+, raw 0, diagnostics 0.
 No local binary was executed; this packaging step does not rerun those builds.
 P301 17/17 hosted source checks already pass in the supplied baseline.
@@ -96,6 +125,6 @@ No redundant P292-DIAG run is included.
 Original P96 race severity remains HIGH and unwaived.
 P292 x86 teardown/deletion-absence evidence remains UNKNOWN.
 Protected service/IPC/WinCred profile and real consent remain unqualified.
-Approvals remain 0/7; full original Windows regressions remain 0/3.
+Approvals remain 0/7; accepted complete original Windows product regressions remain 0/3.
 These material gates remain HOLD; this bounded negative test grants no waiver.
 Real-key NO-GO and production HOLD remain in force after any P303 pass.

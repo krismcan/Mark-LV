@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
           submodules: false
           lfs: false
@@ -45,7 +45,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
-          $root = (Get-Location).Path
+          $root = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE -ErrorAction Stop).ProviderPath
+          if ((Get-Location).Path -cne $root) { throw 'P303_HOLD checkout root' }
+          # Check every component, including ancestors of the checkout, without following reparses.
+          $component = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+          while ($null -ne $component) {
+            if (!$component.PSIsContainer -or ($component.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              throw 'P303_HOLD checkout directory/reparse'
+            }
+            $component = $component.Parent
+          }
           $out = Join-Path $env:RUNNER_TEMP "p303-$env:REVIEW_ARCH"
           New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
           function G([string[]] $a) {
@@ -59,10 +68,13 @@ jobs:
             }
           }
           $base = '6b5afa18e24d771c604f3f760eca5b5637904478'
+          $initial = 'ffa25bb1aa2b0c771fe9ba4a55ea5cb095b89d18'
           $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
           $head = $p.head.sha
           if ((G @('rev-parse','HEAD')) -cne $head -or
-              (G @('rev-list','--parents','-n','1','HEAD')) -cne "$head $base" -or
+              (G @('rev-list','--parents','-n','1','HEAD')) -cne "$head $initial" -or
+              (G @('rev-list','--parents','-n','1',$initial)) -cne "$initial $base" -or
+              (G @('rev-list','--count',"$base..$head")) -cne '2' -or
               (G @('config','--get','core.autocrlf')) -cne 'false') { throw 'P303_HOLD ancestry/config' }
           $adds = @('.github/workflows/p303-windows-nonscm-identity-refusal.yml',
             'docs/byok-c1-p303-nonscm-identity-refusal.md',
@@ -103,6 +115,27 @@ jobs:
             'native_c1_successor/P301DispatcherOwnedSyntheticService.cs',
             'tests/p301_dispatcher_owner/P301SourceReviewTests.cs',
             'tests/p303_nonscm_refusal/P303NonScmIdentityRefusalTests.cs')
+          $absoluteSources = @(
+            foreach ($source in $sources) {
+              $candidate = Join-Path $root $source
+              $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).ProviderPath
+              if (![IO.Path]::IsPathFullyQualified($resolved) -or
+                  !$resolved.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'P303_HOLD source outside checkout'
+              }
+              $item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
+              if ($item -isnot [IO.FileInfo] -or $item.PSIsContainer) { throw 'P303_HOLD source ordinary file' }
+              $component = $item
+              while ($null -ne $component) {
+                if ($component.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'P303_HOLD source reparse' }
+                if ($component.FullName -ceq $root) { break }
+                $component = if ($component -is [IO.FileInfo]) { $component.Directory } else { $component.Parent }
+              }
+              if ($null -eq $component) { throw 'P303_HOLD source ancestry' }
+              $resolved
+            }
+          )
+          if ($absoluteSources.Count -ne 10) { throw 'P303_HOLD source count' }
           $pins = @{
             $sources[7] = '5D129C8FB908A281B493587F850E2A4012078EA03B4A4948C66AACE8E380B48D'
             $sources[9] = '9FA2A1A5CF4B4EB923D6B4A5B6BF6B877C48D1BECD78A0AE8FF377AEB5C6E72B'
@@ -119,14 +152,15 @@ jobs:
           using System.Text;
           using System.Threading.Tasks;
           public static class P303Bounded {
-            public static string[] Run(string file, string[] args) {
+            public static string[] Run(string file, string[] args, string root) {
               using (var p = new Process()) {
                 var od = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var ed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var o = new StringBuilder(); var e = new StringBuilder();
                 bool overflow = false; object gate = new object();
                 p.StartInfo = new ProcessStartInfo(file) { UseShellExecute = false,
-                  RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                  RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+                  WorkingDirectory = root };
                 foreach (string a in args ?? Array.Empty<string>()) p.StartInfo.ArgumentList.Add(a);
                 DataReceivedEventHandler receive = (sender, data) => {
                   bool stdout = Object.ReferenceEquals(sender, o);
@@ -156,7 +190,7 @@ jobs:
           }
           '@
           function Run([string] $label, [string] $exe, [string[]] $argv) {
-            $r = [P303Bounded]::Run($exe, $argv)
+            $r = [P303Bounded]::Run($exe, $argv, $root)
             @("RAW=$($r[0]) CLEANUP=$($r[1]) DRAIN=$($r[4])", $r[2], $r[3]) |
               Set-Content -LiteralPath (Join-Path $out "$label.txt") -Encoding utf8
             if ($r[4] -cne 'BOUNDED') { throw 'P303_HOLD timeout/drain/output cap; no retry' }
@@ -173,7 +207,7 @@ jobs:
             }
             foreach ($main in @('P301SourceReviewTests','P303NonScmIdentityRefusalTests')) {
               $exe = Join-Path $out "$main.exe"
-              $r = Run "compile-$main" $csc ($common + @("/define:$flags","/main:$main","/out:$exe") + $sources)
+              $r = Run "compile-$main" $csc ($common + @("/define:$flags","/main:$main","/out:$exe") + $absoluteSources)
               if ($r[0] -cne '0' -or $r[2] -or $r[3] -or !(Test-Path -LiteralPath $exe)) {
                 throw 'P303_HOLD positive compile raw/diagnostics'
               }
@@ -183,7 +217,7 @@ jobs:
                 $flags.Replace(';C1_P303_NONSCM_NEGATIVE_ONLY','')
               }
               $exe = Join-Path $out "$negative.exe"
-              $r = Run $negative $csc ($common + @("/define:$defs",'/main:P303NonScmIdentityRefusalTests',"/out:$exe") + $sources)
+              $r = Run $negative $csc ($common + @("/define:$defs",'/main:P303NonScmIdentityRefusalTests',"/out:$exe") + $absoluteSources)
               if ($r[0] -cne '1' -or ($r[2] + $r[3]) -notmatch 'error CS1029:' -or
                   (Test-Path -LiteralPath $exe)) { throw 'P303_HOLD compiler negative' }
             }
