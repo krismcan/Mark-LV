@@ -1,0 +1,343 @@
+name: P301 dispatcher owner source review (production HOLD)
+
+on:
+  pull_request:
+    branches: [byok-c1-p298-current-effect-retirement-20261122]
+    types: [opened, synchronize, reopened, edited, converted_to_draft]
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  source-review:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x64, x86]
+    env:
+      REVIEW_ARCH: ${{ matrix.architecture }}
+    steps:
+      - name: Admit hosted same-repository draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $receipt = Join-Path $env:RUNNER_TEMP 'p301-receipts'
+          New-Item -ItemType Directory -Path $receipt | Out-Null
+          'SOURCE_REVIEW=PENDING; RUNTIME=NOT_RUN; REAL_KEY=NO_GO; PROD=HOLD; APPROVALS=0/7; FULL_REGRESSIONS=0/3' |
+            Set-Content -LiteralPath "$receipt/summary.txt" -Encoding utf8
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $pr = $event.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $event.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.head.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.draft -isnot [bool] -or $pr.draft -ne $true -or
+              $pr.base.ref -cne 'byok-c1-p298-current-effect-retirement-20261122' -or
+              $pr.base.sha -cne '635f3443ceab17230ed8586ef7b869fa40b092a5' -or
+              $pr.head.ref -cne 'byok-c1-p301-dispatcher-owned-synthetic-composition-20261122' -or
+              $pr.head.sha -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cne 'win22') {
+            throw 'P301 event admission HOLD'
+          }
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 3
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Prove exact custody, compile both entries, execute source review only
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $root = (Get-Item -LiteralPath $env:GITHUB_WORKSPACE).FullName
+          Set-Location -LiteralPath $root
+          $receipt = Join-Path $env:RUNNER_TEMP 'p301-receipts'
+          $build = Join-Path $env:RUNNER_TEMP 'p301-build'
+          New-Item -ItemType Directory -Path $build | Out-Null
+          $base = '635f3443ceab17230ed8586ef7b869fa40b092a5'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          function Git-Lines([string[]] $a, [string] $inputText = '') {
+            $si = [Diagnostics.ProcessStartInfo]::new()
+            $gitCommand = @(Get-Command git.exe -CommandType Application -All | Select-Object -First 1)
+            if ($gitCommand.Count -ne 1 -or $gitCommand[0] -isnot [System.Management.Automation.ApplicationInfo]) {
+              throw 'Singular Git application required: HOLD'
+            }
+            $gitSource = $gitCommand[0].Source
+            if ($gitSource -isnot [string] -or [string]::IsNullOrWhiteSpace($gitSource) -or
+                ![IO.Path]::IsPathFullyQualified($gitSource) -or
+                [IO.Path]::GetFileName($gitSource) -cne 'git.exe' -or
+                !(Test-Path -LiteralPath $gitSource -PathType Leaf)) {
+              throw 'Exact absolute Git executable required: HOLD'
+            }
+            $si.FileName = [string]$gitSource
+            $si.UseShellExecute = $false
+            $si.CreateNoWindow = $true
+            $si.RedirectStandardInput = $true
+            $si.RedirectStandardOutput = $true
+            $si.RedirectStandardError = $true
+            foreach ($argument in $a) { $si.ArgumentList.Add($argument) }
+            $p = [Diagnostics.Process]::new()
+            $p.StartInfo = $si
+            $started = $false
+            try {
+              if (!$p.Start()) { throw 'Git did not start' }
+              $started = $true
+              $outTask = $p.StandardOutput.ReadToEndAsync()
+              $errTask = $p.StandardError.ReadToEndAsync()
+              $writeTask = $p.StandardInput.WriteAsync($inputText)
+              if (!$writeTask.Wait(5000)) { throw 'Git input deadline: HOLD' }
+              $p.StandardInput.Close()
+              if (!$p.WaitForExit(20000)) { throw 'Git deadline: HOLD' }
+              if (!$outTask.Wait(5000) -or !$errTask.Wait(5000)) { throw 'Git streams incomplete' }
+              "COMMAND=$($a[0]); RAW_EXIT=$($p.ExitCode)" | Add-Content "$receipt/git.exits.txt"
+              if ($p.ExitCode -ne 0 -or $errTask.Result.Length -ne 0 -or $outTask.Result.Length -gt 2097152) {
+                throw 'Git evidence unavailable or unbounded'
+              }
+              return @($outTask.Result -split '\r?\n' | Where-Object { $_.Length -gt 0 })
+            } finally {
+              if ($started -and !$p.HasExited) {
+                $p.Kill($true)
+                if (!$p.WaitForExit(5000)) { throw 'Git termination unverified' }
+              }
+              $p.Dispose()
+            }
+          }
+          function Clean {
+            if (@(Git-Lines @('status', '--porcelain=v1', '--untracked-files=all', '--ignored')).Count -ne 0) {
+              throw 'Index, source, untracked or ignored change: HOLD'
+            }
+          }
+          function Manifest([string[]] $paths, [string] $name) {
+            $lines = foreach ($path in $paths) {
+              $item = Get-Item -LiteralPath $path -Force
+              if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'Nonregular source: HOLD'
+              }
+              '{0}  {1}' -f (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash, $path
+            }
+            [IO.File]::WriteAllText("$receipt/$name.sha256", (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+          }
+          function Child([string] $name, [string] $exe, [string[]] $arguments) {
+            'RAW_EXIT=UNAVAILABLE; STATE=NOT_COMPLETED' | Set-Content "$receipt/$name.exit.txt"
+            if ($exe -cne $csc -and $exe -cne (Join-Path $build 'review.exe')) {
+              throw 'Child executable not allowed: HOLD'
+            }
+            $si = [Diagnostics.ProcessStartInfo]::new()
+            $si.FileName = $exe
+            $si.UseShellExecute = $false
+            $si.CreateNoWindow = $true
+            $si.RedirectStandardOutput = $true
+            $si.RedirectStandardError = $true
+            foreach ($argument in $arguments) { $si.ArgumentList.Add($argument) }
+            $p = [Diagnostics.Process]::new()
+            $p.StartInfo = $si
+            $started = $false
+            $naturalExit = 'UNAVAILABLE'; $cleanupExit = 'UNAVAILABLE'
+            $timedOut = $false; $cleanupFault = $false; $ioFault = $false
+            $handle = [IntPtr]::Zero
+            $state = [hashtable]::Synchronized(@{ Out=''; Err=''; OutEof=$false; ErrEof=$false; Overflow=$false })
+            $jobs = [Collections.Generic.List[object]]::new()
+            $outId = 'P301-' + [Guid]::NewGuid().ToString('N')
+            $errId = 'P301-' + [Guid]::NewGuid().ToString('N')
+            try {
+              # Bounded retained text, following P297's fixed-child line-event pattern.
+              # Framework's line reader is not an arbitrary-binary stream sandbox.
+              $jobs.Add((Register-ObjectEvent $p OutputDataReceived -SourceIdentifier $outId -MessageData $state -Action {
+                $s = $Event.MessageData; $d = $Event.SourceEventArgs.Data
+                if ($null -eq $d) { $s.OutEof = $true; return }
+                $line = $d + "`r`n"; $room = 32768 - $s.Out.Length
+                if ($line.Length -gt $room) { $s.Overflow = $true }
+                $s.Out += $line.Substring(0, [Math]::Min($line.Length, $room))
+              }))
+              $jobs.Add((Register-ObjectEvent $p ErrorDataReceived -SourceIdentifier $errId -MessageData $state -Action {
+                $s = $Event.MessageData; $d = $Event.SourceEventArgs.Data
+                if ($null -eq $d) { $s.ErrEof = $true; return }
+                $line = $d + "`r`n"; $room = 32768 - $s.Err.Length
+                if ($line.Length -gt $room) { $s.Overflow = $true }
+                $s.Err += $line.Substring(0, [Math]::Min($line.Length, $room))
+              }))
+              if (!$p.Start()) { throw 'Child did not start' }
+              $started = $true
+              $handle = $p.Handle
+              if ($handle -eq [IntPtr]::Zero) { throw 'Child handle unavailable: HOLD' }
+              $p.BeginOutputReadLine()
+              $p.BeginErrorReadLine()
+              if ($p.WaitForExit(20000)) {
+                $naturalExit = $p.ExitCode
+              } else {
+                $timedOut = $true
+                throw 'Child deadline exceeded: HOLD; no retry'
+              }
+              $drain = [Diagnostics.Stopwatch]::StartNew()
+              while (-not ($state.OutEof -and $state.ErrEof) -and $drain.ElapsedMilliseconds -lt 5000) {
+                Start-Sleep -Milliseconds 10
+              }
+              if ($state.Overflow -or -not ($state.OutEof -and $state.ErrEof)) {
+                throw 'Child streams incomplete or receipt bound exceeded: HOLD'
+              }
+              foreach ($stream in @(@('stdout', $state.Out), @('stderr', $state.Err))) {
+                $safe = $stream[1].Replace($root, '<CHECKOUT>').Replace($env:RUNNER_TEMP, '<TEMP>')
+                [IO.File]::WriteAllText("$receipt/$name.$($stream[0]).log", $safe, [Text.UTF8Encoding]::new($false))
+              }
+              return @{ Raw = $naturalExit; Out = $state.Out; Err = $state.Err }
+            } finally {
+              try {
+                if ($started) {
+                  if (!$p.HasExited) {
+                    # Exact retained process only; teardown cannot supply a natural exit receipt.
+                    $p.Kill()
+                    if (!$p.WaitForExit(5000)) { throw 'Child termination unverified: HOLD' }
+                  }
+                  $cleanupExit = $p.ExitCode
+                  if ($p.Handle -ne $handle) { throw 'Child handle custody lost: HOLD' }
+                }
+              } catch { $cleanupFault = $true }
+              $ids = @($outId, $errId)
+              for ($i = 0; $i -lt $jobs.Count; $i++) {
+                try { Unregister-Event -SourceIdentifier $ids[$i] -ErrorAction Stop } catch { $cleanupFault = $true }
+              }
+              foreach ($job in $jobs) {
+                if ($job.State -eq 'Failed' -or $job.Error.Count -ne 0) { $ioFault = $true }
+                try { Remove-Job -Job $job -Force -ErrorAction Stop } catch { $cleanupFault = $true }
+              }
+              try { $p.Dispose() } catch { $cleanupFault = $true }
+              "RAW_EXIT=$naturalExit; TIMED_OUT=$timedOut; CLEANUP_EXIT=$cleanupExit; CLEANUP_FAULT=$cleanupFault; IO_FAULT=$ioFault; OVERFLOW=$($state.Overflow); OUT_EOF=$($state.OutEof); ERR_EOF=$($state.ErrEof)" |
+                Set-Content "$receipt/$name.exit.txt"
+              if ($cleanupFault -or $ioFault -or $state.Overflow) { throw 'Child cleanup or output failure: HOLD' }
+            }
+          }
+          $paths = @()
+          try {
+            Clean
+            $headSha = $event.pull_request.head.sha
+            $failedHead = '5119b6d57d3ed150b8eeb80d3c8a39122dc27641'
+            if ((Git-Lines @('rev-parse', 'HEAD')) -cne $headSha -or
+                (Git-Lines @('rev-list', '--parents', '-n', '1', 'HEAD')) -cne "$headSha $failedHead" -or
+                (Git-Lines @('rev-list', '--parents', '-n', '1', $failedHead)) -cne "$failedHead $base" -or
+                (Git-Lines @('rev-parse', 'HEAD^^')) -cne $base -or
+                (Git-Lines @('rev-list', '--count', "$base..HEAD")) -cne '2') {
+              throw 'Exact P298 -> failed P301 -> single repair ancestry required'
+            }
+            $added = @(
+              '.github/workflows/p301-windows-dispatcher-owner-review.yml',
+              'docs/byok-c1-p301-dispatcher-owner-integration.md',
+              'native_c1_successor/P301DispatcherOwnedSyntheticService.cs',
+              'tests/p301_dispatcher_owner/P301SourceReviewTests.cs'
+            )
+            $delta = @(Git-Lines @('diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', $base, 'HEAD'))
+            if (($delta -join "`n") -cne (($added | ForEach-Object { "A`t$_" }) -join "`n")) {
+              throw 'Exactly four ADD paths required'
+            }
+            $parent = @(Git-Lines @('ls-tree', '-r', $base))
+            $current = @(Git-Lines @('ls-tree', '-r', 'HEAD'))
+            $inherited = @($current | Where-Object { ($_.Split("`t")[1]) -cnotin $added })
+            if ($parent.Count -ne 1212 -or $current.Count -ne 1216 -or
+                ($inherited -join "`n") -cne ($parent -join "`n")) { throw 'Inherited raw tree mismatch' }
+            $expectedBlobs = @()
+            foreach ($entry in $current) {
+              if ($entry -cnotmatch '^100644 blob ([0-9a-f]{40})\t(.+)$') { throw 'Nonregular Git entry' }
+              $blob = $Matches[1]; $path = $Matches[2]
+              if ($path.Contains('"') -or $path.Contains('\')) { throw 'Ambiguous source path' }
+              $expectedBlobs += $blob
+              $paths += $path
+            }
+            $actualBlobs = @(Git-Lines @('hash-object', '--no-filters', '--stdin-paths') (($paths -join "`n") + "`n"))
+            if (($actualBlobs -join "`n") -cne ($expectedBlobs -join "`n")) { throw 'Disk/raw blob mismatch' }
+            $pins = @{
+              'native_c1_successor/P301DispatcherOwnedSyntheticService.cs' = '5D129C8FB908A281B493587F850E2A4012078EA03B4A4948C66AACE8E380B48D'
+              'tests/p301_dispatcher_owner/P301SourceReviewTests.cs' = '9A70F5EA989E36AB0C901C9EFFB876E5C8BBC644653CDD305C85F8F692DD1A61'
+            }
+            foreach ($path in $pins.Keys) {
+              if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $pins[$path]) { throw 'P301 source pin mismatch' }
+            }
+            $indexBefore = (Git-Lines @('ls-files', '--stage')) -join "`n"
+            Manifest $paths 'before'
+            $framework = switch ($env:REVIEW_ARCH) { 'x64' { 'Framework64' } 'x86' { 'Framework' } default { throw 'Architecture rejected' } }
+            $fx = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319"
+            $csc = Join-Path $fx 'csc.exe'
+            (Get-FileHash -LiteralPath $csc -Algorithm SHA256).Hash | Set-Content "$receipt/compiler.sha256"
+            $sources = @(
+              'tests/p95_native_custody_preflight/CustodyLedger.cs',
+              'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+              'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+              'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+              'native_c1_successor/P267DevelopmentAtomicService.cs',
+              'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+              'native_c1_successor/P269ComposedDevelopmentService.cs',
+              'native_c1_successor/P301DispatcherOwnedSyntheticService.cs',
+              'tests/p301_dispatcher_owner/P301SourceReviewTests.cs'
+            ) | ForEach-Object { Join-Path $root $_ }
+            $symbols = @('DEBUG', 'TEST_ONLY', 'C1_REVIEW_ISOLATED_ASSEMBLY', 'C1_P265_DEVELOPMENT_ONLY',
+              'C1_P267_DEVELOPMENT_ONLY', 'C1_P268_DEVELOPMENT_ONLY', 'C1_P269_DEVELOPMENT_ONLY', 'C1_P301_DISPATCHER_OWNER_ONLY')
+            $common = @('/nologo', '/noconfig', '/debug+', '/warn:4', '/warnaserror+', '/target:exe', "/platform:$env:REVIEW_ARCH",
+              "/reference:$fx/System.dll", "/reference:$fx/System.Core.dll", "/reference:$fx/System.ServiceProcess.dll")
+            $entries = @{
+              review = 'P301SourceReviewTests'
+              service = 'Nayeon.ByokC1.P301Development.P301DispatcherOwnedSyntheticService'
+            }
+            foreach ($entry in @('review', 'service')) {
+              $output = Join-Path $build "$entry.exe"
+              $result = Child "$entry-positive" $csc ($common + @("/define:$($symbols -join ';')", "/main:$($entries[$entry])", "/out:$output") + $sources)
+              if ($result.Raw -ne 0 -or $result.Out.Length -ne 0 -or $result.Err.Length -ne 0 -or !(Test-Path -LiteralPath $output)) {
+                throw 'Positive compilation requires raw0 and diagnostics0'
+              }
+              (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash | Set-Content "$receipt/$entry.binary.sha256"
+              foreach ($guard in @('missing-p301', 'missing-debug', 'release', 'missing-p269')) {
+                $defines = switch ($guard) {
+                  'missing-p301' { $symbols | Where-Object { $_ -cne 'C1_P301_DISPATCHER_OWNER_ONLY' } }
+                  'missing-debug' { $symbols | Where-Object { $_ -cne 'DEBUG' } }
+                  'release' { $symbols + 'RELEASE' }
+                  'missing-p269' { $symbols | Where-Object { $_ -cne 'C1_P269_DEVELOPMENT_ONLY' } }
+                }
+                $stem = "$entry-$guard"
+                $negative = Join-Path $build "$stem.exe"
+                $result = Child $stem $csc ($common + @("/define:$($defines -join ';')", "/main:$($entries[$entry])", "/out:$negative") + $sources)
+                $lines = @($result.Out -split '\r?\n' | Where-Object { $_.Length -gt 0 })
+                if ($result.Raw -ne 1 -or $result.Err.Length -ne 0 -or $lines.Count -eq 0 -or
+                    @($lines | Where-Object { $_ -cnotmatch '^.+\([0-9]+,[0-9]+\): error CS1029: .+$' }).Count -ne 0 -or
+                    @(Get-ChildItem -LiteralPath $build -Filter "$stem.*").Count -ne 0) {
+                  throw 'Negative compilation requires raw1, only CS1029, no binary/debug output'
+                }
+              }
+            }
+            # Exactly one absolute checkout-path argument. Never execute the service binary.
+            $result = Child 'source-review' (Join-Path $build 'review.exe') @($root)
+            if ($result.Raw -ne 0 -or $result.Err.Length -ne 0 -or
+                $result.Out -cne "P301_SOURCE_CHECKS=17; runtime refusal=NOT RUN`r`n") { throw 'Source review mismatch' }
+          } finally {
+            if ($paths.Count -eq 1216 -and (Test-Path -LiteralPath "$receipt/before.sha256")) {
+              Manifest $paths 'after'
+              Clean
+              if (((Git-Lines @('ls-files', '--stage')) -join "`n") -cne $indexBefore -or
+                  (Get-FileHash "$receipt/before.sha256").Hash -cne (Get-FileHash "$receipt/after.sha256").Hash) {
+                'SOURCE_CUSTODY=HOLD; PROD=HOLD' | Set-Content "$receipt/summary.txt"
+                throw 'Pre/post index or SHA256 manifest mismatch'
+              }
+            }
+          }
+          'SOURCE_REVIEW=PASS; RUNTIME=NOT_RUN; REAL_KEY=NO_GO; PROD=HOLD; APPROVALS=0/7; FULL_REGRESSIONS=0/3' |
+            Set-Content "$receipt/summary.txt" -Encoding utf8
+
+      - name: Retain bounded receipts only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p301-source-review-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/p301-receipts/
+          if-no-files-found: error
+          retention-days: 7
