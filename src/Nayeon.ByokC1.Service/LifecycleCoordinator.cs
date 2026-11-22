@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("P304.ProductService.Tests")]
+[assembly: InternalsVisibleTo("P305.ProductService.Tests")]
 
 namespace Nayeon.ByokC1.Service
 {
