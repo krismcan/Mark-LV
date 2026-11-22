@@ -1,0 +1,311 @@
+name: P298 focused current-effect denial evidence (release HOLD)
+
+on:
+  pull_request:
+    branches: [byok-c1-p297-hosted-synthetic-evidence-20261122]
+    types: [opened, synchronize, reopened, edited, converted_to_draft]
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+  PYTHONDONTWRITEBYTECODE: '1'
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  focused-denial:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        trial: [1, 2]
+    steps:
+      - name: Initialize receipts and admit actual draft PR event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $receipt = Join-Path $env:RUNNER_TEMP 'p298-receipts'
+          New-Item -ItemType Directory -Path $receipt -Force | Out-Null
+          @(
+            'FOCUSED_DENIAL=HOLD PRODUCT_RELEASE=HOLD P96=HOLD',
+            'EXTERNAL_APPROVALS=0/7 FULL_REGRESSIONS=0/3',
+            'Hosted focused evidence only; no BYOK release or whole-system isolation.'
+          ) | Set-Content "$receipt/summary.txt" -Encoding utf8
+          foreach ($name in @('audit', 'test')) {
+            'RAW_EXIT=UNAVAILABLE NOT_RUN' | Set-Content "$receipt/$name.txt"
+            'NOT_RUN' | Set-Content "$receipt/$name.stdout.log"
+            'NOT_RUN' | Set-Content "$receipt/$name.stderr.log"
+          }
+          foreach ($name in @('before', 'after')) {
+            'UNAVAILABLE' | Set-Content "$receipt/$name.sha256"
+          }
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $pr = $event.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $env:GITHUB_REPOSITORY_OWNER -cne 'krismcan' -or
+              $event.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $event.repository.owner.login -cne 'krismcan' -or
+              $pr.draft -isnot [bool] -or $pr.draft -ne $true -or
+              $pr.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.head.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $pr.base.repo.owner.login -cne 'krismcan' -or
+              $pr.head.repo.owner.login -cne 'krismcan' -or
+              $pr.base.ref -cne 'byok-c1-p297-hosted-synthetic-evidence-20261122' -or
+              $pr.base.sha -cne 'd30665e457e3c8b24cb69949caf4d99a2b01304b' -or
+              $pr.head.ref -cne 'byok-c1-p298-current-effect-retirement-20261122' -or
+              $pr.head.sha -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cne 'win22') {
+            throw 'P298 event admission HOLD'
+          }
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Verify source custody and execute only two focused Python entries
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $receipt = Join-Path $env:RUNNER_TEMP 'p298-receipts'
+          $base = 'd30665e457e3c8b24cb69949caf4d99a2b01304b'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $headSha = $event.pull_request.head.sha
+          function Git-Lines([string[]] $arguments) {
+            $lines = @(& git @arguments 2>$null)
+            if ($LASTEXITCODE -ne 0) { throw 'P298 Git evidence unavailable' }
+            return $lines
+          }
+          function Assert-Clean {
+            $status = @(Git-Lines @('status', '--porcelain=v1', '--untracked-files=all', '--ignored'))
+            if ($status.Count -ne 0) { throw 'P298 source or ignored/untracked files changed' }
+          }
+          function Manifest([string[]] $paths, [string] $destination) {
+            $lines = foreach ($path in $paths) {
+              $item = Get-Item -LiteralPath $path -Force
+              if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'P298 nonregular source HOLD'
+              }
+              '{0}  {1}' -f (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash, $path
+            }
+            $lines | Set-Content -LiteralPath $destination -Encoding utf8
+          }
+          function Invoke-Focused([string] $name, [string] $source) {
+            # Only the two literal caller paths below are executable inputs.
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = (Get-Command python -CommandType Application -ErrorAction Stop).Source
+            $start.UseShellExecute = $false
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            foreach ($arg in @('-I', '-B', $source)) { $start.ArgumentList.Add($arg) }
+            $process = [Diagnostics.Process]::new()
+            $process.StartInfo = $start
+            $state = [hashtable]::Synchronized(@{ Out=''; Err=''; OutEof=$false; ErrEof=$false; Overflow=$false })
+            $jobs = [Collections.Generic.List[object]]::new()
+            $outId = 'P298-' + [Guid]::NewGuid().ToString('N')
+            $errId = 'P298-' + [Guid]::NewGuid().ToString('N')
+            $started = $false; $outBegun = $false; $errBegun = $false
+            $timeout = $false; $cleanup = $true; $ioFault = $false
+            $rawExit = 'UNAVAILABLE'; $cleanupRaw = 'UNAVAILABLE'
+            try {
+              # Fixed, SHA256-pinned audit/test only. Like P297, the framework line
+              # reader is not an arbitrary hostile-binary stream sandbox.
+              # Bound retained output independently; keep draining after overflow.
+              $jobs.Add((Register-ObjectEvent $process OutputDataReceived -SourceIdentifier $outId -MessageData $state -Action {
+                $s = $Event.MessageData; $d = $Event.SourceEventArgs.Data
+                if ($null -eq $d) { $s.OutEof = $true; return }
+                $line = $d + "`n"; $room = 32768 - $s.Out.Length
+                if ($line.Length -gt $room) { $s.Overflow = $true }
+                $s.Out += $line.Substring(0, [Math]::Min($line.Length, $room))
+              }))
+              $jobs.Add((Register-ObjectEvent $process ErrorDataReceived -SourceIdentifier $errId -MessageData $state -Action {
+                $s = $Event.MessageData; $d = $Event.SourceEventArgs.Data
+                if ($null -eq $d) { $s.ErrEof = $true; return }
+                $line = $d + "`n"; $room = 32768 - $s.Err.Length
+                if ($line.Length -gt $room) { $s.Overflow = $true }
+                $s.Err += $line.Substring(0, [Math]::Min($line.Length, $room))
+              }))
+              if (-not $process.Start()) { throw 'P298 Python start HOLD' }
+              $started = $true
+              $watch = [Diagnostics.Stopwatch]::StartNew()
+              $process.BeginOutputReadLine(); $outBegun = $true
+              $process.BeginErrorReadLine(); $errBegun = $true
+              while ($true) {
+                if ($watch.ElapsedMilliseconds -ge 60000) {
+                  $timeout = $true
+                  throw 'P298 focused timeout HOLD'
+                }
+                if ($state.Overflow) { throw 'P298 output overflow HOLD' }
+                if ($process.WaitForExit(10)) {
+                  # Natural exit receipt only; teardown never populates this field.
+                  $rawExit = [string]$process.ExitCode
+                  break
+                }
+                Start-Sleep -Milliseconds 10
+              }
+              # Exit and both EOF events are separate receipts, with a separate deadline.
+              $drain = [Diagnostics.Stopwatch]::StartNew()
+              while (-not ($state.OutEof -and $state.ErrEof) -and $drain.ElapsedMilliseconds -lt 5000) {
+                if ($state.Overflow) { throw 'P298 output overflow HOLD' }
+                Start-Sleep -Milliseconds 10
+              }
+              if ($state.Overflow -or -not ($state.OutEof -and $state.ErrEof)) {
+                throw 'P298 output drain/overflow HOLD'
+              }
+              $out = $state.Out
+              $err = $state.Err
+              $safe = -not $state.Overflow
+              $names = @(
+                'default_construction_has_no_effect_binding',
+                'default_get_denies_with_fixed_error',
+                'default_put_denies_with_fixed_error',
+                'default_delete_denies_with_fixed_error',
+                'default_begin_save_is_denied',
+                'default_begin_replace_is_denied',
+                'default_begin_remove_is_denied',
+                'default_approve_without_review_is_refused',
+                'default_forged_review_is_refused',
+                'default_forged_pending_remove_is_refused',
+                'default_wrong_operation_is_denied',
+                'production_composition_constructs_default_backend',
+                'explicit_object_injection_receives_only_fake_mutations',
+                'injected_seam_rejects_forged_review_and_wrong_operation',
+                'explicit_fake_review_workflow_does_not_enable_production'
+              )
+              foreach ($stream in @(@('stdout', $out), @('stderr', $err))) {
+                $sanitized = foreach ($line in ($stream[1] -split "`n" | Select-Object -First 80)) {
+                  $allowed = $line -ceq '' -or
+                    $line -ceq 'P298_EFFECT_BOUNDARY_AUDIT=PASS PRODUCT_RELEASE=HOLD' -or
+                    $line -ceq 'P298_EFFECT_BOUNDARY_AUDIT=FAIL PRODUCT_RELEASE=HOLD' -or
+                    $line -ceq ('-' * 70) -or $line -ceq 'OK' -or
+                    $line -cmatch '^Ran 15 tests in [0-9]+\.[0-9]+s$'
+                  if ($line -cmatch '^test_([a-z_]+) \(__main__\.P298DefaultEffectBoundaryTests\.test_\1\) \.\.\. ok$') {
+                    $allowed = $names -ccontains $Matches[1]
+                  }
+                  if ($allowed) { $line } else { $safe = $false; '[REDACTED unexpected output]' }
+                }
+                $sanitized | Set-Content "$receipt/$name.$($stream[0]).log" -Encoding utf8
+              }
+              if ($name -ceq 'audit') {
+                $valid = $out -ceq "P298_EFFECT_BOUNDARY_AUDIT=PASS PRODUCT_RELEASE=HOLD`n" -and $err -ceq ''
+              } else {
+                $expected = @($names | Sort-Object | ForEach-Object {
+                  "test_$_ (__main__.P298DefaultEffectBoundaryTests.test_$_) ... ok"
+                }) -join "`n"
+                $pattern = '\A' + [regex]::Escape($expected) +
+                  '\n\n-{70}\nRan 15 tests in [0-9]+\.[0-9]+s\n\nOK\n\z'
+                $valid = $out -ceq '' -and $err -cmatch $pattern
+              }
+              if ($rawExit -ne 0 -or -not $safe -or -not $valid) {
+                throw 'P298 focused raw exit/output HOLD'
+              }
+            } finally {
+              if ($started) {
+                try {
+                  if (-not $process.HasExited) {
+                    # Retained process object only; no PID lookup, tree kill or retry.
+                    $process.Kill()
+                    if (-not $process.WaitForExit(2000)) { $cleanup = $false }
+                  }
+                  if ($process.HasExited) { $cleanupRaw = [string]$process.ExitCode }
+                  else { $cleanup = $false }
+                } catch { $cleanup = $false }
+              }
+              if ($outBegun) {
+                try { $process.CancelOutputRead() } catch { $cleanup = $false }
+              }
+              if ($errBegun) {
+                try { $process.CancelErrorRead() } catch { $cleanup = $false }
+              }
+              foreach ($job in $jobs) {
+                try { Unregister-Event -SourceIdentifier $job.Name -ErrorAction Stop }
+                catch { $cleanup = $false }
+                try {
+                  if ($job.State -eq 'Failed' -or $job.Error.Count -ne 0) { $ioFault = $true }
+                  Remove-Job -Job $job -Force -ErrorAction Stop
+                } catch { $cleanup = $false }
+              }
+              try { $process.Dispose() } catch { $cleanup = $false }
+              "RAW_EXIT=$rawExit CLEANUP_RAW_EXIT=$cleanupRaw TIMEOUT=$timeout OVERFLOW=$($state.Overflow) OUT_EOF=$($state.OutEof) ERR_EOF=$($state.ErrEof) IO_FAULT=$ioFault CLEANUP=$cleanup" |
+                Set-Content "$receipt/$name.txt"
+              if (-not $cleanup -or $ioFault -or $state.Overflow -or
+                  -not ($state.OutEof -and $state.ErrEof)) {
+                throw 'P298 stream/cleanup receipt HOLD'
+              }
+            }
+          }
+          $paths = $null
+          $passed = $false
+          try {
+            $lineage = @(Git-Lines @('rev-list', '--parents', '-n', '1', 'HEAD'))
+            if ($lineage.Count -ne 1 -or $lineage[0] -cne "$headSha $base") {
+              throw 'P298 exact one-parent lineage HOLD'
+            }
+            $expected = @(
+              "A`t.github/workflows/p298-windows-current-effect-retirement.yml",
+              "A`tdocs/byok-c1-p298-current-effect-retirement.md",
+              "A`tscripts/p298_current_effect_boundary_audit.py",
+              "A`ttests/test_byok_c1_p298_effect_boundary.py"
+            ) | Sort-Object
+            $delta = @(Git-Lines @('diff', '--no-ext-diff', '--no-renames', '--name-status', $base, 'HEAD', '--'))
+            if ((($delta | Sort-Object) -join "`n") -cne ($expected -join "`n")) {
+              throw 'P298 exact four additions HOLD'
+            }
+            $baseTree = @(Git-Lines @('ls-tree', '-r', $base))
+            $tree = @(Git-Lines @('ls-tree', '-r', 'HEAD'))
+            if ($baseTree.Count -ne 1208 -or $tree.Count -ne 1212 -or
+                @($tree | Where-Object { $_ -cnotmatch '^100(644|755) blob [0-9a-f]{40}\t' }).Count -ne 0) {
+              throw 'P298 inherited 1208 blobs / current 1212 regular files HOLD'
+            }
+            # Exact added-only diff proves every inherited path/mode/blob unchanged.
+            $paths = @(Git-Lines @('ls-files'))
+            if ($paths.Count -ne 1212) { throw 'P298 index inventory HOLD' }
+            Assert-Clean
+            Manifest $paths "$receipt/before.sha256"
+            # Pin both reviewed executable inputs before invoking either Python entry.
+            if ((Get-FileHash -LiteralPath 'scripts/p298_current_effect_boundary_audit.py' -Algorithm SHA256).Hash -cne
+                'E7CE02F3498701770BAECBE9E01985B5169C1B492E95044610750E0E673BBB58' -or
+                (Get-FileHash -LiteralPath 'tests/test_byok_c1_p298_effect_boundary.py' -Algorithm SHA256).Hash -cne
+                '6C80341716C5E4B965B04D006D0F290FDA259A9494C84805DF0C6BDAA8DAFEB0') {
+              throw 'P298 reviewed executable SHA256 pin HOLD'
+            }
+            Invoke-Focused 'audit' 'scripts/p298_current_effect_boundary_audit.py'
+            Invoke-Focused 'test' 'tests/test_byok_c1_p298_effect_boundary.py'
+            $passed = $true
+          } finally {
+            if ($null -ne $paths) {
+              Manifest $paths "$receipt/after.sha256"
+              Assert-Clean
+              if ((Get-FileHash "$receipt/before.sha256").Hash -cne
+                  (Get-FileHash "$receipt/after.sha256").Hash) {
+                throw 'P298 before/after SHA256 manifest mismatch HOLD'
+              }
+            }
+          }
+          if (-not $passed) { throw 'P298 evidence incomplete HOLD' }
+          @(
+            'FOCUSED_DENIAL=PASS PRODUCT_RELEASE=HOLD P96=HOLD',
+            'EXTERNAL_APPROVALS=0/7 FULL_REGRESSIONS=0/3',
+            'Audit raw exit 0; tests raw exit 0; exactly 15 tests, OK.',
+            '1212 source SHA256 entries unchanged; Git including ignored files clean.',
+            'Focused AST/injected-memory fake evidence only; not BYOK release or P96 closure.'
+          ) | Set-Content "$receipt/summary.txt" -Encoding utf8
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: p298-focused-denial-trial-${{ matrix.trial }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/p298-receipts/
