@@ -1,0 +1,208 @@
+# P302 dual-contract cross-phase regression arbitration
+
+22 November 2026; BYOK C1; OM v2.1; Codex sole implementation writer.
+**REAL KEY NO-GO. PRODUCTION HOLD. First hosted P302 run RED; second run receipts audited, evidence adjustment unrun.**
+Qualified approvals: **0/7**. Accepted full product regressions: **0/3**.
+This is evidence preparation, not acceptance, a product phase seal or migration.
+
+## Custody and authorized scope
+
+P301 base: `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d`.
+Supplied original clean P302 HEAD: `7f933743c7c5e23ce363772512d7b38377bf8ebf`.
+Branch: `byok-c1-p302-cross-phase-retirement-acceptance-20261122`.
+Read-only local Git inspection matches that branch and prior repair HEAD
+`9d511dc858078c465323fa9b6eb0fa5fe1ba5610`;
+the initial index/worktree is clean and no tag points at that HEAD.
+Hosted admission must prove cleanliness and exact three-commit ancestry:
+P301 `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d` -> first P302
+`7f933743c7c5e23ce363772512d7b38377bf8ebf` -> prior repair
+`9d511dc858078c465323fa9b6eb0fa5fe1ba5610` -> next third COMMIT (event head),
+checking all three single-parent relations and a P301-to-head revision count
+of three; checkout fetch-depth is four.
+The inherited `.codex/CURRENT_STATE.md` describes Phase 10.2 on 3 November;
+that stale state mismatch is recorded without altering the inherited file.
+Only these two existing P302 files may be modified by the launch repair;
+the cumulative diff from P301 remains exactly these two ADD paths:
+
+1. `.github/workflows/p302-windows-dual-contract-cross-phase.yml`
+2. `docs/byok-c1-p302-dual-contract-regression-arbitration.md`
+
+All 1,218 original P302 raw tree entries are checked; the two authorized P302
+blobs may change, while every other inherited entry remains untouched.
+P301 has 1,216 inherited entries, all preserved unchanged in the cumulative diff.
+No inherited source, original test, source witness, hash pin or tag is rewritten.
+No staging, commit, push, local Python/EXE test or service execution occurs.
+Local validation is limited to static text/diff and read-only Git inspection.
+No key inspection, real WinCred, provider call or OS/service mutation is authorized.
+No Google workbook or dashboard update occurs until C1 is fully complete.
+
+## Open Failures & Prior-Issues Review: HOLD
+
+### First P302 hosted launch failure and bounded repair
+
+Independently retrieved GitHub Actions artifact evidence for draft PR **#221**, first hosted run
+**45036542698**, x64 job **137251449097** and x86 job **137251449334**:
+both jobs were RED. All eight subprocess groups on each architecture returned
+`original_exit=1`, `Ran 1 test`, `FAILED (errors=1)` and
+`ModuleNotFoundError: No module named 'tests'`. These were eight loader import
+errors per architecture, not the expected historical assertion failures.
+No intended test assertions ran. This evidence was retrieved and audited separately; Codex did not rerun it, not independently
+retrieved or rerun in this static-only repair task.
+
+Root cause: `python -I -B -m unittest tests.*` intentionally excludes the checkout
+from the isolated interpreter import path. Severity: material evidence blocker;
+affected route: all five current and three historical group child launches.
+The narrowly scoped repair retains `-I` and `-B`, using a fixed `-c` launcher
+after isolated startup to insert only the fully source-verified exact checkout
+root into `sys.path`. The launcher loads the hardcoded group with
+`unittest.defaultTestLoader.loadTestsFromName(module)`, runs
+`unittest.TextTestRunner(verbosity=1)`, and exits zero only for `wasSuccessful()`;
+otherwise it exits one. Code is built only from fixed templates plus
+`repr(str(root))` and `repr(module)`; modules come exclusively from workflow
+hardcoded tuples. Retained `Popen` argv passes the code without shell
+interpolation. Existing source custody, deadlines, manifest, output caps,
+expected counts, original RED assertions and safety HOLD remain intact.
+
+Original P302 RED is preserved, not waived or relabeled PASS. The predecessor
+P275 original historical RED below remains separately unwaived. Independent
+review of this evidence adjustment and its hosted rerun remain pending; static
+inspection proves no runtime result. Disposition: **HOLD**, with no acceptance
+or migration waiver.
+
+### Second P302 hosted run: separately audited evidence
+
+Independently retrieved and audited GitHub Actions original x64 and x86 receipts for PR **#221**,
+second hosted run **45037059218**, establish the following on each architecture:
+all five current groups ran **12 + 10 + 15 + 12 + 28 = 77** cases, each group
+PASS with raw exit **0**. Original NativeAdapterTests ran **8**, with
+`FAILED (failures=2, errors=5)`, raw exit **1**; original P216 ran **18**, with
+`FAILED (failures=2)`, raw exit **1**. These original contracts remain RED.
+
+Original P211 ran **22**, with `FAILED (failures=1)`, raw exit **1**, on BOTH
+architectures. Only `test_02_actual_python_wincred_effect_proven_source_reachable`
+fails: it asserts that the retired native effect remains source-reachable.
+The inherited current P211 quarantine correctly refuses all dangerous
+executables; `test_03` through `test_22` pass. The current P276 version improved
+classification from the legacy/native path to preserved source-mode refusal.
+No product or test is modified. The workflow now expects this genuinely observed
+single failure while preserving all case counts and the other RED expectations.
+
+The prior workflow expected fourteen P211 failures, so this second run does not
+prove a successful arbitration marker. P275 run **44398320658** genuinely had
+fourteen failures and remains historical evidence below; it is not rewritten.
+The first P302 run remains RED. Formal original test migration is **STILL
+UNAPPROVED**; this correction neither waives original RED nor grants acceptance.
+Codex has not retrieved or rerun these hosted receipts in this static-only task.
+P96, P292 and approval/release gates remain **HOLD**; approvals **0/7**, accepted
+full regressions **0/3**. Independent review and the adjusted hosted run remain
+open. No Python/SCM runs on Kristian, keys, staging, commit or push are authorized;
+CTO handles the subsequent Git checkpoint.
+
+### Prior historical contract failures
+
+Original P275 hosted run **44398320658** is supplied historical evidence.
+Both authentic Windows x64 and x86 runs were RED, not waived or repaired here.
+Original NativeAdapterTests: `Ran 8 tests`, `FAILED (failures=2, errors=5)`;
+there were two FAIL, five ERROR and one pass on each architecture.
+Original P211: `Ran 22 tests`, `FAILED (failures=14)`.
+Original P216: `Ran 18 tests`, `FAILED (failures=2)`.
+Old BackendTests passed 12; original P132 fake controller tests passed 28.
+These historical counts are not newly executed or independently retrieved here.
+
+P275 retired native read/write/delete effects in `_Advapi32Adapter`.
+`read` remains only an inert compatibility shim raising fixed SecretStorageError.
+Default backend mutation stays denied; fake injection retains its limited seam.
+The old tests encode the former native effect contract, causing this conflict.
+Restoring effects to satisfy those tests would reverse the approved containment.
+
+The following are exact exception/assertion text and relevant source frames;
+they are bounded traceback excerpts, not reconstructed complete hosted logs.
+P302 artifacts must retain the original newly observed failure tracebacks.
+
+```text
+test_credential_layout_and_api_declarations
+    self.assertEqual(dll.CredWriteW.argtypes, [pointer, ctypes.c_uint32])
+AttributeError: 'FakeFunction' object has no attribute 'argtypes'
+test_native_write_fields_and_cleanup_on_success_or_failure
+    adapter.write(TARGET, b"a\x00b", 1, 2, "nayeon-v1")
+AttributeError: '_Advapi32Adapter' object has no attribute 'write'
+test_native_delete_success_uses_generic_and_zero_flags
+    self.assertTrue(self.adapter(dll).delete(TARGET))
+AttributeError: '_Advapi32Adapter' object has no attribute 'delete'
+test_native_read_copies_exact_size_before_single_free
+    self.assertEqual(adapter.read(TARGET), b"abc\x00tail")
+    raise SecretStorageError(_FAILURE)
+nayeon.secrets.contracts.SecretStorageError: Secret storage operation failed
+```
+
+The two NativeAdapterTests assertion failures expect read/free events now absent.
+The remaining read/missing/error-mapping errors encounter the same denial shim.
+P211's source witness no longer sees the retired native effect:
+
+```text
+test_02_actual_python_wincred_effect_proven_source_reachable
+    self.assertTrue(found.python_direct_native_credential_effect)
+AssertionError: False is not true
+test_03_real_repository_code_plan_refused
+    self.assertEqual(receipt.reason,P211Refusal.LEGACY_EFFECT_PATH)
+```
+
+In that historical P275 run, the old expected reason was `LEGACY_EFFECT_PATH`;
+the observed refusal reason was `UNRECOGNISED_PAYLOAD`. Release denial remained;
+reason drift was RED. Other P275-era P211 failures shared obsolete native-source
+predicates/reason expectations. These fourteen failures do not describe the
+current-branch P211 result in second P302 run 45037059218 above.
+P216's two old native-source expectations are now false:
+
+```text
+test_02_p132_live_Python_direct_WinCred_effect_still_reachable
+    self.assertTrue(self.receipt.direct_effect_source_reachable)
+AssertionError: False is not true
+test_06_actual_native_credential_adapter_appears_in_scan
+    self.assertTrue(a[0].wincred_native_adapter)
+AssertionError: False is not true
+```
+
+Contract conflict severity: material acceptance blocker; disposition HOLD.
+Containment: retain retirement and default denial; never waive original RED.
+Impacted callers include P132 controller/default composition, P211 package intake
+and P216 store inventory; in-process fake injection is not an OS boundary.
+P96 **HIGH** remains unresolved; current denial does not repair its original race.
+P292 x86 teardown remains unverified; P301 is source-only, not service acceptance.
+Independent qualified approval for closing these gates is absent: **0/7**.
+
+## Versioned replacements and hosted arbitration
+
+P276's 12 tests cover current package refusal; P277's 10 cover current store source.
+P298's 15 cover the current effect boundary; they are versioned, limited checks.
+Together with BackendTests 12 and LocalOfflineControllerTests 28, current total
+is exactly **77 per architecture**. This is not full Windows product acceptance.
+Formal test migration is **NOT APPROVED**; original suites remain authoritative RED.
+No test rewrite, suppression, retry, expected-failure decoration or waiver is used.
+
+The workflow admits only a same-repository DRAFT pull_request on Windows-2022,
+with the exact P301 base branch/SHA and exact P302 head branch stated above.
+Checkout, setup-python and artifact upload use the requested immutable SHAs.
+Read-only contents permission and credential-free checkout grant no product authority.
+Raw recursive Git entries must preserve every inherited mode/type/blob/path.
+Only the two named regular blobs may be added; source must start and end clean.
+Pre/post SHA256 manifests include source files; receipts live outside checkout.
+Each group uses the fixed `python -I -B -c` unittest launcher described above
+on hosted Python 3.12 only, after exact checkout source-custody verification.
+Each child has a 40-second bound, fixed log cap and no retries.
+Original natural exit and cleanup exit are separate; timeout/truncation is HOLD.
+Sanitized logs have SHA256 receipts; metadata retains the bounded raw-output hash.
+Current groups require raw exit 0, exact Ran count and bare OK, with no skips.
+Historical groups require raw exit 1 and the exact current-branch original-suite
+FAILED counts: NativeAdapterTests failures=2/errors=5, P211 failures=1, and
+P216 failures=2; their case counts remain 8, 22 and 18 respectively.
+Unexpected results fail the audit; successful RED reporting is not acceptance PASS.
+Postsource custody is checked even after unexpected test evidence.
+
+Only after all hosted checks match may this evidence marker be emitted:
+
+`P302_CROSS_PHASE_CURRENT=PASS CASES=77 HISTORICAL_ORIGINAL=RED_UNWAIVED REAL_KEY=NO_GO PRODUCTION=HOLD FULL_REGRESSIONS=0/3 APPROVALS=0/7`
+
+No successful adjusted arbitration marker is claimed by this source-writing task.
+The audited second-run group results above remain separate evidence.
+Disposition: **HOLD**.

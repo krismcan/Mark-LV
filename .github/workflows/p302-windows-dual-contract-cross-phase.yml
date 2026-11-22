@@ -1,0 +1,197 @@
+name: P302 dual-contract cross-phase evidence (production HOLD)
+on:
+  pull_request:
+    branches: [byok-c1-p301-dispatcher-owned-synthetic-composition-20261122]
+    types: [opened, synchronize, reopened, edited, converted_to_draft]
+permissions:
+  contents: read
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  dual-contract:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x64, x86]
+    env:
+      REVIEW_ARCH: ${{ matrix.architecture }}
+    steps:
+      - name: Admit exact same-repository draft event
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $p = $e.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $e.repository.full_name -cne 'krismcan/Mark-LV' -or
+              $p.head.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $p.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $p.draft -isnot [bool] -or $p.draft -ne $true -or
+              $p.base.ref -cne 'byok-c1-p301-dispatcher-owned-synthetic-composition-20261122' -or
+              $p.base.sha -cne '1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d' -or
+              $p.head.ref -cne 'byok-c1-p302-cross-phase-retirement-acceptance-20261122' -or
+              $p.head.sha -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:ImageOS -cne 'win22') {
+            throw 'P302 admission HOLD'
+          }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 4
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.architecture }}
+      - name: Record current and original contracts independently
+        shell: python -I -B {0}
+        run: |
+          import hashlib, json, os, pathlib, re, struct, subprocess, sys, threading, time
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          os.chdir(root)
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'p302-evidence'
+          out.mkdir(exist_ok=False)
+          base = '1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d'
+          original = '7f933743c7c5e23ce363772512d7b38377bf8ebf'
+          prior_repair = '9d511dc858078c465323fa9b6eb0fa5fe1ba5610'
+          head = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())['pull_request']['head']['sha']
+          allowed = {b'.github/workflows/p302-windows-dual-contract-cross-phase.yml',
+                     b'docs/byok-c1-p302-dual-contract-regression-arbitration.md'}
+          cap = 131072
+          def bounded(argv, limit=cap):
+              p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL)
+              data = bytearray()
+              overflow = threading.Event()
+              def drain():
+                  while True:
+                      block = p.stdout.read(4096)
+                      if not block: break
+                      room = limit - len(data)
+                      data.extend(block[:max(room, 0)])
+                      if len(block) > room: overflow.set()
+              reader = threading.Thread(target=drain, daemon=True)
+              reader.start()
+              deadline = time.monotonic() + 40
+              while p.poll() is None and not overflow.is_set() and time.monotonic() < deadline:
+                  time.sleep(0.02)
+              natural = p.poll()
+              if natural is not None: reader.join(timeout=2)
+              reader_hung = natural is not None and reader.is_alive()
+              cleanup = None
+              timed_out = natural is None and not overflow.is_set()
+              # Only the retained child handle may be killed; descendant cleanup is not proven.
+              if p.poll() is None:
+                  p.kill()
+                  cleanup = p.wait(timeout=40)
+              else:
+                  p.wait(timeout=40)
+              reader.join(timeout=2)
+              return bytes(data), {'original_exit': natural, 'cleanup_exit': cleanup,
+                  'timeout': timed_out, 'overflow': overflow.is_set(),
+                  'reader_closed': not reader_hung and not reader.is_alive()}
+          def git(*args):
+              data, r = bounded(['git', *args], 16777216)
+              assert r == dict(original_exit=0, cleanup_exit=None, timeout=False, overflow=False, reader_closed=True), r
+              return data
+          def tree(rev):
+              entries = {}
+              for row in git('ls-tree', '-rz', '--full-tree', rev).split(b'\0'):
+                  if row:
+                      meta, path = row.split(b'\t', 1)
+                      entries[path] = meta
+              return entries
+          def clean():
+              assert git('status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching') == b''
+          def manifest():
+              rows = []
+              for p in sorted(root.rglob('*')):
+                  rel = p.relative_to(root)
+                  if rel.parts[0] == '.git': continue
+                  assert not p.is_symlink() and not p.is_junction(), 'source link refused'
+                  if p.is_file(): rows.append([rel.as_posix(), hashlib.sha256(p.read_bytes()).hexdigest()])
+              return json.dumps(rows, ensure_ascii=True, separators=(',', ':')).encode()
+          def receipt(name, data):
+              (out / name).write_bytes(data)
+              (out / (name + '.sha256')).write_text(hashlib.sha256(data).hexdigest() + '\n', encoding='ascii')
+          def sanitize(data):
+              text = data.decode('utf-8', errors='replace')
+              for value, label in ((str(root), '<SOURCE>'), (str(out.parent), '<TEMP>'),
+                                   (os.environ.get('USERPROFILE', ''), '<PROFILE>')):
+                  if value:
+                      text = re.sub(re.escape(value), lambda m: label, text, flags=re.I)
+              return re.sub(r'[A-Za-z]:[\\/][^\r\n"\']*', '<HOST_PATH>', text)
+          current = (('tests.test_byok_c1_p276_current_package_refusal', 12),
+                     ('tests.test_byok_c1_p277_current_store_source', 10),
+                     ('tests.test_byok_c1_p298_effect_boundary', 15),
+                     ('tests.test_windows_credential_backend.BackendTests', 12),
+                     ('tests.test_local_user_scope_byok.LocalOfflineControllerTests', 28))
+          historical = (('tests.test_windows_credential_backend.NativeAdapterTests', 8, 'FAILED (failures=2, errors=5)'),
+                        ('tests.test_p211_high_assurance_package_quarantine', 22, 'FAILED (failures=1)'),
+                        ('tests.test_p216_service_store_decision_inventory', 18, 'FAILED (failures=2)'))
+          before = None
+          new = None
+          try:
+              assert sys.version_info[:2] == (3, 12)
+              assert struct.calcsize('P') * 8 == {'x64': 64, 'x86': 32}[os.environ['REVIEW_ARCH']]
+              assert git('rev-parse', 'HEAD').decode().strip() == head
+              assert git('rev-list', '--parents', '-n', '1', head).decode().split() == [head, prior_repair]
+              assert git('rev-list', '--parents', '-n', '1', prior_repair).decode().split() == [prior_repair, original]
+              assert git('rev-list', '--parents', '-n', '1', original).decode().split() == [original, base]
+              assert git('rev-list', '--count', base + '..' + head).decode().strip() == '3'
+              old, new = tree(base), tree(head)
+              inherited = tree(original)
+              assert len(inherited) == 1218 and set(new) == set(inherited)
+              assert all(new[p] == v for p, v in inherited.items() if p not in allowed), 'original P302 inherited raw Git tree changed'
+              assert set(new) - set(old) == allowed and not (set(old) - set(new))
+              assert all(new[p] == v for p, v in old.items()), 'inherited raw Git tree changed'
+              assert all(new[p].startswith(b'100644 blob ') for p in allowed)
+              clean()
+              before = manifest()
+              receipt('source-before.json', before)
+              results = []
+              for i, group in enumerate(current + historical):
+                  module, count = group[:2]
+                  # Only fixed templates and literals from verified source custody / hardcoded tuples.
+                  launcher = ('import sys, unittest; sys.path.insert(0, ' + repr(str(root)) +
+                      '); suite = unittest.defaultTestLoader.loadTestsFromName(' + repr(module) +
+                      '); result = unittest.TextTestRunner(verbosity=1).run(suite); '
+                      'sys.exit(0 if result.wasSuccessful() else 1)')
+                  raw, r = bounded([sys.executable, '-I', '-B', '-c', launcher])
+                  r.update(module=module, raw_sha256=hashlib.sha256(raw).hexdigest(), raw_bytes=len(raw))
+                  receipt(f'{i+1:02d}.log', sanitize(raw).encode('utf-8'))
+                  receipt(f'{i+1:02d}.json', json.dumps(r, sort_keys=True).encode())
+                  text = raw.decode('utf-8', errors='replace').replace('\r\n', '\n')
+                  ending = 'OK' if i < len(current) else group[2]
+                  expected_exit = 0 if i < len(current) else 1
+                  valid = (r['original_exit'] == expected_exit and r['cleanup_exit'] is None and
+                      not r['timeout'] and not r['overflow'] and r['reader_closed'] and
+                      re.findall(r'^Ran (\d+) tests? in [^\r\n]+$', text, re.M) == [str(count)] and
+                      re.findall(r'^(?:OK[^\r\n]*|FAILED[^\r\n]*)$', text, re.M) == [ending])
+                  results.append(valid)
+              assert all(results), 'unexpected dual-contract evidence: HOLD'
+          finally:
+              after = manifest()
+              receipt('source-after.json', after)
+              clean()
+              assert before is not None and before == after, 'source custody HOLD'
+              if new is not None:
+                  assert tree(head) == new and git('rev-parse', 'HEAD').decode().strip() == head
+          marker = 'P302_CROSS_PHASE_CURRENT=PASS CASES=77 HISTORICAL_ORIGINAL=RED_UNWAIVED REAL_KEY=NO_GO PRODUCTION=HOLD FULL_REGRESSIONS=0/3 APPROVALS=0/7'
+          receipt('summary.txt', (marker + '\n').encode())
+          print(marker)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: p302-dual-contract-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/p302-evidence/
+          if-no-files-found: error
+          retention-days: 14
