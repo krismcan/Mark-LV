@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
           submodules: false
           lfs: false
@@ -60,6 +60,7 @@ jobs:
           out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'p302-evidence'
           out.mkdir(exist_ok=False)
           base = '1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d'
+          original = '7f933743c7c5e23ce363772512d7b38377bf8ebf'
           head = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())['pull_request']['head']['sha']
           allowed = {b'.github/workflows/p302-windows-dual-contract-cross-phase.yml',
                      b'docs/byok-c1-p302-dual-contract-regression-arbitration.md'}
@@ -127,22 +128,27 @@ jobs:
                   if value:
                       text = re.sub(re.escape(value), lambda m: label, text, flags=re.I)
               return re.sub(r'[A-Za-z]:[\\/][^\r\n"\']*', '<HOST_PATH>', text)
-          current = [('tests.test_byok_c1_p276_current_package_refusal', 12),
+          current = (('tests.test_byok_c1_p276_current_package_refusal', 12),
                      ('tests.test_byok_c1_p277_current_store_source', 10),
                      ('tests.test_byok_c1_p298_effect_boundary', 15),
                      ('tests.test_windows_credential_backend.BackendTests', 12),
-                     ('tests.test_local_user_scope_byok.LocalOfflineControllerTests', 28)]
-          historical = [('tests.test_windows_credential_backend.NativeAdapterTests', 8, 'FAILED (failures=2, errors=5)'),
+                     ('tests.test_local_user_scope_byok.LocalOfflineControllerTests', 28))
+          historical = (('tests.test_windows_credential_backend.NativeAdapterTests', 8, 'FAILED (failures=2, errors=5)'),
                         ('tests.test_p211_high_assurance_package_quarantine', 22, 'FAILED (failures=14)'),
-                        ('tests.test_p216_service_store_decision_inventory', 18, 'FAILED (failures=2)')]
+                        ('tests.test_p216_service_store_decision_inventory', 18, 'FAILED (failures=2)'))
           before = None
           new = None
           try:
               assert sys.version_info[:2] == (3, 12)
               assert struct.calcsize('P') * 8 == {'x64': 64, 'x86': 32}[os.environ['REVIEW_ARCH']]
               assert git('rev-parse', 'HEAD').decode().strip() == head
-              assert git('rev-list', '--parents', '-n', '1', head).decode().split() == [head, base]
+              assert git('rev-list', '--parents', '-n', '1', head).decode().split() == [head, original]
+              assert git('rev-list', '--parents', '-n', '1', original).decode().split() == [original, base]
+              assert git('rev-list', '--count', base + '..' + head).decode().strip() == '2'
               old, new = tree(base), tree(head)
+              inherited = tree(original)
+              assert len(inherited) == 1218 and set(new) == set(inherited)
+              assert all(new[p] == v for p, v in inherited.items() if p not in allowed), 'original P302 inherited raw Git tree changed'
               assert set(new) - set(old) == allowed and not (set(old) - set(new))
               assert all(new[p] == v for p, v in old.items()), 'inherited raw Git tree changed'
               assert all(new[p].startswith(b'100644 blob ') for p in allowed)
@@ -152,7 +158,12 @@ jobs:
               results = []
               for i, group in enumerate(current + historical):
                   module, count = group[:2]
-                  raw, r = bounded([sys.executable, '-I', '-B', '-m', 'unittest', module])
+                  # Only fixed templates and literals from verified source custody / hardcoded tuples.
+                  launcher = ('import sys, unittest; sys.path.insert(0, ' + repr(str(root)) +
+                      '); suite = unittest.defaultTestLoader.loadTestsFromName(' + repr(module) +
+                      '); result = unittest.TextTestRunner(verbosity=1).run(suite); '
+                      'sys.exit(0 if result.wasSuccessful() else 1)')
+                  raw, r = bounded([sys.executable, '-I', '-B', '-c', launcher])
                   r.update(module=module, raw_sha256=hashlib.sha256(raw).hexdigest(), raw_bytes=len(raw))
                   receipt(f'{i+1:02d}.log', sanitize(raw).encode('utf-8'))
                   receipt(f'{i+1:02d}.json', json.dumps(r, sort_keys=True).encode())

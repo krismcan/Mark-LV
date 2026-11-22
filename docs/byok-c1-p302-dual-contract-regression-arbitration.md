@@ -1,30 +1,70 @@
 # P302 dual-contract cross-phase regression arbitration
 
 22 November 2026; BYOK C1; OM v2.1; Codex sole implementation writer.
-**REAL KEY NO-GO. PRODUCTION HOLD. Hosted P302 evidence PENDING.**
+**REAL KEY NO-GO. PRODUCTION HOLD. First hosted P302 run RED; repair evidence PENDING.**
 Qualified approvals: **0/7**. Accepted full product regressions: **0/3**.
 This is evidence preparation, not acceptance, a product phase seal or migration.
 
 ## Custody and authorized scope
 
-Supplied exact clean P301 HEAD: `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d`.
+P301 base: `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d`.
+Supplied original clean P302 HEAD: `7f933743c7c5e23ce363772512d7b38377bf8ebf`.
 Branch: `byok-c1-p302-cross-phase-retirement-acceptance-20261122`.
-Static Git ref reads match that branch and HEAD; no local Git was executed.
-Clean index/worktree and milestone-tag custody are not independently proven here.
-Hosted admission must prove cleanliness and the exact one-parent successor.
+Read-only local Git inspection matches that branch and original P302 HEAD;
+the initial index/worktree is clean and no tag points at that HEAD.
+Hosted admission must prove cleanliness and exact direct-two-commit ancestry:
+P301 -> original failed P302 -> new repair HEAD, checking both single-parent
+relations and a P301-to-repair revision count of two; checkout fetch-depth is three.
 The inherited `.codex/CURRENT_STATE.md` describes Phase 10.2 on 3 November;
 that stale state mismatch is recorded without altering the inherited file.
-Exactly two ADD paths are authorized, in this writing order:
+Only these two existing P302 files may be modified by the launch repair;
+the cumulative diff from P301 remains exactly these two ADD paths:
 
 1. `.github/workflows/p302-windows-dual-contract-cross-phase.yml`
 2. `docs/byok-c1-p302-dual-contract-regression-arbitration.md`
 
+All 1,218 original P302 raw tree entries are checked; the two authorized P302
+blobs may change, while every other inherited entry remains untouched.
+P301 has 1,216 inherited entries, all preserved unchanged in the cumulative diff.
 No inherited source, original test, source witness, hash pin or tag is rewritten.
-No staging, commit, push, local Python/SCM/service/native binary execution occurs.
+No staging, commit, push, local Python/EXE test or service execution occurs.
+Local validation is limited to static text/diff and read-only Git inspection.
 No key inspection, real WinCred, provider call or OS/service mutation is authorized.
 No Google workbook or dashboard update occurs until C1 is fully complete.
 
 ## Open Failures & Prior-Issues Review: HOLD
+
+### First P302 hosted launch failure and bounded repair
+
+Independently retrieved GitHub Actions artifact evidence for draft PR **#221**, first hosted run
+**45036542698**, x64 job **137251449097** and x86 job **137251449334**:
+both jobs were RED. All eight subprocess groups on each architecture returned
+`original_exit=1`, `Ran 1 test`, `FAILED (errors=1)` and
+`ModuleNotFoundError: No module named 'tests'`. These were eight loader import
+errors per architecture, not the expected historical assertion failures.
+No intended test assertions ran. This evidence was retrieved and audited separately; Codex did not rerun it, not independently
+retrieved or rerun in this static-only repair task.
+
+Root cause: `python -I -B -m unittest tests.*` intentionally excludes the checkout
+from the isolated interpreter import path. Severity: material evidence blocker;
+affected route: all five current and three historical group child launches.
+The narrowly scoped repair retains `-I` and `-B`, using a fixed `-c` launcher
+after isolated startup to insert only the fully source-verified exact checkout
+root into `sys.path`. The launcher loads the hardcoded group with
+`unittest.defaultTestLoader.loadTestsFromName(module)`, runs
+`unittest.TextTestRunner(verbosity=1)`, and exits zero only for `wasSuccessful()`;
+otherwise it exits one. Code is built only from fixed templates plus
+`repr(str(root))` and `repr(module)`; modules come exclusively from workflow
+hardcoded tuples. Retained `Popen` argv passes the code without shell
+interpolation. Existing source custody, deadlines, manifest, output caps,
+expected counts, original RED assertions and safety HOLD remain intact.
+
+Original P302 RED is preserved, not waived or relabeled PASS. The predecessor
+P275 original historical RED below remains separately unwaived. Independent
+repair review and hosted rerun remain pending; static inspection proves no
+runtime result. Disposition: **HOLD**, with no acceptance or migration waiver.
+
+### Prior historical contract failures
 
 Original P275 hosted run **44398320658** is supplied historical evidence.
 Both authentic Windows x64 and x86 runs were RED, not waived or repaired here.
@@ -111,7 +151,8 @@ Read-only contents permission and credential-free checkout grant no product auth
 Raw recursive Git entries must preserve every inherited mode/type/blob/path.
 Only the two named regular blobs may be added; source must start and end clean.
 Pre/post SHA256 manifests include source files; receipts live outside checkout.
-Each group uses `python -I -B -m unittest <module>` on hosted Python 3.12 only.
+Each group uses the fixed `python -I -B -c` unittest launcher described above
+on hosted Python 3.12 only, after exact checkout source-custody verification.
 Each child has a 40-second bound, fixed log cap and no retries.
 Original natural exit and cleanup exit are separate; timeout/truncation is HOLD.
 Sanitized logs have SHA256 receipts; metadata retains the bounded raw-output hash.
