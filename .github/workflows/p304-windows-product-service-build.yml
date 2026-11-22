@@ -1,0 +1,94 @@
+name: P304 product service build and isolated denial
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/Nayeon.ByokC1.Service/**'
+      - 'tests/p304_product_service/**'
+      - '.github/workflows/p304-windows-product-service-build.yml'
+      - 'docs/byok-c1-p304-product-service-build.md'
+permissions:
+  contents: read
+jobs:
+  build-denial:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+        configuration: [Debug, Release]
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      BUILD_CONFIGURATION: ${{ matrix.configuration }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate same-repository draft source event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $p = $e.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or $p.draft -ne $true -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p303-nonscm-identity-refusal-20261122' -or
+              $p.base.sha -cne 'f181a030c7a122bab8767203e7dccd78ca1d6e1c' -or
+              $p.head.ref -cne 'byok-c1-p304-product-service-composition-20261122' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P304_HOLD source event' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Build actual product and test denial without SCM
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Get-Location).Path
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read source SHA' }
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          if ($head -cne $p.head.sha) { throw 'P304_HOLD checkout is not exact PR head SHA' }
+          Write-Output "P304 SOURCE_SHA=$head CONFIGURATION=$env:BUILD_CONFIGURATION ARCH=$env:BUILD_ARCH"
+          $inputs = @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
+            'src/Nayeon.ByokC1.Service/CustodyService.cs',
+            'src/Nayeon.ByokC1.Service/LifecycleCoordinator.cs',
+            'tests/p304_product_service/P304ProductServiceTests.cs')
+          $before = @($inputs | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $inputs.Count; $i++) { Write-Output "$($before[$i]) $($inputs[$i])" }
+          $out = Join-Path $env:RUNNER_TEMP "p304-$env:BUILD_ARCH-$env:BUILD_CONFIGURATION"
+          New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (!$msbuild) { throw 'Installed MSBuild required; no downloads' }
+          & $msbuild 'src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj' /nologo /verbosity:minimal /t:Build "/p:Configuration=$env:BUILD_CONFIGURATION" "/p:Platform=$env:BUILD_ARCH" "/p:OutputPath=$out\" "/p:IntermediateOutputPath=$out\obj\"
+          if ($LASTEXITCODE -ne 0) { throw 'Product compile failed' }
+          $framework = if ($env:BUILD_ARCH -eq 'x64') { 'Framework64' } else { 'Framework' }
+          $csc = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319/csc.exe"
+          $test = Join-Path $out 'P304.ProductService.Tests.exe'
+          $product = Join-Path $out 'Nayeon.ByokC1.Service.exe'
+          $testSource = (Resolve-Path -LiteralPath 'tests/p304_product_service/P304ProductServiceTests.cs').ProviderPath
+          & $csc /nologo /noconfig /warn:4 /warnaserror+ /target:exe "/platform:$env:BUILD_ARCH" "/out:$test" "/reference:$product" /reference:System.dll /reference:System.Core.dll $testSource
+          if ($LASTEXITCODE -ne 0) { throw 'Test compile failed' }
+          # Only the test executable runs, referencing the separately built product.
+          # Product Main is invoked in-process only after the OS negative-context check.
+          $bits = if ($env:BUILD_ARCH -eq 'x64') { '64' } else { '32' }
+          $start = [Diagnostics.ProcessStartInfo]::new($test, $bits)
+          $start.UseShellExecute = $false
+          $start.WorkingDirectory = $root
+          $process = [Diagnostics.Process]::Start($start)
+          try {
+            if (!$process.WaitForExit(30000)) {
+              $process.Kill()
+              if (!$process.WaitForExit(5000)) { throw 'Test cleanup failed; HOLD' }
+              throw 'Test deadline exceeded; HOLD'
+            }
+            if ($process.ExitCode -ne 0) { throw "Test failed: $($process.ExitCode)" }
+          } finally { $process.Dispose() }
+          $after = @($inputs | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          if (($before -join ',') -cne ($after -join ',')) { throw 'Source bytes changed' }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked worktree changed' }
+          Write-Output 'P304 compile + isolated runtime denial only; full regression 0/3; independent approval 0/7; release HOLD'
