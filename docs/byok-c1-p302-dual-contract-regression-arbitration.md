@@ -1,7 +1,7 @@
 # P302 dual-contract cross-phase regression arbitration
 
 22 November 2026; BYOK C1; OM v2.1; Codex sole implementation writer.
-**REAL KEY NO-GO. PRODUCTION HOLD. First hosted P302 run RED; repair evidence PENDING.**
+**REAL KEY NO-GO. PRODUCTION HOLD. First hosted P302 run RED; second run receipts audited, evidence adjustment unrun.**
 Qualified approvals: **0/7**. Accepted full product regressions: **0/3**.
 This is evidence preparation, not acceptance, a product phase seal or migration.
 
@@ -10,11 +10,15 @@ This is evidence preparation, not acceptance, a product phase seal or migration.
 P301 base: `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d`.
 Supplied original clean P302 HEAD: `7f933743c7c5e23ce363772512d7b38377bf8ebf`.
 Branch: `byok-c1-p302-cross-phase-retirement-acceptance-20261122`.
-Read-only local Git inspection matches that branch and original P302 HEAD;
+Read-only local Git inspection matches that branch and prior repair HEAD
+`9d511dc858078c465323fa9b6eb0fa5fe1ba5610`;
 the initial index/worktree is clean and no tag points at that HEAD.
-Hosted admission must prove cleanliness and exact direct-two-commit ancestry:
-P301 -> original failed P302 -> new repair HEAD, checking both single-parent
-relations and a P301-to-repair revision count of two; checkout fetch-depth is three.
+Hosted admission must prove cleanliness and exact three-commit ancestry:
+P301 `1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d` -> first P302
+`7f933743c7c5e23ce363772512d7b38377bf8ebf` -> prior repair
+`9d511dc858078c465323fa9b6eb0fa5fe1ba5610` -> next third COMMIT (event head),
+checking all three single-parent relations and a P301-to-head revision count
+of three; checkout fetch-depth is four.
 The inherited `.codex/CURRENT_STATE.md` describes Phase 10.2 on 3 November;
 that stale state mismatch is recorded without altering the inherited file.
 Only these two existing P302 files may be modified by the launch repair;
@@ -61,8 +65,38 @@ expected counts, original RED assertions and safety HOLD remain intact.
 
 Original P302 RED is preserved, not waived or relabeled PASS. The predecessor
 P275 original historical RED below remains separately unwaived. Independent
-repair review and hosted rerun remain pending; static inspection proves no
-runtime result. Disposition: **HOLD**, with no acceptance or migration waiver.
+review of this evidence adjustment and its hosted rerun remain pending; static
+inspection proves no runtime result. Disposition: **HOLD**, with no acceptance
+or migration waiver.
+
+### Second P302 hosted run: separately audited evidence
+
+Independently retrieved and audited GitHub Actions original x64 and x86 receipts for PR **#221**,
+second hosted run **45037059218**, establish the following on each architecture:
+all five current groups ran **12 + 10 + 15 + 12 + 28 = 77** cases, each group
+PASS with raw exit **0**. Original NativeAdapterTests ran **8**, with
+`FAILED (failures=2, errors=5)`, raw exit **1**; original P216 ran **18**, with
+`FAILED (failures=2)`, raw exit **1**. These original contracts remain RED.
+
+Original P211 ran **22**, with `FAILED (failures=1)`, raw exit **1**, on BOTH
+architectures. Only `test_02_actual_python_wincred_effect_proven_source_reachable`
+fails: it asserts that the retired native effect remains source-reachable.
+The inherited current P211 quarantine correctly refuses all dangerous
+executables; `test_03` through `test_22` pass. The current P276 version improved
+classification from the legacy/native path to preserved source-mode refusal.
+No product or test is modified. The workflow now expects this genuinely observed
+single failure while preserving all case counts and the other RED expectations.
+
+The prior workflow expected fourteen P211 failures, so this second run does not
+prove a successful arbitration marker. P275 run **44398320658** genuinely had
+fourteen failures and remains historical evidence below; it is not rewritten.
+The first P302 run remains RED. Formal original test migration is **STILL
+UNAPPROVED**; this correction neither waives original RED nor grants acceptance.
+Codex has not retrieved or rerun these hosted receipts in this static-only task.
+P96, P292 and approval/release gates remain **HOLD**; approvals **0/7**, accepted
+full regressions **0/3**. Independent review and the adjusted hosted run remain
+open. No Python/SCM runs on Kristian, keys, staging, commit or push are authorized;
+CTO handles the subsequent Git checkpoint.
 
 ### Prior historical contract failures
 
@@ -113,9 +147,11 @@ test_03_real_repository_code_plan_refused
     self.assertEqual(receipt.reason,P211Refusal.LEGACY_EFFECT_PATH)
 ```
 
-The old expected reason is `LEGACY_EFFECT_PATH`; the current refusal reason is
-`UNRECOGNISED_PAYLOAD`. Release denial remains; reason drift is still RED.
-Other P211 failures share obsolete native-source predicates/reason expectations.
+In that historical P275 run, the old expected reason was `LEGACY_EFFECT_PATH`;
+the observed refusal reason was `UNRECOGNISED_PAYLOAD`. Release denial remained;
+reason drift was RED. Other P275-era P211 failures shared obsolete native-source
+predicates/reason expectations. These fourteen failures do not describe the
+current-branch P211 result in second P302 run 45037059218 above.
 P216's two old native-source expectations are now false:
 
 ```text
@@ -157,7 +193,9 @@ Each child has a 40-second bound, fixed log cap and no retries.
 Original natural exit and cleanup exit are separate; timeout/truncation is HOLD.
 Sanitized logs have SHA256 receipts; metadata retains the bounded raw-output hash.
 Current groups require raw exit 0, exact Ran count and bare OK, with no skips.
-Historical groups require raw exit 1 and the exact original FAILED counts above.
+Historical groups require raw exit 1 and the exact current-branch original-suite
+FAILED counts: NativeAdapterTests failures=2/errors=5, P211 failures=1, and
+P216 failures=2; their case counts remain 8, 22 and 18 respectively.
 Unexpected results fail the audit; successful RED reporting is not acceptance PASS.
 Postsource custody is checked even after unexpected test evidence.
 
@@ -165,4 +203,6 @@ Only after all hosted checks match may this evidence marker be emitted:
 
 `P302_CROSS_PHASE_CURRENT=PASS CASES=77 HISTORICAL_ORIGINAL=RED_UNWAIVED REAL_KEY=NO_GO PRODUCTION=HOLD FULL_REGRESSIONS=0/3 APPROVALS=0/7`
 
-No such hosted result is claimed by this source-writing task. Disposition: **HOLD**.
+No successful adjusted arbitration marker is claimed by this source-writing task.
+The audited second-run group results above remain separate evidence.
+Disposition: **HOLD**.

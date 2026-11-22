@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
           submodules: false
           lfs: false
@@ -61,6 +61,7 @@ jobs:
           out.mkdir(exist_ok=False)
           base = '1aab175d00dbb7cdcdccb1438e9fadc2d04b9a7d'
           original = '7f933743c7c5e23ce363772512d7b38377bf8ebf'
+          prior_repair = '9d511dc858078c465323fa9b6eb0fa5fe1ba5610'
           head = json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())['pull_request']['head']['sha']
           allowed = {b'.github/workflows/p302-windows-dual-contract-cross-phase.yml',
                      b'docs/byok-c1-p302-dual-contract-regression-arbitration.md'}
@@ -134,7 +135,7 @@ jobs:
                      ('tests.test_windows_credential_backend.BackendTests', 12),
                      ('tests.test_local_user_scope_byok.LocalOfflineControllerTests', 28))
           historical = (('tests.test_windows_credential_backend.NativeAdapterTests', 8, 'FAILED (failures=2, errors=5)'),
-                        ('tests.test_p211_high_assurance_package_quarantine', 22, 'FAILED (failures=14)'),
+                        ('tests.test_p211_high_assurance_package_quarantine', 22, 'FAILED (failures=1)'),
                         ('tests.test_p216_service_store_decision_inventory', 18, 'FAILED (failures=2)'))
           before = None
           new = None
@@ -142,9 +143,10 @@ jobs:
               assert sys.version_info[:2] == (3, 12)
               assert struct.calcsize('P') * 8 == {'x64': 64, 'x86': 32}[os.environ['REVIEW_ARCH']]
               assert git('rev-parse', 'HEAD').decode().strip() == head
-              assert git('rev-list', '--parents', '-n', '1', head).decode().split() == [head, original]
+              assert git('rev-list', '--parents', '-n', '1', head).decode().split() == [head, prior_repair]
+              assert git('rev-list', '--parents', '-n', '1', prior_repair).decode().split() == [prior_repair, original]
               assert git('rev-list', '--parents', '-n', '1', original).decode().split() == [original, base]
-              assert git('rev-list', '--count', base + '..' + head).decode().strip() == '2'
+              assert git('rev-list', '--count', base + '..' + head).decode().strip() == '3'
               old, new = tree(base), tree(head)
               inherited = tree(original)
               assert len(inherited) == 1218 and set(new) == set(inherited)
