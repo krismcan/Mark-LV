@@ -13,6 +13,7 @@ namespace Nayeon.ByokC1.Service
         private readonly object lifecycle = new object();
         private readonly LifecycleCoordinator coordinator = new LifecycleCoordinator();
         private bool terminal;
+        private StatusPipeServer statusPipe;
 
         private CustodyService()
         {
@@ -51,7 +52,7 @@ namespace Nayeon.ByokC1.Service
         private static extern bool GetTokenInformation(TokenHandle token, int kind,
             out int value, uint length, out uint returned);
 
-        private static void RequireNoImpersonation()
+        internal static void RequireNoImpersonation()
         {
             TokenHandle thread;
             bool opened = OpenThreadToken(GetCurrentThread(), 8, true, out thread);
@@ -61,6 +62,25 @@ namespace Nayeon.ByokC1.Service
                 // Only ERROR_NO_TOKEN passes. Anonymous/denied tokens cannot fall back.
                 if (opened || error != 1008 || (thread != null && !thread.IsInvalid))
                     throw new InvalidOperationException("Service identity denied.");
+            }
+        }
+
+        internal static SecurityIdentifier ReadProcessSid()
+        {
+            RequireNoImpersonation();
+            TokenHandle token;
+            if (!OpenProcessToken(GetCurrentProcess(), 8, out token))
+            {
+                if (token != null) token.Dispose();
+                throw new InvalidOperationException("Process identity unavailable.");
+            }
+            using (token)
+            using (WindowsIdentity identity = new WindowsIdentity(token.DangerousGetHandle()))
+            {
+                if (identity.User == null) throw new InvalidOperationException("Process identity denied.");
+                SecurityIdentifier sid = identity.User;
+                RequireNoImpersonation();
+                return sid;
             }
         }
 
@@ -114,7 +134,8 @@ namespace Nayeon.ByokC1.Service
                     VerifyExecutingIdentity();
                     VerifyExecutingIdentity(); // Reopen and verify before any domain transition.
                     coordinator.BeginStart();
-                    coordinator.CompleteStart(); // Denial-only; no workers, IPC or credential adapters.
+                    statusPipe = new StatusPipeServer(); // Only after both executing-identity checks.
+                    coordinator.CompleteStart(); // IPC reports denial only, never readiness authority.
                     ExitCode = 0; // Only after the SCM callback and OS checks, never readiness approval.
                 }
                 catch (Exception)
@@ -122,6 +143,7 @@ namespace Nayeon.ByokC1.Service
                     terminal = true;
                     coordinator.Fault();
                     ExitCode = 1;
+                    if (statusPipe != null) statusPipe.Dispose();
                     throw new InvalidOperationException("Service startup denied; release HOLD.");
                 }
             }
@@ -132,8 +154,12 @@ namespace Nayeon.ByokC1.Service
             lock (lifecycle)
             {
                 terminal = true;
-                coordinator.Stop();
-                if (disposing) coordinator.Dispose();
+                try { if (statusPipe != null) statusPipe.Dispose(); }
+                finally
+                {
+                    coordinator.Stop();
+                    if (disposing) coordinator.Dispose();
+                }
             }
         }
 
