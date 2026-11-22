@@ -36,6 +36,7 @@
     <Compile Include="LifecycleCoordinator.cs" />
     <Compile Include="StatusPipeServer.cs" />
     <Compile Include="StatusPipeClient.cs" />
+    <Compile Include="SyntheticTransactionOwner.cs" />
   </ItemGroup>
   <Target Name="ValidateBuildShape" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(Platform)' != 'x64' And '$(Platform)' != 'x86'" Text="Only x64 and x86 are supported." />
