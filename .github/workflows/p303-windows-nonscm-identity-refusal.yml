@@ -1,0 +1,257 @@
+name: P303 hosted nonSCM identity refusal
+on:
+  pull_request:
+    branches: [byok-c1-p302-cross-phase-retirement-acceptance-20261122]
+    types: [opened, synchronize, reopened, converted_to_draft]
+permissions:
+  contents: read
+jobs:
+  refusal:
+    if: github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'byok-c1-p303-nonscm-identity-refusal-20261122' && github.event.pull_request.base.sha == '6b5afa18e24d771c604f3f760eca5b5637904478'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    env:
+      REVIEW_ARCH: ${{ matrix.arch }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate same-repository draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $p = $e.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or !$p.draft -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p302-cross-phase-retirement-acceptance-20261122' -or
+              $p.base.sha -cne '6b5afa18e24d771c604f3f760eca5b5637904478' -or
+              $p.head.ref -cne 'byok-c1-p303-nonscm-identity-refusal-20261122' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P303_HOLD event' }
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'P303_HOLD Git configuration' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 4
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify custody, compile guards, and run bounded negative evidence
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $root = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE -ErrorAction Stop).ProviderPath
+          if ((Get-Location).Path -cne $root) { throw 'P303_HOLD checkout root' }
+          # Validate only the checkout root, not ancestors outside source custody.
+          $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+          if ($rootItem -isnot [IO.DirectoryInfo] -or !$rootItem.Exists -or
+              !($rootItem.Attributes -band [IO.FileAttributes]::Directory) -or
+              ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'P303_HOLD checkout directory/reparse'
+          }
+          $out = Join-Path $env:RUNNER_TEMP "p303-$env:REVIEW_ARCH"
+          New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
+          function G([string[]] $a) {
+            $v = @(& git @a)
+            if ($LASTEXITCODE -ne 0) { throw 'P303_HOLD Git' }
+            return $v
+          }
+          function Clean {
+            if (@(G @('status','--porcelain=v1','--untracked-files=all','--ignored')).Count) {
+              throw 'P303_HOLD dirty index/worktree/untracked/ignored'
+            }
+          }
+          $base = '6b5afa18e24d771c604f3f760eca5b5637904478'
+          $initial = 'ffa25bb1aa2b0c771fe9ba4a55ea5cb095b89d18'
+          $firstRepair = '78cfdc6888eba641eb1a02408434681cec5d3c55'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = $p.head.sha
+          if ((G @('rev-parse','HEAD')) -cne $head -or
+              (G @('rev-list','--parents','-n','1','HEAD')) -cne "$head $firstRepair" -or
+              (G @('rev-list','--parents','-n','1',$firstRepair)) -cne "$firstRepair $initial" -or
+              (G @('rev-list','--parents','-n','1',$initial)) -cne "$initial $base" -or
+              (G @('rev-list','--count',"$base..$head")) -cne '3' -or
+              (G @('config','--get','core.autocrlf')) -cne 'false') { throw 'P303_HOLD ancestry/config' }
+          $adds = @('.github/workflows/p303-windows-nonscm-identity-refusal.yml',
+            'docs/byok-c1-p303-nonscm-identity-refusal.md',
+            'tests/p303_nonscm_refusal/P303NonScmIdentityRefusalTests.cs')
+          $diff = @(G @('diff','--no-renames','--name-status',$base,$head,'--'))
+          if ($diff.Count -ne 3) { throw 'P303_HOLD scope count' }
+          foreach ($path in $adds) {
+            if ($diff -cnotcontains "A`t$path") { throw 'P303_HOLD additions only' }
+          }
+          $inherited = @(G @('ls-tree','-r',$base))
+          $tree = @(G @('ls-tree','-r','HEAD'))
+          if ($inherited.Count -ne 1218 -or $tree.Count -ne 1221 -or
+              @($tree | Where-Object { $_ -cnotmatch '\A100(644|755) blob [0-9a-f]{40}\t' }).Count) {
+            throw 'P303_HOLD regular tree'
+          }
+          # Exact A-only diff proves every inherited blob and mode is unchanged.
+          $files = @(G @('ls-files'))
+          function Manifest([string] $name) {
+            $lines = foreach ($file in $files) {
+              $item = Get-Item -LiteralPath (Join-Path $root $file)
+              if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'P303_HOLD reparse' }
+              '{0}  {1}' -f (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash, $file
+            }
+            $dest = Join-Path $out "$name.txt"
+            [IO.File]::WriteAllText($dest, (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+            return (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+          }
+          Clean
+          $before = Manifest 'manifest-before'
+          $sources = @(
+            'tests/p95_native_custody_preflight/CustodyLedger.cs',
+            'tests/p96_native_transaction_negative/PendingCustodyTransaction.cs',
+            'tests/p96_native_transaction_negative/NativeTransactionRaceProof.cs',
+            'native_c1_successor/P265DevelopmentPipeAdapter.cs',
+            'native_c1_successor/P267DevelopmentAtomicService.cs',
+            'native_c1_successor/P268ServiceOwnedPendingTransaction.cs',
+            'native_c1_successor/P269ComposedDevelopmentService.cs',
+            'native_c1_successor/P301DispatcherOwnedSyntheticService.cs',
+            'tests/p301_dispatcher_owner/P301SourceReviewTests.cs',
+            'tests/p303_nonscm_refusal/P303NonScmIdentityRefusalTests.cs')
+          $absoluteSources = @(
+            foreach ($source in $sources) {
+              $candidate = Join-Path $root $source
+              $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).ProviderPath
+              if (![IO.Path]::IsPathFullyQualified($resolved) -or
+                  !$resolved.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'P303_HOLD source outside checkout'
+              }
+              $item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
+              if ($item -isnot [IO.FileInfo] -or !$item.Exists -or
+                  ($item.Attributes -band [IO.FileAttributes]::Directory)) { throw 'P303_HOLD source ordinary file' }
+              $component = $item
+              while ($null -ne $component) {
+                if (($component -isnot [IO.FileInfo] -and $component -isnot [IO.DirectoryInfo]) -or
+                    !$component.Exists -or
+                    (($component -is [IO.DirectoryInfo]) -ne
+                      [bool]($component.Attributes -band [IO.FileAttributes]::Directory)) -or
+                    ($component.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                  throw 'P303_HOLD source type/existence/directory/reparse'
+                }
+                if ($component.FullName -ceq $root) { break }
+                $component = if ($component -is [IO.FileInfo]) { $component.Directory } else { $component.Parent }
+              }
+              if ($null -eq $component) { throw 'P303_HOLD source ancestry' }
+              $resolved
+            }
+          )
+          if ($absoluteSources.Count -ne 10) { throw 'P303_HOLD source count' }
+          $pins = @{
+            $sources[7] = '5D129C8FB908A281B493587F850E2A4012078EA03B4A4948C66AACE8E380B48D'
+            $sources[9] = '9FA2A1A5CF4B4EB923D6B4A5B6BF6B877C48D1BECD78A0AE8FF377AEB5C6E72B'
+          }
+          foreach ($path in $pins.Keys) {
+            if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $pins[$path]) {
+              throw 'P303_HOLD source pin'
+            }
+          }
+          # Event handlers run in managed code; each stream has a 64 Ki-character cap.
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Diagnostics;
+          using System.Text;
+          using System.Threading.Tasks;
+          public static class P303Bounded {
+            public static string[] Run(string file, string[] args, string root) {
+              using (var p = new Process()) {
+                var od = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var ed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var o = new StringBuilder(); var e = new StringBuilder();
+                bool overflow = false; object gate = new object();
+                p.StartInfo = new ProcessStartInfo(file) { UseShellExecute = false,
+                  RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+                  WorkingDirectory = root };
+                foreach (string a in args ?? Array.Empty<string>()) p.StartInfo.ArgumentList.Add(a);
+                DataReceivedEventHandler receive = (sender, data) => {
+                  bool stdout = Object.ReferenceEquals(sender, o);
+                  if (data.Data == null) { (stdout ? od : ed).TrySetResult(true); return; }
+                  lock (gate) {
+                    var b = stdout ? o : e;
+                    if (data.Data.Length + 1 > 65536 - b.Length) overflow = true;
+                    else b.Append(data.Data).Append('\n');
+                  }
+                };
+                p.OutputDataReceived += (s,d) => receive(o,d);
+                p.ErrorDataReceived += (s,d) => receive(e,d);
+                if (!p.Start()) throw new Exception("P303_HOLD start");
+                p.BeginOutputReadLine(); p.BeginErrorReadLine();
+                bool natural = p.WaitForExit(30000);
+                string raw = natural ? p.ExitCode.ToString() : "NONE";
+                string cleanup = "NOT_NEEDED";
+                if (!natural) {
+                  try { p.Kill(true); cleanup = p.WaitForExit(5000) ? p.ExitCode.ToString() : "TIMEOUT"; }
+                  catch (Exception) { cleanup = "FAILED"; }
+                }
+                bool drained = od.Task.Wait(5000) && ed.Task.Wait(5000);
+                lock (gate) return new[] {raw, cleanup, o.ToString(), e.ToString(),
+                  natural && drained && !overflow ? "BOUNDED" : "HOLD"};
+              }
+            }
+          }
+          '@
+          function Run([string] $label, [string] $exe, [string[]] $argv) {
+            $r = [P303Bounded]::Run($exe, $argv, $root)
+            @("RAW=$($r[0]) CLEANUP=$($r[1]) DRAIN=$($r[4])", $r[2], $r[3]) |
+              Set-Content -LiteralPath (Join-Path $out "$label.txt") -Encoding utf8
+            if ($r[4] -cne 'BOUNDED') { throw 'P303_HOLD timeout/drain/output cap; no retry' }
+            return ,$r
+          }
+          try {
+            $framework = if ($env:REVIEW_ARCH -ceq 'x64') { 'Framework64' } else { 'Framework' }
+            $fx = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319"
+            $csc = Join-Path $fx 'csc.exe'
+            $flags = 'DEBUG;TEST_ONLY;C1_REVIEW_ISOLATED_ASSEMBLY;C1_P265_DEVELOPMENT_ONLY;C1_P267_DEVELOPMENT_ONLY;C1_P268_DEVELOPMENT_ONLY;C1_P269_DEVELOPMENT_ONLY;C1_P301_DISPATCHER_OWNER_ONLY;C1_P303_NONSCM_NEGATIVE_ONLY'
+            $common = @('/noconfig','/nologo','/warn:4','/warnaserror+',"/platform:$env:REVIEW_ARCH",'/target:exe')
+            foreach ($ref in @('System.dll','System.Core.dll','System.ServiceProcess.dll')) {
+              $common += '/reference:' + (Join-Path $fx $ref)
+            }
+            foreach ($main in @('P301SourceReviewTests','P303NonScmIdentityRefusalTests')) {
+              $exe = Join-Path $out "$main.exe"
+              $r = Run "compile-$main" $csc ($common + @("/define:$flags","/main:$main","/out:$exe") + $absoluteSources)
+              if ($r[0] -cne '0' -or $r[2] -or $r[3] -or !(Test-Path -LiteralPath $exe)) {
+                throw 'P303_HOLD positive compile raw/diagnostics'
+              }
+            }
+            foreach ($negative in @('missing-P303','RELEASE')) {
+              $defs = if ($negative -ceq 'RELEASE') { "$flags;RELEASE" } else {
+                $flags.Replace(';C1_P303_NONSCM_NEGATIVE_ONLY','')
+              }
+              $exe = Join-Path $out "$negative.exe"
+              $r = Run $negative $csc ($common + @("/define:$defs",'/main:P303NonScmIdentityRefusalTests',"/out:$exe") + $absoluteSources)
+              if ($r[0] -cne '1' -or ($r[2] + $r[3]) -notmatch 'error CS1029:' -or
+                  (Test-Path -LiteralPath $exe)) { throw 'P303_HOLD compiler negative' }
+            }
+            $r = Run 'P301-review' (Join-Path $out 'P301SourceReviewTests.exe') @($root)
+            if ($r[0] -cne '0' -or $r[3] -or $r[2].TrimEnd() -cne 'P301_SOURCE_CHECKS=17; runtime refusal=NOT RUN') {
+              throw 'P303_HOLD P301 baseline'
+            }
+            $bits = if ($env:REVIEW_ARCH -ceq 'x64') { 64 } else { 32 }
+            $r = Run 'P303-refusal' (Join-Path $out 'P303NonScmIdentityRefusalTests.exe') @()
+            if ($r[0] -cne '0' -or $r[3] -or $r[2].TrimEnd() -cne
+                "P303_NONSCM_REFUSAL=PASS CHECKS=17 BITS=$bits OWNER_CREATED=NO SCM_USED=NO PRODUCTION=HOLD") {
+              throw 'P303_HOLD negative identity'
+            }
+          } catch { Write-Output 'P303_HOLD; no retry; production HOLD'; throw }
+          finally {
+            $after = Manifest 'manifest-after'
+            "BASE=$base HEAD=$head BEFORE=$before AFTER=$after" |
+              Set-Content -LiteralPath (Join-Path $out 'custody.txt') -Encoding utf8
+            Clean
+            if ($before -cne $after) { throw 'P303_HOLD source custody changed' }
+          }
+      - name: Upload bounded review evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p303-nonscm-${{ matrix.arch }}
+          path: ${{ runner.temp }}/p303-${{ matrix.arch }}/*.txt
+          if-no-files-found: warn
+          retention-days: 7
