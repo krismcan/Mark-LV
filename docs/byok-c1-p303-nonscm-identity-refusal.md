@@ -8,9 +8,10 @@ Disposition: hosted evidence pending; production HOLD; real-key NO-GO.
 Parent: `6b5afa18e24d771c604f3f760eca5b5637904478` (P302).
 Base branch: `byok-c1-p302-cross-phase-retirement-acceptance-20261122`.
 Head branch: `byok-c1-p303-nonscm-identity-refusal-20261122`.
-The next hosted head must be exactly one repair commit above initial failed P303
+The next hosted head must be exactly one new repair commit above first repair
+`78cfdc6888eba641eb1a02408434681cec5d3c55`, whose sole parent is initial P303
 `ffa25bb1aa2b0c771fe9ba4a55ea5cb095b89d18`, whose sole parent is the P302 SHA above.
-Checkout fetch-depth is 3; both exact sole-parent links and rev-list count 2
+Checkout fetch-depth is 4; all three exact sole-parent links and rev-list count 3
 from P302 to the new head are required. This does not authorize a local commit.
 The same-repository pull request must remain a draft with the exact base SHA.
 The cumulative change against P302 must remain exactly three additions:
@@ -106,7 +107,25 @@ original artifacts are `p303-nonscm-x64` id `14762408818` and
 The workflow's relative compiler source arguments resolved incorrectly;
 failure occurred before any P301/P303 executable test, proving no security behavior.
 The targeted repair supplies verified absolute compiler inputs and an explicit
-child working directory, with the exact two-link repair ancestry above.
+child working directory, with the exact first-repair ancestry then required.
+Second hosted run `45044567307` on draft PR #222 also remains RED on x64 and
+x86, before compilation: main script line 10 refused with
+`P303_HOLD checkout directory/reparse`. No compiler or executable test ran.
+The user-supplied independent read-only Windows diagnostic on Kristian confirmed
+the source guard defect: Get-Item of the root returns DirectoryInfo with
+PSIsContainer=True, but DirectoryInfo.Parent returns a plain .NET DirectoryInfo
+with PSIsContainer absent (NULL), despite Directory=True and ReparsePoint=False.
+This is a PowerShell extended-property assumption failure, not service behavior
+or evidence of a GitHub runner parent reparse. Actual runner path details remain
+unproven. The repair checks only the verified checkout root as an existing
+ordinary non-reparse DirectoryInfo; it does not inspect ancestors outside it.
+Each component from each of the ten absolute source files through the checkout
+root must be FileInfo/DirectoryInfo, exist, have the matching stable
+FileAttributes.Directory bit, and lack ReparsePoint. No PSIsContainer property
+is used on Parent. These literal path/type/attribute/hash checks execute no
+source code. Source pins, no-symlink custody and no-network boundaries remain.
+Independent hosted validation of this repair remains PENDING; disposition HOLD.
+
 Original RED evidence is preserved; repaired hosted validation remains PENDING
 on both architectures. Local validation is limited to offline PowerShell AST
 parsing and static diff inspection; it cannot establish compiler/runtime success.

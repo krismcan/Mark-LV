@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 3
+          fetch-depth: 4
           persist-credentials: false
           submodules: false
           lfs: false
@@ -47,13 +47,12 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $root = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE -ErrorAction Stop).ProviderPath
           if ((Get-Location).Path -cne $root) { throw 'P303_HOLD checkout root' }
-          # Check every component, including ancestors of the checkout, without following reparses.
-          $component = Get-Item -LiteralPath $root -Force -ErrorAction Stop
-          while ($null -ne $component) {
-            if (!$component.PSIsContainer -or ($component.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-              throw 'P303_HOLD checkout directory/reparse'
-            }
-            $component = $component.Parent
+          # Validate only the checkout root, not ancestors outside source custody.
+          $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+          if ($rootItem -isnot [IO.DirectoryInfo] -or !$rootItem.Exists -or
+              !($rootItem.Attributes -band [IO.FileAttributes]::Directory) -or
+              ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'P303_HOLD checkout directory/reparse'
           }
           $out = Join-Path $env:RUNNER_TEMP "p303-$env:REVIEW_ARCH"
           New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
@@ -69,12 +68,14 @@ jobs:
           }
           $base = '6b5afa18e24d771c604f3f760eca5b5637904478'
           $initial = 'ffa25bb1aa2b0c771fe9ba4a55ea5cb095b89d18'
+          $firstRepair = '78cfdc6888eba641eb1a02408434681cec5d3c55'
           $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
           $head = $p.head.sha
           if ((G @('rev-parse','HEAD')) -cne $head -or
-              (G @('rev-list','--parents','-n','1','HEAD')) -cne "$head $initial" -or
+              (G @('rev-list','--parents','-n','1','HEAD')) -cne "$head $firstRepair" -or
+              (G @('rev-list','--parents','-n','1',$firstRepair)) -cne "$firstRepair $initial" -or
               (G @('rev-list','--parents','-n','1',$initial)) -cne "$initial $base" -or
-              (G @('rev-list','--count',"$base..$head")) -cne '2' -or
+              (G @('rev-list','--count',"$base..$head")) -cne '3' -or
               (G @('config','--get','core.autocrlf')) -cne 'false') { throw 'P303_HOLD ancestry/config' }
           $adds = @('.github/workflows/p303-windows-nonscm-identity-refusal.yml',
             'docs/byok-c1-p303-nonscm-identity-refusal.md',
@@ -124,10 +125,17 @@ jobs:
                 throw 'P303_HOLD source outside checkout'
               }
               $item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
-              if ($item -isnot [IO.FileInfo] -or $item.PSIsContainer) { throw 'P303_HOLD source ordinary file' }
+              if ($item -isnot [IO.FileInfo] -or !$item.Exists -or
+                  ($item.Attributes -band [IO.FileAttributes]::Directory)) { throw 'P303_HOLD source ordinary file' }
               $component = $item
               while ($null -ne $component) {
-                if ($component.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'P303_HOLD source reparse' }
+                if (($component -isnot [IO.FileInfo] -and $component -isnot [IO.DirectoryInfo]) -or
+                    !$component.Exists -or
+                    (($component -is [IO.DirectoryInfo]) -ne
+                      [bool]($component.Attributes -band [IO.FileAttributes]::Directory)) -or
+                    ($component.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                  throw 'P303_HOLD source type/existence/directory/reparse'
+                }
                 if ($component.FullName -ceq $root) { break }
                 $component = if ($component -is [IO.FileInfo]) { $component.Directory } else { $component.Parent }
               }
