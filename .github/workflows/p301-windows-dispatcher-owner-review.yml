@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
           submodules: false
           lfs: false
@@ -73,7 +73,18 @@ jobs:
           $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
           function Git-Lines([string[]] $a, [string] $inputText = '') {
             $si = [Diagnostics.ProcessStartInfo]::new()
-            $si.FileName = (Get-Command git -CommandType Application).Source
+            $gitCommand = @(Get-Command git.exe -CommandType Application -All | Select-Object -First 1)
+            if ($gitCommand.Count -ne 1 -or $gitCommand[0] -isnot [System.Management.Automation.ApplicationInfo]) {
+              throw 'Singular Git application required: HOLD'
+            }
+            $gitSource = $gitCommand[0].Source
+            if ($gitSource -isnot [string] -or [string]::IsNullOrWhiteSpace($gitSource) -or
+                ![IO.Path]::IsPathFullyQualified($gitSource) -or
+                [IO.Path]::GetFileName($gitSource) -cne 'git.exe' -or
+                !(Test-Path -LiteralPath $gitSource -PathType Leaf)) {
+              throw 'Exact absolute Git executable required: HOLD'
+            }
+            $si.FileName = [string]$gitSource
             $si.UseShellExecute = $false
             $si.CreateNoWindow = $true
             $si.RedirectStandardInput = $true
@@ -214,9 +225,13 @@ jobs:
           try {
             Clean
             $headSha = $event.pull_request.head.sha
+            $failedHead = '5119b6d57d3ed150b8eeb80d3c8a39122dc27641'
             if ((Git-Lines @('rev-parse', 'HEAD')) -cne $headSha -or
-                (Git-Lines @('rev-list', '--parents', '-n', '1', 'HEAD')) -cne "$headSha $base") {
-              throw 'Exact one-parent HEAD required'
+                (Git-Lines @('rev-list', '--parents', '-n', '1', 'HEAD')) -cne "$headSha $failedHead" -or
+                (Git-Lines @('rev-list', '--parents', '-n', '1', $failedHead)) -cne "$failedHead $base" -or
+                (Git-Lines @('rev-parse', 'HEAD^^')) -cne $base -or
+                (Git-Lines @('rev-list', '--count', "$base..HEAD")) -cne '2') {
+              throw 'Exact P298 -> failed P301 -> single repair ancestry required'
             }
             $added = @(
               '.github/workflows/p301-windows-dispatcher-owner-review.yml',

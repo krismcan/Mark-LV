@@ -116,3 +116,23 @@ No original failure is waived, downgraded or closed by this additive preparation
 This explicitly authorized investigation does not advance a held product phase.
 No workbook or dashboard update until BYOK C1 is complete.
 Real keys remain forbidden; production remains held regardless of hosted outcome.
+
+## Hosted failure repair follow-up — 22 November 2026
+
+This entry supersedes the original one-child topology description only: the
+one-commit follow-up must have exact ancestry P298
+`635f3443ceab17230ed8586ef7b869fa40b092a5` -> original failed P301
+`5119b6d57d3ed150b8eeb80d3c8a39122dc27641` -> fix commit, with single
+parents and exactly two commits since P298. The cumulative P298..HEAD scope
+remains exactly four ADDED paths, 1,212 unchanged inherited blobs and 1,216
+files; both original C# SHA256 pins remain unchanged.
+
+| Issue / severity | Root cause, reproduction and impacted boundary | Repair, tests, independent review and disposition |
+| --- | --- | --- |
+| First P301 hosted run / blocking RED | Draft PR #220 run 45033223941 failed x64 job 137241182064 and x86 job 137241182391 before compilation in Prove exact custody, line 24. Multiple Git command PATH results became one invalid combined ProcessStartInfo.FileName: `C:\Program Files\Git\bin\git.exe C:\Program Files\Git\cmd\git.exe C:\Program Files\Git\ucrt64\bin\git.exe`; Process.Start failed with Win32 system cannot find file. Custody admission failed; no P301 compiler/test executed and no testing source behavior is inferred. | Resolve the first exact git.exe ApplicationInfo, require one selected object and a nonempty absolute Source naming an existing git.exe leaf, and assign a single string without shell invocation. Fail closed; retain the 2 MiB stdout bound, 20-second timeout and original exited raw result only. Artifact summary PENDING. Offline AST/whitespace checks are static only; CTO independent review, commit and GitHub rerun remain required. Original run remains RED; HOLD pending hosted evidence. |
+
+This focused correction does not waive, downgrade or close earlier failures.
+Qualified approvals remain **0/7**; full original Windows regressions **0/3**.
+Original P96 HIGH and P292 cleanup remain **HOLD**. Real-key NO-GO and
+production HOLD remain unchanged. No source/fixture, compiler allowlist,
+output guard or permission is changed; no local compiled binary is executed.
