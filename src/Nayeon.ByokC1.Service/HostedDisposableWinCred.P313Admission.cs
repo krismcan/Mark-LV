@@ -10,6 +10,7 @@ using System.Web.Script.Serialization;
 
 [assembly: InternalsVisibleTo("P313.ProductAdmission.Tests")]
 [assembly: InternalsVisibleTo("P314.DurableIntent.Tests")]
+[assembly: InternalsVisibleTo("P315.CrashRecovery.Tests")]
 
 namespace Nayeon.ByokC1.Service
 {
@@ -197,6 +198,102 @@ namespace Nayeon.ByokC1.Service
             Identity(); // Process SID and no-impersonation validation before any WinCred access.
         }
 
+        private const string P315HeadRef = "byok-c1-p315-hosted-crash-recovery-20261123";
+        private const string P315BaseRef = "byok-c1-p314-hosted-durable-native-intent-20261123";
+        private const string P315BaseSha = "8ea85bc2682183a95845c5b14a7986bb7200f5ec";
+        private sealed class P315Marker { }
+
+        // Only the nested owner calls this overload. No caller-supplied environment authorizes it.
+        private HostedDisposableWinCred(string id, P315Marker marker)
+        {
+            ValidateId(id); // Before all OS calls.
+            Need(marker != null);
+            RequireHostedP315();
+            p315Session = true;
+            target = Prefix + id;
+            owner = Identity();
+            Need(Marshal.SizeOf(typeof(Credential)) == (IntPtr.Size == 8 ? 80 : 52));
+            lock (Writer) { Need(!Read(null)); }
+        }
+        // Pure predicate only. No injected environment reaches a native-effect constructor.
+        internal static void ValidateContextP315(IDictionary<string, string> env, string json, string checkout)
+        {
+            Need(env != null && Sha(checkout) && checkout != P315BaseSha);
+            foreach (var pair in new Dictionary<string, string> {
+                {"GITHUB_ACTIONS", "true"}, {"RUNNER_OS", "Windows"},
+                {"RUNNER_ENVIRONMENT", "github-hosted"}, {"GITHUB_EVENT_NAME", "pull_request"},
+                {"GITHUB_REPOSITORY", Repo}, {"GITHUB_HEAD_REF", P315HeadRef},
+                {"GITHUB_BASE_REF", P315BaseRef}, {"P315_SYNTHETIC_HOSTED_ONLY", "1"} })
+                Need(Env(env, pair.Key) == pair.Value);
+            Need(Env(env, "P314_SYNTHETIC_HOSTED_ONLY") == null &&
+                Env(env, "P313_SYNTHETIC_HOSTED_ONLY") == null &&
+                Env(env, "P312_SYNTHETIC_HOSTED_ONLY") == null);
+            Need(json != null && json.Length > 0 && json.Length < 65536);
+            var parser = new JavaScriptSerializer { MaxJsonLength = 65535, RecursionLimit = 32 };
+            var root = Map(parser.DeserializeObject(json));
+            var pr = Map(Field(root, "pull_request"));
+            Need(Object.Equals(Field(pr, "draft"), true));
+            var repository = Map(Field(root, "repository"));
+            Need((string)Field(repository, "full_name") == Repo);
+            Need(Object.Equals(Field(repository, "id"), 1402212689));
+            var rootFork = Field(repository, "fork");
+            Need(rootFork is bool && (bool)rootFork);
+            foreach (string side in new[] { "head", "base" })
+            {
+                var endpoint = Map(Field(pr, side));
+                var repo = Map(Field(endpoint, "repo"));
+                Need((string)Field(repo, "full_name") == Repo);
+                Need(Object.Equals(Field(repo, "fork"), rootFork));
+                Need(Object.Equals(Field(repo, "id"), Field(repository, "id")));
+                Need((string)Field(endpoint, "ref") == (side == "head" ? P315HeadRef : P315BaseRef));
+                Need((string)Field(endpoint, "sha") == (side == "head" ? checkout : P315BaseSha));
+            }
+        }
+
+        internal static void RequireHostedP315()
+        {
+            // All cheap environment checks precede file, process, identity and native access.
+            var env = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in new Dictionary<string, string> {
+                {"GITHUB_ACTIONS", "true"}, {"RUNNER_OS", "Windows"},
+                {"RUNNER_ENVIRONMENT", "github-hosted"}, {"GITHUB_EVENT_NAME", "pull_request"},
+                {"GITHUB_REPOSITORY", Repo}, {"GITHUB_HEAD_REF", P315HeadRef},
+                {"GITHUB_BASE_REF", P315BaseRef}, {"P315_SYNTHETIC_HOSTED_ONLY", "1"} })
+            {
+                string value = Environment.GetEnvironmentVariable(pair.Key);
+                Need(value == pair.Value); env.Add(pair.Key, value);
+            }
+            foreach (string flag in new[] { "P312_SYNTHETIC_HOSTED_ONLY", "P313_SYNTHETIC_HOSTED_ONLY", "P314_SYNTHETIC_HOSTED_ONLY" })
+                Need(Environment.GetEnvironmentVariable(flag) == null);
+            Need(Environment.OSVersion.Platform == PlatformID.Win32NT);
+            string temp = Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? "");
+            string path = Path.GetFullPath(Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH") ?? "");
+            RegularPath(path, temp);
+            Need((File.GetAttributes(path) & FileAttributes.Directory) == 0);
+            string json;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Need(stream.Length > 0 && stream.Length < 65536);
+                using (var reader = new StreamReader(stream, new UTF8Encoding(false, true), true)) json = reader.ReadToEnd();
+            }
+            // Read-only local Git witness; no remotes, shell, network or caller-injected executor.
+            var start = new ProcessStartInfo("git.exe", "rev-parse --verify HEAD") {
+                WorkingDirectory = Path.GetFullPath(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? ""),
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+                RedirectStandardError = true };
+            string checkout;
+            using (var process = Process.Start(start))
+            {
+                if (!process.WaitForExit(5000)) { process.Kill(); Need(process.WaitForExit(5000)); Need(false); }
+                Need(process.ExitCode == 0);
+                char[] buffer = new char[43];
+                int count = process.StandardOutput.ReadBlock(buffer, 0, buffer.Length);
+                Need(count < buffer.Length); checkout = new string(buffer, 0, count).TrimEnd('\r', '\n');
+            }
+            ValidateContextP315(env, json, checkout);
+            Identity(); // Process SID and no-impersonation validation before any WinCred access.
+        }
+
         // This owner is test-only composition, never trusted human consent or durable admission.
         internal sealed class ServiceOwnedAdmission : IDisposable
         {
@@ -241,6 +338,40 @@ namespace Nayeon.ByokC1.Service
                         Need(journal.RecoveryRequired);
                     }
                     else vault = new HostedDisposableWinCred(id, new P314Marker());
+                    beforeNative = new ManualResetEvent(false);
+                    releaseNative = new ManualResetEvent(false);
+                }
+                catch
+                {
+                    try { if (vault != null) vault.Dispose(); }
+                    finally
+                    {
+                        journal.Dispose();
+                        if (beforeNative != null) beforeNative.Dispose();
+                        if (releaseNative != null) releaseNative.Dispose();
+                    }
+                    throw;
+                }
+            }
+            // P315 only: no file creation until dispatch wins the existing monitor.
+            internal enum P315Mode { HostedCrashOnly }
+            internal ServiceOwnedAdmission(string id, bool pause, bool crash, bool reopen, P315Mode mode)
+            {
+                ValidateId(id);
+                Need(mode == P315Mode.HostedCrashOnly && pause && crash);
+                RequireHostedP315();
+                pauseBeforeNative = pause;
+                simulateCrash = crash;
+                journal = new DurableIntentJournal(id, reopen);
+                try
+                {
+                    if (reopen)
+                    {
+                        terminal = true;
+                        recoveryRequired = true;
+                        Need(journal.RecoveryRequired);
+                    }
+                    else vault = new HostedDisposableWinCred(id, new P315Marker());
                     beforeNative = new ManualResetEvent(false);
                     releaseNative = new ManualResetEvent(false);
                 }
