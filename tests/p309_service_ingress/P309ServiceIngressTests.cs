@@ -568,7 +568,7 @@ internal static class P309ServiceIngressTests
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine("P309 FAIL " + error.GetType().Name + ": " + error.Message +
+            Console.Error.WriteLine("P309 FAIL " + error +
                 " elapsed_ms=" + elapsed.ElapsedMilliseconds + "; HOLD"); return 1;
         }
     }
