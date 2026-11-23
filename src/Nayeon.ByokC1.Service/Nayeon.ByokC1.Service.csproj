@@ -31,6 +31,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.ServiceProcess" />
     <Compile Include="CustodyService.cs" />
@@ -41,6 +42,7 @@
     <Compile Include="SyntheticIngressServer.cs" />
     <Compile Include="HostedDisposableWinCred.cs" />
     <Compile Include="HostedDisposableWinCred.P313Admission.cs" />
+    <Compile Include="DurableIntentJournal.cs" />
   </ItemGroup>
   <Target Name="ValidateBuildShape" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(Platform)' != 'x64' And '$(Platform)' != 'x86'" Text="Only x64 and x86 are supported." />
