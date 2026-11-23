@@ -15,6 +15,7 @@ namespace Nayeon.ByokC1.Service
         private bool terminal;
         private StatusPipeServer statusPipe;
         private SyntheticTransactionOwner transactions;
+        private SyntheticIngressServer syntheticIngress;
 
         private CustodyService()
         {
@@ -136,6 +137,7 @@ namespace Nayeon.ByokC1.Service
                     VerifyExecutingIdentity(); // Reopen and verify before any domain transition.
                     coordinator.BeginStart();
                     transactions = new SyntheticTransactionOwner(); // Identity-validated service ownership only.
+                    syntheticIngress = new SyntheticIngressServer(transactions);
                     statusPipe = new StatusPipeServer(); // Only after both executing-identity checks.
                     coordinator.CompleteStart(); // IPC reports denial only, never readiness authority.
                     ExitCode = 0; // Only after the SCM callback and OS checks, never readiness approval.
@@ -143,10 +145,13 @@ namespace Nayeon.ByokC1.Service
                 catch (Exception)
                 {
                     terminal = true;
-                    if (transactions != null) transactions.Fault();
-                    coordinator.Fault();
                     ExitCode = 1;
-                    if (statusPipe != null) statusPipe.Dispose();
+                    try { if (transactions != null) transactions.Fault(); }
+                    finally
+                    {
+                        try { ClosePipes(); }
+                        finally { coordinator.Fault(); }
+                    }
                     throw new InvalidOperationException("Service startup denied; release HOLD.");
                 }
             }
@@ -175,19 +180,39 @@ namespace Nayeon.ByokC1.Service
             }
         }
 
+        private void ClosePipes()
+        {
+            // Always attempt both cleanups, including when the worker join fails.
+            try { if (syntheticIngress != null) syntheticIngress.Dispose(); }
+            finally { if (statusPipe != null) statusPipe.Dispose(); }
+        }
+
         private void Close(bool disposing, bool shutdown)
         {
             lock (lifecycle)
             {
                 terminal = true;
-                // Cancel before pipe cleanup, even if that cleanup throws or times out.
-                if (transactions != null)
+                try
                 {
-                    if (disposing) transactions.Dispose();
-                    else if (shutdown) transactions.Shutdown();
-                    else transactions.Stop();
+                    // Retire first, even if cleanup throws. The ingress worker never
+                    // needs lifecycle, so joining it under this lock cannot deadlock.
+                    try
+                    {
+                        if (transactions != null)
+                        {
+                            if (disposing) transactions.Dispose();
+                            else if (shutdown) transactions.Shutdown();
+                            else transactions.Stop();
+                        }
+                    }
+                    finally { ClosePipes(); }
                 }
-                try { if (statusPipe != null) statusPipe.Dispose(); }
+                catch
+                {
+                    ExitCode = 1;
+                    coordinator.Fault();
+                    throw;
+                }
                 finally
                 {
                     coordinator.Stop();
@@ -204,8 +229,17 @@ namespace Nayeon.ByokC1.Service
             {
                 // The metadata owner also closes on the non-managed disposal path.
                 terminal = true;
-                if (transactions != null) transactions.Dispose();
-                try { if (disposing) Close(true, false); } finally { base.Dispose(disposing); }
+                try
+                {
+                    try { if (transactions != null) transactions.Dispose(); }
+                    finally
+                    {
+                        if (disposing) Close(true, false);
+                        else ClosePipes();
+                    }
+                }
+                catch { ExitCode = 1; throw; }
+                finally { base.Dispose(disposing); }
             }
         }
 
