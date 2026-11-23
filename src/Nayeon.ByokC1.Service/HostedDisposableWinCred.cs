@@ -15,7 +15,7 @@ namespace Nayeon.ByokC1.Service
 {
     // Inert product-assembly foundation. No service/IPC factory or production caller.
     // Unsigned friend identity and hosted environment are test brakes, NOT authentication.
-    internal sealed class HostedDisposableWinCred : IDisposable
+    internal sealed partial class HostedDisposableWinCred : IDisposable
     {
         private const string Prefix = "Nayeon.P312.Disposable.";
         private const string Repo = "krismcan/Mark-LV";
@@ -31,6 +31,7 @@ namespace Nayeon.ByokC1.Service
         private readonly string target;
         private readonly SecurityIdentifier owner;
         private bool attempted;
+        private readonly bool p313Session;
 
         private static void Need(bool condition)
         { if (!condition) throw new InvalidOperationException("P312 refused; HOLD."); }
@@ -158,7 +159,7 @@ namespace Nayeon.ByokC1.Service
             Need(sid != null && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid)); return sid;
         }
         private void Gate()
-        { RequireHosted(); Need(owner.Equals(Identity())); }
+        { if (p313Session) RequireHostedP313(); else RequireHosted(); Need(owner.Equals(Identity())); }
         internal VaultState State { get { lock (Writer) return state; } }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

@@ -40,6 +40,7 @@
     <Compile Include="SyntheticTransactionOwner.cs" />
     <Compile Include="SyntheticIngressServer.cs" />
     <Compile Include="HostedDisposableWinCred.cs" />
+    <Compile Include="HostedDisposableWinCred.P313Admission.cs" />
   </ItemGroup>
   <Target Name="ValidateBuildShape" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(Platform)' != 'x64' And '$(Platform)' != 'x86'" Text="Only x64 and x86 are supported." />
