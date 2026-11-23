@@ -175,27 +175,35 @@ jobs:
             $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
             $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
             if ($LASTEXITCODE -ne 0 -or !$msbuild) { throw 'Installed MSBuild required; no downloads' }
+            Write-Output 'P313_STAGE=MSBUILD_START'
             $null = Invoke-Bounded $msbuild @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
               '/nologo', '/verbosity:minimal', '/t:Build', '/warnaserror', '/p:TreatWarningsAsErrors=true',
               "/p:Platform=$env:BUILD_ARCH", "/p:Configuration=$env:BUILD_CONFIGURATION",
               "/p:OutputPath=$out\", "/p:IntermediateOutputPath=$out\obj\") 90000
+            Write-Output 'P313_STAGE=MSBUILD_PASS'
             $framework = if ($env:BUILD_ARCH -ceq 'x64') { 'Framework64' } else { 'Framework' }
             $csc = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319/csc.exe"
             if (!(Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'Installed compiler required' }
             $product = Join-Path $out 'Nayeon.ByokC1.Service.exe'
             $test = Join-Path $out 'P313.ProductAdmission.Tests.exe'
+            Write-Output 'P313_STAGE=CSC_P313_START'
             $null = Invoke-Bounded $csc @('/nologo', '/noconfig', '/warn:4', '/warnaserror+', '/target:exe',
               "/platform:$env:BUILD_ARCH", "/out:$test", "/reference:$product", '/reference:System.dll',
               '/reference:System.Core.dll', '/reference:System.ServiceProcess.dll', '/reference:System.Web.Extensions.dll',
               '/reference:System.Xml.dll', (Resolve-Path -LiteralPath 'tests/p313_product_admission/P313ProductAdmissionTests.cs').ProviderPath) 90000
+            Write-Output 'P313_STAGE=CSC_P313_PASS'
             if (Test-Path Env:P312_SYNTHETIC_HOSTED_ONLY) { throw 'P312 effect flag forbidden' }
             $historical = Join-Path $out 'P312.ProductVault.Tests.exe'
+            Write-Output 'P313_STAGE=CSC_P312_START'
             $null = Invoke-Bounded $csc @('/nologo', '/noconfig', '/warn:4', '/warnaserror+', '/target:exe',
               "/platform:$env:BUILD_ARCH", "/out:$historical", "/reference:$product", '/reference:System.dll',
               '/reference:System.Core.dll', '/reference:System.ServiceProcess.dll', '/reference:System.Web.Extensions.dll',
               '/reference:System.Xml.dll', (Resolve-Path -LiteralPath 'tests/p312_product_vault/P312ProductVaultTests.cs').ProviderPath) 90000
+            Write-Output 'P313_STAGE=CSC_P312_PASS'
             $historicalHash = (Get-FileHash -LiteralPath $historical -Algorithm SHA256).Hash
+            Write-Output 'P313_STAGE=P312_READONLY_START'
             $historicalResult = Invoke-Bounded $historical @('--readonly') 90000
+            Write-Output 'P313_STAGE=P312_READONLY_PASS'
             if ($historicalResult -cnotmatch '\AP312 PRODUCT VAULT TESTS PASS count=[1-9][0-9]*\r?\n\z') { throw 'Frozen P312 readonly failed' }
             Write-Output $historicalResult.TrimEnd()
             Write-Output "P312_READONLY_SHA256=$historicalHash"
@@ -203,7 +211,9 @@ jobs:
             $testHash = (Get-FileHash -LiteralPath $test -Algorithm SHA256).Hash
             Write-Output "ARCH=$env:BUILD_ARCH CONFIGURATION=$env:BUILD_CONFIGURATION PRODUCT_SHA256=$productHash TEST_SHA256=$testHash"
             # Only this friend EXE executes; never product Main, SCM or a service install.
+            Write-Output 'P313_STAGE=P313_NATIVE_START'
             $result = Invoke-Bounded $test @() 90000
+            Write-Output 'P313_STAGE=P313_NATIVE_PASS'
             if ($result -cnotmatch '\AP313 PRODUCT ADMISSION TESTS PASS cleanup=verified count=[1-9][0-9]*\r?\n\z') { throw 'Unexpected test output; HOLD' }
             Write-Output $result.TrimEnd()
             if ((Get-FileHash -LiteralPath $historical -Algorithm SHA256).Hash -cne $historicalHash -or
