@@ -37,13 +37,14 @@ jobs:
           if ($file.PSIsContainer -or $file.Length -le 0 -or $file.Length -ge 65536) { throw 'Event file HOLD' }
           $eventData = Get-Content -Raw -LiteralPath $eventPath | ConvertFrom-Json
           $p = $eventData.pull_request
+          # A forked root is allowed only with the same exact repository ID/name.
           if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
               $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
               $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
               $env:GITHUB_HEAD_REF -cne 'byok-c1-p312-service-hosted-windows-vault-20261123' -or
               $env:GITHUB_BASE_REF -cne 'byok-c1-p311-crosslanguage-synthetic-20261123' -or
               $p.draft -cne $true -or $eventData.repository.full_name -cne 'krismcan/Mark-LV' -or
-              $eventData.repository.fork -cne $false -or $p.head.repo.fork -cne $false -or $p.base.repo.fork -cne $false -or
+              ($eventData.repository.fork -isnot [bool]) -or ($p.head.repo.fork -isnot [bool]) -or ($p.base.repo.fork -isnot [bool]) -or $p.head.repo.fork -cne $eventData.repository.fork -or $p.base.repo.fork -cne $eventData.repository.fork -or
               $p.head.repo.full_name -cne 'krismcan/Mark-LV' -or $p.base.repo.full_name -cne 'krismcan/Mark-LV' -or
               $p.head.repo.id -ne $eventData.repository.id -or $p.base.repo.id -ne $eventData.repository.id -or
               $p.head.ref -cne 'byok-c1-p312-service-hosted-windows-vault-20261123' -or

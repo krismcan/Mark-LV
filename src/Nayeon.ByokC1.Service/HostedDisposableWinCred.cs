@@ -71,12 +71,15 @@ namespace Nayeon.ByokC1.Service
             var pr = Map(Field(root, "pull_request"));
             Need(Object.Equals(Field(pr, "draft"), true));
             var repository = Map(Field(root, "repository"));
-            Need((string)Field(repository, "full_name") == Repo && Object.Equals(Field(repository, "fork"), false));
+            Need((string)Field(repository, "full_name") == Repo);
+            var rootFork = Field(repository, "fork");
+            Need(rootFork is bool);
             foreach (string side in new[] { "head", "base" })
             {
                 var endpoint = Map(Field(pr, side));
                 var repo = Map(Field(endpoint, "repo"));
-                Need((string)Field(repo, "full_name") == Repo && Object.Equals(Field(repo, "fork"), false));
+                Need((string)Field(repo, "full_name") == Repo);
+                Need(Object.Equals(Field(repo, "fork"), rootFork));
                 Need(Object.Equals(Field(repo, "id"), Field(repository, "id")));
                 Need((string)Field(endpoint, "ref") == (side == "head" ? HeadRef : BaseRef));
                 Need((string)Field(endpoint, "sha") == (side == "head" ? checkout : BaseSha));

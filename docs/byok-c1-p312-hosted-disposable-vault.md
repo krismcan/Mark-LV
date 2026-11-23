@@ -98,7 +98,7 @@ GITHUB_HEAD_REF=byok-c1-p312-service-hosted-windows-vault-20261123,
 GITHUB_BASE_REF=byok-c1-p311-crosslanguage-synthetic-20261123,
 P312_SYNTHETIC_HOSTED_ONLY=1. Event JSON must be a regular non-reparse file under
 RUNNER_TEMP, strictly less than 64 KiB, parsed with bounded JavaScriptSerializer.
-The PR must be draft, source/base refs exact, root/head/base same non-fork repository
+The PR must be draft, source/base refs exact, root/head/base same exact repository with matching boolean fork flags
 and repository ID, base SHA the exact P311 parent above. Head SHA must match the
 actual checked-out local Git HEAD; Git invocation is read-only, bounded and uses
 no remote. Pure predicate tests cannot substitute their environment for this path.
@@ -119,7 +119,7 @@ child diagnostics are not echoed. The service Main and SCM are never executed.
 An unavailable WinCred account context fails the job; no gate may be weakened.
 
 Tests include pure positive/negative event predicates, all wrong environment
-values, non-draft/fork/wrong SHA/repository, invalid UUIDs before OS access,
+values, non-draft/mismatched or non-boolean fork flags/wrong SHA/repository, invalid UUIDs before OS access,
 actual host-gate refusal, assembly topology, real Add/ReadBack/Replace/ReadBack/
 Delete/absence, existing-entry collision, late collision without deletion rights,
 invalid ordering, double delete, post-dispose calls, two-thread Add serialization,
@@ -175,3 +175,29 @@ peer, explicit consent, service-owned protected-store policy, audit and verified
 cleanup before any real key. No real key, user credential, provider network,
 production release, seal, stage, commit, push, merge or tag is authorized here.
 No workbook/dashboard update until full BYOK completion.
+
+## First hosted run and bounded guard correction
+
+GitHub run `45231702538` for draft PR #231 failed all four x64/x86
+Debug/Release jobs in the first event guard, **before checkout** and before
+any native WinCred execution. The guard incorrectly required `fork=false`:
+the authorized root repository `krismcan/Mark-LV` is itself a fork. Per the
+user's independently verified GitHub REST evidence, root/head/base all have
+exact name `krismcan/Mark-LV`, ID `1402212689`, and boolean `fork=true`.
+This is a same-repository PR, not a cross-repository PR.
+
+The correction requires a boolean root fork flag and equal boolean endpoint
+flags while preserving all existing exact repository name/ID, ref, SHA, draft,
+environment and event-path checks. Pure synthetic predicate cases model the
+actual forked repository and reject root/head/base fork mismatches, non-boolean
+flags and endpoint ID mismatches. Native code and RequireHosted are unchanged.
+Latest corrected hosted run is PENDING; native tests have not run yet.
+No local test EXE execution is authorized or claimed for this correction.
+
+Corrective checkpoint: clean starting HEAD
+`5401003fb6fd76bbaf57facdb15f5e767c994314` on the requested P312 branch;
+exactly the four authorized correction paths are in scope, with no staging.
+The stale current-state file remains excluded. This guard false positive is
+contained in source pending hosted validation and review; no milestone GO.
+P96 HIGH, P292 x86 SCM teardown UNKNOWN, qualified reviews 0/7, full regressions
+0/3, REAL-KEY NO-GO and PRODUCTION HOLD all remain unchanged.

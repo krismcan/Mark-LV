@@ -112,9 +112,9 @@ internal static class P312ProductVaultTests
             {"GITHUB_HEAD_REF", "byok-c1-p312-service-hosted-windows-vault-20261123"},
             {"GITHUB_BASE_REF", "byok-c1-p311-crosslanguage-synthetic-20261123"}, {"P312_SYNTHETIC_HOSTED_ONLY", "1"} };
         string sha = new string('a', 40);
-        var repo = new Dictionary<string, object> { {"full_name", "krismcan/Mark-LV"}, {"fork", false}, {"id", 123} };
-        var head = new Dictionary<string, object> { {"repo", repo}, {"ref", env["GITHUB_HEAD_REF"]}, {"sha", sha} };
-        var baseSide = new Dictionary<string, object> { {"repo", repo}, {"ref", env["GITHUB_BASE_REF"]}, {"sha", "c430fafba1dc5890e59ade3f96c5cba13e5797c5"} };
+        var repo = new Dictionary<string, object> { {"full_name", "krismcan/Mark-LV"}, {"fork", true}, {"id", 1402212689} };
+        var head = new Dictionary<string, object> { {"repo", new Dictionary<string, object>(repo)}, {"ref", env["GITHUB_HEAD_REF"]}, {"sha", sha} };
+        var baseSide = new Dictionary<string, object> { {"repo", new Dictionary<string, object>(repo)}, {"ref", env["GITHUB_BASE_REF"]}, {"sha", "c430fafba1dc5890e59ade3f96c5cba13e5797c5"} };
         var pr = new Dictionary<string, object> { {"draft", true}, {"head", head}, {"base", baseSide} };
         var root = new Dictionary<string, object> { {"repository", repo}, {"pull_request", pr} };
         var serializer = new JavaScriptSerializer();
@@ -123,7 +123,15 @@ internal static class P312ProductVaultTests
         foreach (string key in env.Keys.ToArray())
         { string value = env[key]; env[key] = "denied"; Refuse(validate); env[key] = value; }
         pr["draft"] = false; Refuse(validate); pr["draft"] = true;
-        repo["fork"] = true; Refuse(validate); repo["fork"] = false;
+        repo["fork"] = false; Refuse(validate); repo["fork"] = true;
+        repo["fork"] = "true"; Refuse(validate); repo["fork"] = true;
+        foreach (var endpoint in new[] { head, baseSide })
+        {
+            var endpointRepo = (Dictionary<string, object>)endpoint["repo"];
+            endpointRepo["id"] = 456; Refuse(validate); endpointRepo["id"] = 1402212689;
+            endpointRepo["fork"] = false; Refuse(validate); endpointRepo["fork"] = true;
+            endpointRepo["fork"] = "true"; Refuse(validate); endpointRepo["fork"] = true;
+        }
         head["sha"] = new string('b', 40); Refuse(validate); head["sha"] = sha;
         baseSide["sha"] = sha; Refuse(validate); baseSide["sha"] = "c430fafba1dc5890e59ade3f96c5cba13e5797c5";
         head["repo"] = new Dictionary<string, object> { {"full_name", "other/repo"}, {"fork", false}, {"id", 456} };
