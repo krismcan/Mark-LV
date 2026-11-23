@@ -1,0 +1,135 @@
+name: P308 desktop read-only native status observer
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p307-service-owned-denial-port-20261123]
+    paths:
+      - 'nayeon/desktop_alpha/byok_native_service_observer.py'
+      - 'nayeon/desktop_alpha/local_byok_window.py'
+      - 'tests/test_byok_c1_p308_native_status_observer.py'
+      - '.github/workflows/p308-windows-desktop-status-observer.yml'
+      - 'docs/byok-c1-p308-desktop-native-status-observer.md'
+permissions:
+  contents: read
+jobs:
+  observer:
+    runs-on: windows-2022
+    timeout-minutes: 6
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Require exact same-repository draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or $p.draft -ne $true -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p307-service-owned-denial-port-20261123' -or
+              $p.base.sha -cne 'ed3ff04649573dfb84ffb70782aa8096394a308e' -or
+              $p.head.ref -cne 'byok-c1-p308-desktop-native-status-observer-20261123' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P308 HOLD: source event' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Test observer OS pipes, negative injection and inherited UI guards
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Wrong source SHA' }
+          git merge-base --is-ancestor $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Base is not an ancestor' }
+          $inputs = @('nayeon/desktop_alpha/byok_native_service_observer.py',
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'tests/test_byok_c1_p308_native_status_observer.py',
+            '.github/workflows/p308-windows-desktop-status-observer.yml',
+            'docs/byok-c1-p308-desktop-native-status-observer.md')
+          $changed = @(git diff --name-only $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or (Compare-Object ($inputs | Sort-Object) ($changed | Sort-Object))) {
+            throw 'Wrong five-path source scope'
+          }
+          function Assert-Clean {
+            $status = @(git status --porcelain=v1 --untracked-files=all)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Index/worktree not clean' }
+            git diff --cached --exit-code
+            if ($LASTEXITCODE -ne 0) { throw 'Index changed' }
+            git diff --exit-code
+            if ($LASTEXITCODE -ne 0) { throw 'Worktree changed' }
+            Write-Output 'INDEX=CLEAN WORKTREE=CLEAN'
+          }
+          function Invoke-BoundedPython([string]$python, [string[]]$arguments) {
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = $python
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.WorkingDirectory = (Get-Location).Path
+            foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            $process = [Diagnostics.Process]::Start($start)
+            try {
+              if (!$process.WaitForExit(60000)) {
+                $process.Kill($true)
+                if (!$process.WaitForExit(5000)) { throw 'Python cleanup incomplete; HOLD' }
+                throw 'Python deadline exceeded; HOLD'
+              }
+              Write-Output "PYTHON_EXIT=$($process.ExitCode)"
+              if ($process.ExitCode -ne 0) { throw 'Python check failed; HOLD' }
+            } finally { $process.Dispose() }
+          }
+          Assert-Clean
+          Write-Output "SOURCE_SHA=$head"
+          $affected = @('tests/test_local_user_scope_byok.py',
+            'tests/test_byok_c1_p258_legacy_effect_containment.py',
+            'tests/test_byok_c1_p275_native_effect_retirement.py')
+          $witnesses = $inputs + $affected + @('nayeon/brain/local_byok_user_scope.py',
+            'nayeon/secrets/windows_credential.py', 'nayeon/desktop_alpha/local_byok_launch_bridge.py',
+            'scripts/p275_product_effect_entrypoint_inventory.py',
+            'src/Nayeon.ByokC1.Service/StatusPipeServer.cs', 'src/Nayeon.ByokC1.Service/StatusPipeClient.cs')
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "$($before[$i]) $($witnesses[$i])" }
+          # One Windows job. Use x64 and additionally x86 only when already in
+          # the hosted tool cache; never setup-python, download, pip, or install.
+          $cache = Join-Path $env:RUNNER_TOOL_CACHE 'Python'
+          $versions = @(Get-ChildItem -LiteralPath $cache -Directory | Where-Object Name -Like '3.12.*' | Sort-Object Name -Descending)
+          $pythons = @()
+          foreach ($arch in @('x64', 'x86')) {
+            $candidate = $null
+            foreach ($version in $versions) {
+              $path = Join-Path $version.FullName "$arch/python.exe"
+              if (Test-Path -LiteralPath $path -PathType Leaf) { $candidate = $path; break }
+            }
+            if (!$candidate) {
+              if ($arch -eq 'x64') { throw 'Installed Python 3.12 x64 required; no downloads' }
+              Write-Output 'X86_PYTHON=ABSENT; X86_NOT_TESTED'
+              continue
+            }
+            $pythons += @{ Path = $candidate; Bits = $(if ($arch -eq 'x64') { '64' } else { '32' }) }
+          }
+          # compileall output stays outside the checkout; normal tests use -B.
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          $env:PYTHONPYCACHEPREFIX = Join-Path $env:RUNNER_TEMP 'p308-pycache'
+          try {
+            foreach ($python in $pythons) {
+              Write-Output "PYTHON=$($python.Path) EXPECTED_BITS=$($python.Bits)"
+              Invoke-BoundedPython $python.Path @('-B', '-c', 'import struct,sys; print(sys.version); print(sys.executable); assert str(struct.calcsize("P")*8)==sys.argv[1]', $python.Bits)
+              # Run the frozen P275 product inventory unchanged, including its
+              # all-product ctypes owner guard. The new transport gets no waiver.
+              Invoke-BoundedPython $python.Path @('-B', '-c', 'from scripts.p275_product_effect_entrypoint_inventory import inspect_product; r=inspect_product(); print("P275_INVENTORY=PASS", r["SOURCE_NATIVE_EFFECTS"], r["PRODUCTION"], r["REAL_KEYS"])')
+              Invoke-BoundedPython $python.Path @('-B', '-m', 'unittest', '-v', 'tests.test_byok_c1_p308_native_status_observer')
+              Invoke-BoundedPython $python.Path @('-B', '-m', 'unittest', '-v', 'tests.test_local_user_scope_byok', 'tests.test_byok_c1_p258_legacy_effect_containment', 'tests.test_byok_c1_p275_native_effect_retirement')
+              Invoke-BoundedPython $python.Path @('-m', 'compileall', '-q', 'nayeon/desktop_alpha/byok_native_service_observer.py', 'nayeon/desktop_alpha/local_byok_window.py', 'tests/test_byok_c1_p308_native_status_observer.py')
+            }
+          } finally {
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Source hashes changed' }
+            $afterHead = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $afterHead -cne $head) { throw 'Source HEAD changed' }
+            Write-Output "AFTER_SOURCE_SHA=$afterHead"
+            Assert-Clean
+          }
+          Write-Output 'P308 disposable random Windows pipes plus mocked negative/UI tests only; no installed service or credentials; approvals 0/7; full regression 0/3; P96 HIGH/P292 x86 teardown unknown; release HOLD; REAL-KEY NO-GO'

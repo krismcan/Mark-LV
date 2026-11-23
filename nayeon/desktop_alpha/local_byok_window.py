@@ -10,7 +10,14 @@ No saved credential is read back into this window.
 from __future__ import annotations
 
 import sys
+import queue
+import threading
+import time
 import tkinter as tk
+
+from nayeon.desktop_alpha.byok_native_service_observer import (
+    NativeServiceObserver, NativeStatus,
+)
 
 from nayeon.brain.local_byok_user_scope import (
     LocalByokController, LocalByokOperation, LocalByokOutcome,
@@ -70,12 +77,18 @@ class LocalByokWindow:
         self._review = None
         self._busy = False
         self._closed = False
+        self._observing = False
+        self._observer_disabled = False
+        self._observation_worker = None
+        self._observation_deadline = 0.0
+        self._observation_after = None
+        self._observation_results = queue.Queue(maxsize=1)
 
         root.title("Nayeon | Local Windows BYOK (" + (
             "offline setup" if controller.mutation_available else "read-only status"
         ) + ")")
-        root.geometry("700x555")
-        root.minsize(610, 510)
+        root.geometry("700x700")
+        root.minsize(610, 670)
         root.configure(bg="#101827")
         tk.Label(
             root, text="OpenAI key · Local Windows storage", bg="#101827",
@@ -101,6 +114,16 @@ class LocalByokWindow:
             command=self.refresh_from_button,
         )
         self._refresh.pack(anchor="w", padx=22, pady=(0, 9))
+        self._observe = tk.Button(
+            root, text="Observe native custody service status (read-only)",
+            command=self.observe_native_from_button,
+        )
+        self._observe.pack(anchor="w", padx=22, pady=(0, 5))
+        self._native_status = tk.Label(
+            root, text="not observed; release HOLD", bg="#101827",
+            fg="#f2d5a2", wraplength=640, justify="left",
+        )
+        self._native_status.pack(anchor="w", padx=22, pady=(0, 9))
         self._choices = []
         for operation, title in _CHOICES:
             button = tk.Button(
@@ -210,6 +233,57 @@ class LocalByokWindow:
                 ),
             )
 
+    def observe_native_from_button(self) -> None:
+        if not self._live() or self._observing or self._observer_disabled:
+            return
+        self._observing = True
+        self._observation_deadline = time.monotonic() + 1.5
+        # Each request owns its queue. A late worker cannot feed a later probe.
+        self._observation_results = queue.Queue(maxsize=1)
+        self._observe.configure(state="disabled")
+        self._native_status.configure(text="Observing read-only status; release HOLD; no keys or approval.")
+        results = self._observation_results
+
+        def worker():
+            # Worker never touches Tk, controller, keys, or mutation state.
+            try:
+                result = NativeServiceObserver().observe()
+            except Exception:
+                result = NativeStatus.UNAVAILABLE
+            results.put_nowait(result)
+
+        try:
+            self._observation_worker = threading.Thread(target=worker, daemon=True)
+            self._observation_worker.start()
+        except Exception:
+            results.put_nowait(NativeStatus.UNAVAILABLE)
+        self._observation_after = self._root.after(25, self._poll_native_observation)
+
+    def _poll_native_observation(self) -> None:
+        self._observation_after = None
+        if not self._live() or not self._observing:
+            return
+        result = NativeStatus.UNAVAILABLE
+        if time.monotonic() < self._observation_deadline:
+            try:
+                result = self._observation_results.get_nowait()
+            except queue.Empty:
+                self._observation_after = self._root.after(25, self._poll_native_observation)
+                return
+        # A posted result cannot start a replacement while its worker is alive.
+        # A timeout permanently latches this window if native cleanup stalls.
+        if self._observation_worker is not None and self._observation_worker.is_alive():
+            self._observer_disabled = True
+        self._observing = False
+        self._native_status.configure(text=(
+            "UNTRUSTED_HOLD: fixed denial observed; peer is not attested. "
+            "Release HOLD; no keys or approval."
+            if result is NativeStatus.UNTRUSTED_HOLD else
+            "Native status unavailable (expected for desktop access under service-only ACL). "
+            "Release HOLD; no keys or approval."
+        ))
+        self._observe.configure(state="disabled" if self._observer_disabled else "normal")
+
     def review_from_button(self, operation: LocalByokOperation) -> None:
         if not self._controller.mutation_available:
             return
@@ -312,6 +386,10 @@ class LocalByokWindow:
             return
         self.reject_from_button()
         self._closed = True
+        self._observing = False
+        if self._observation_after is not None:
+            self._root.after_cancel(self._observation_after)
+            self._observation_after = None
         try:
             self._root.destroy()
         except (tk.TclError, AttributeError):
