@@ -117,18 +117,83 @@ jobs:
             $start.UseShellExecute = $false
             $start.CreateNoWindow = $true
             $start.WorkingDirectory = $root
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
             foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            $limit = 24 * 1024
+            $captures = @()
+            $process = $null
             $elapsed = [Diagnostics.Stopwatch]::StartNew()
-            $process = [Diagnostics.Process]::Start($start)
             try {
-              if (!$process.WaitForExit($deadline)) {
-                $process.Kill($true)
-                if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' }
-                throw 'Process deadline exceeded; HOLD'
+              foreach ($name in @('STDOUT', 'STDERR')) {
+                $path = Join-Path $env:RUNNER_TEMP ("p309-{0}-{1}.log" -f [Guid]::NewGuid().ToString('N'), $name)
+                $file = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+                $captures += @{ Name = $name; Path = $path; File = $file; Buffer = [byte[]]::new(4096);
+                  Saved = 0; Truncated = $false; Source = $null; Pending = $null }
+              }
+              $process = [Diagnostics.Process]::Start($start)
+              $captures[0].Source = $process.StandardOutput.BaseStream
+              $captures[1].Source = $process.StandardError.BaseStream
+              foreach ($capture in $captures) {
+                $capture.Pending = $capture.Source.ReadAsync($capture.Buffer, 0, $capture.Buffer.Length)
+              }
+              $timedOut = $false
+              $drain = $null
+              while ($true) {
+                # Drain BOTH pipes asynchronously, including bytes beyond the on-disk cap.
+                foreach ($capture in $captures) {
+                  if ($null -ne $capture.Pending -and $capture.Pending.IsCompleted) {
+                    $count = $capture.Pending.GetAwaiter().GetResult()
+                    $capture.Pending = $null
+                    if ($count -gt 0) {
+                      $keep = [Math]::Min($count, $limit - $capture.Saved)
+                      if ($keep -gt 0) { $capture.File.Write($capture.Buffer, 0, $keep); $capture.Saved += $keep }
+                      if ($keep -lt $count) { $capture.Truncated = $true }
+                      $capture.Pending = $capture.Source.ReadAsync($capture.Buffer, 0, $capture.Buffer.Length)
+                    }
+                  }
+                }
+                if (!$process.HasExited -and $elapsed.ElapsedMilliseconds -ge $deadline) {
+                  $timedOut = $true
+                  $process.Kill($true)
+                  if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' }
+                }
+                if ($process.HasExited) {
+                  if ($null -eq $captures[0].Pending -and $null -eq $captures[1].Pending) { break }
+                  if ($null -eq $drain) { $drain = [Diagnostics.Stopwatch]::StartNew() }
+                  if ($drain.ElapsedMilliseconds -ge 5000) { throw 'Process output cleanup incomplete; HOLD' }
+                  [Threading.Thread]::Sleep(10)
+                } else { [void]$process.WaitForExit(10) }
               }
               Write-Output "PROGRAM=$program EXIT=$($process.ExitCode) ELAPSED_MS=$($elapsed.ElapsedMilliseconds) ARCH=$env:BUILD_ARCH CONFIGURATION=$env:BUILD_CONFIGURATION"
+              if ($timedOut) { throw 'Process deadline exceeded; HOLD' }
               if ($process.ExitCode -ne 0) { throw 'Build/test failed; HOLD' }
-            } finally { $process.Dispose() }
+            } finally {
+              try {
+                if ($null -ne $process -and !$process.HasExited) {
+                  $process.Kill($true)
+                  if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' }
+                }
+              } finally {
+                try {
+                  foreach ($capture in $captures) {
+                    $capture.File.Dispose()
+                    # Prefix every line and neutralize control characters/workflow commands.
+                    $diagnostic = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($capture.Path))
+                    $diagnostic = $diagnostic -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '?' -replace '::', ': :'
+                    Write-Output "PROGRAM=$program STREAM=$($capture.Name) BYTES=$($capture.Saved) TRUNCATED=$($capture.Truncated)"
+                    foreach ($line in ($diagnostic -split '\r\n|\n|\r')) { Write-Output "[$($capture.Name)] $line" }
+                  }
+                } finally {
+                  foreach ($capture in $captures) {
+                    if ($null -ne $capture.Source) { $capture.Source.Dispose() }
+                    $capture.File.Dispose()
+                    Remove-Item -LiteralPath $capture.Path -Force -ErrorAction Stop
+                  }
+                  if ($null -ne $process) { $process.Dispose() }
+                }
+              }
+            }
           }
           try {
             $out = Join-Path $env:RUNNER_TEMP "p309-$env:BUILD_ARCH-$env:BUILD_CONFIGURATION"
