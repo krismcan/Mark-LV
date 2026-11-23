@@ -117,7 +117,17 @@ namespace Nayeon.ByokC1.Service
             Need(Environment.OSVersion.Platform == PlatformID.Win32NT &&
                 Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" &&
                 Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") == "github-hosted" &&
-                Environment.GetEnvironmentVariable("P314_SYNTHETIC_HOSTED_ONLY") == "1");
+                ((Environment.GetEnvironmentVariable("P314_SYNTHETIC_HOSTED_ONLY") == "1" &&
+                  Environment.GetEnvironmentVariable("P315_SYNTHETIC_HOSTED_ONLY") == null) ||
+                 (Environment.GetEnvironmentVariable("P315_SYNTHETIC_HOSTED_ONLY") == "1" &&
+                  Environment.GetEnvironmentVariable("P314_SYNTHETIC_HOSTED_ONLY") == null &&
+                  Environment.GetEnvironmentVariable("P313_SYNTHETIC_HOSTED_ONLY") == null &&
+                  Environment.GetEnvironmentVariable("P312_SYNTHETIC_HOSTED_ONLY") == null &&
+                  Environment.GetEnvironmentVariable("RUNNER_OS") == "Windows" &&
+                  Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "pull_request" &&
+                  Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") == "krismcan/Mark-LV" &&
+                  Environment.GetEnvironmentVariable("GITHUB_HEAD_REF") == "byok-c1-p315-hosted-crash-recovery-20261123" &&
+                  Environment.GetEnvironmentVariable("GITHUB_BASE_REF") == "byok-c1-p314-hosted-durable-native-intent-20261123")));
             sid = CustodyService.ReadProcessSid(); // Also rejects thread impersonation.
             Need(sid != null && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid));
             string temp = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
