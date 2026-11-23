@@ -1,0 +1,213 @@
+name: P311 real Python to C# synthetic denial
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p310-desktop-synthetic-request-20261123]
+permissions:
+  contents: read
+jobs:
+  crosslanguage:
+    if: github.event.pull_request.draft == true && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      BUILD_CONFIGURATION: Release
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONOPTIMIZE: '0'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate exact hosted draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $p.draft -ne $true -or $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p310-desktop-synthetic-request-20261123' -or
+              $p.base.sha -cne '97e1f57d0e5dbd1f96228615d13598a3de775409' -or
+              $p.head.ref -cne 'byok-c1-p311-crosslanguage-synthetic-20261123' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P311 event HOLD' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Build actual product and execute disposable cross-language tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Get-Location).Path
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Wrong HEAD' }
+          git merge-base --is-ancestor $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Wrong ancestry' }
+          if ($env:BUILD_ARCH -cnotin @('x64','x86')) { throw 'Wrong architecture' }
+          $inputs = @('tests/p311_crosslanguage/P311CrossLanguageHarness.cs',
+            'tests/test_byok_c1_p311_crosslanguage.py',
+            '.github/workflows/p311-windows-crosslanguage-synthetic.yml',
+            'docs/byok-c1-p311-crosslanguage-synthetic.md')
+          $delta = @(git diff --no-renames --name-status $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or $delta.Count -ne 4) { throw 'Wrong scope' }
+          $expected = @($inputs | ForEach-Object { "A`t$_" })
+          if (Compare-Object ($delta | Sort-Object) ($expected | Sort-Object) -CaseSensitive) { throw 'Only four additions allowed' }
+          foreach ($path in $inputs) {
+            $entry = @(git ls-tree $head -- $path)
+            if ($LASTEXITCODE -ne 0 -or $entry.Count -ne 1 -or
+                $entry[0] -cnotmatch '\A100644 blob [0-9a-f]{40}\t') { throw 'Regular files required' }
+          }
+          git diff --check $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace failure' }
+          function Assert-Clean {
+            $now = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $now -cne $head) { throw 'HEAD changed' }
+            $status = @(git status --porcelain=v1 --untracked-files=all)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Source not clean' }
+            Write-Output "SOURCE_SHA=$now INDEX=CLEAN WORKTREE=CLEAN"
+          }
+          $frozen = @(git ls-tree -r --name-only $p.base.sha -- src/Nayeon.ByokC1.Service nayeon/desktop_alpha/byok_native_synthetic_request.py nayeon/desktop_alpha/local_byok_window.py tests/p309_service_ingress tests/test_byok_c1_p310_native_synthetic_request.py scripts/p275_product_effect_entrypoint_inventory.py tests/test_byok_c1_p275_native_effect_retirement.py)
+          if ($LASTEXITCODE -ne 0 -or $frozen.Count -lt 10) { throw 'Missing frozen inputs' }
+          git diff --exit-code $p.base.sha $head -- $frozen
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen inputs changed' }
+          $witnesses = $inputs + $frozen
+          Assert-Clean
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "SHA256=$($before[$i]) PATH=$($witnesses[$i])" }
+          function Invoke-Bounded([string]$program, [string[]]$arguments, [int]$deadline) {
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = $program
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.WorkingDirectory = $root
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            $limit = 24 * 1024
+            $captures = @()
+            $process = $null
+            $elapsed = [Diagnostics.Stopwatch]::StartNew()
+            try {
+              foreach ($name in @('STDOUT', 'STDERR')) {
+                $path = Join-Path $env:RUNNER_TEMP ("p311-{0}-{1}.log" -f [Guid]::NewGuid().ToString('N'), $name)
+                $file = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+                $captures += @{ Name = $name; Path = $path; File = $file; Buffer = [byte[]]::new(4096);
+                  Saved = 0; Truncated = $false; Source = $null; Pending = $null }
+              }
+              $process = [Diagnostics.Process]::Start($start)
+              $captures[0].Source = $process.StandardOutput.BaseStream
+              $captures[1].Source = $process.StandardError.BaseStream
+              foreach ($capture in $captures) {
+                $capture.Pending = $capture.Source.ReadAsync($capture.Buffer, 0, $capture.Buffer.Length)
+              }
+              $timedOut = $false
+              $drain = $null
+              while ($true) {
+                # Drain BOTH pipes asynchronously, including bytes beyond the on-disk cap.
+                foreach ($capture in $captures) {
+                  if ($null -ne $capture.Pending -and $capture.Pending.IsCompleted) {
+                    $count = $capture.Pending.GetAwaiter().GetResult()
+                    $capture.Pending = $null
+                    if ($count -gt 0) {
+                      $keep = [Math]::Min($count, $limit - $capture.Saved)
+                      if ($keep -gt 0) { $capture.File.Write($capture.Buffer, 0, $keep); $capture.Saved += $keep }
+                      if ($keep -lt $count) { $capture.Truncated = $true }
+                      $capture.Pending = $capture.Source.ReadAsync($capture.Buffer, 0, $capture.Buffer.Length)
+                    }
+                  }
+                }
+                if (!$process.HasExited -and $elapsed.ElapsedMilliseconds -ge $deadline) {
+                  $timedOut = $true
+                  $process.Kill($true)
+                  if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' }
+                }
+                if ($process.HasExited) {
+                  if ($null -eq $captures[0].Pending -and $null -eq $captures[1].Pending) { break }
+                  if ($null -eq $drain) { $drain = [Diagnostics.Stopwatch]::StartNew() }
+                  if ($drain.ElapsedMilliseconds -ge 5000) { throw 'Process output cleanup incomplete; HOLD' }
+                  [Threading.Thread]::Sleep(10)
+                } else { [void]$process.WaitForExit(10) }
+              }
+              Write-Output "PROGRAM=$program EXIT=$($process.ExitCode) ELAPSED_MS=$($elapsed.ElapsedMilliseconds) ARCH=$env:BUILD_ARCH CONFIGURATION=$env:BUILD_CONFIGURATION"
+              if ($timedOut) { throw 'Process deadline exceeded; HOLD' }
+              if ($process.ExitCode -ne 0) { throw 'Build/test failed; HOLD' }
+            } finally {
+              try {
+                if ($null -ne $process -and !$process.HasExited) {
+                  $process.Kill($true)
+                  if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' }
+                }
+              } finally {
+                try {
+                  foreach ($capture in $captures) {
+                    $capture.File.Dispose()
+                    # Prefix every line and neutralize control characters/workflow commands.
+                    $diagnostic = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($capture.Path))
+                    $diagnostic = $diagnostic -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '?' -replace '::', ': :'
+                    Write-Output "PROGRAM=$program STREAM=$($capture.Name) BYTES=$($capture.Saved) TRUNCATED=$($capture.Truncated)"
+                    foreach ($line in ($diagnostic -split '\r\n|\n|\r')) { Write-Output "[$($capture.Name)] $line" }
+                  }
+                } finally {
+                  foreach ($capture in $captures) {
+                    if ($null -ne $capture.Source) { $capture.Source.Dispose() }
+                    $capture.File.Dispose()
+                    Remove-Item -LiteralPath $capture.Path -Force -ErrorAction Stop
+                  }
+                  if ($null -ne $process) { $process.Dispose() }
+                }
+              }
+            }
+          }
+          try {
+            $out = Join-Path $env:RUNNER_TEMP ("p311-" + $env:BUILD_ARCH)
+            New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+            $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0 -or !$msbuild) { throw 'Installed MSBuild required' }
+            Invoke-Bounded $msbuild @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
+              '/nologo', '/verbosity:minimal', '/t:Build', '/warnaserror', '/p:TreatWarningsAsErrors=true',
+              '/p:Configuration=Release', "/p:Platform=$env:BUILD_ARCH",
+              "/p:OutputPath=$out\product\", "/p:IntermediateOutputPath=$out\obj\") 90000
+            $framework = if ($env:BUILD_ARCH -ceq 'x64') { 'Framework64' } else { 'Framework' }
+            $csc = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319/csc.exe"
+            if (!(Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'Installed compiler required' }
+            $product = Join-Path $out 'product/Nayeon.ByokC1.Service.exe'
+            $productHash = (Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash
+            $adjacent = Join-Path $out 'Nayeon.ByokC1.Service.exe'
+            Copy-Item -LiteralPath $product -Destination $adjacent -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $adjacent -Algorithm SHA256).Hash -cne $productHash) { throw 'Product copy mismatch' }
+            $env:P311_TEST_HARNESS = Join-Path $out 'P309.ProductService.Tests.exe'
+            Invoke-Bounded $csc @('/nologo', '/noconfig', '/warn:4', '/warnaserror+', '/target:exe',
+              "/platform:$env:BUILD_ARCH", "/out:$env:P311_TEST_HARNESS", "/reference:$product",
+              '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.ServiceProcess.dll',
+              (Resolve-Path -LiteralPath 'tests/p311_crosslanguage/P311CrossLanguageHarness.cs').ProviderPath) 30000
+            $versions = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object Name -Like '3.12.*' | Sort-Object { [version]$_.Name } -Descending)
+            $python = $null
+            foreach ($version in $versions) {
+              $candidate = Join-Path $version.FullName "$env:BUILD_ARCH/python.exe"
+              if (Test-Path -LiteralPath $candidate -PathType Leaf) { $python = $candidate; break }
+            }
+            if (!$python) { throw 'Matching installed Python 3.12 required; no downloads' }
+            $bits = if ($env:BUILD_ARCH -ceq 'x64') { '64' } else { '32' }
+            $env:PYTHONPYCACHEPREFIX = Join-Path $out 'pycache'
+            Invoke-Bounded $python @('-B', '-c', 'import struct,sys; print(sys.version); assert sys.flags.optimize==0; assert sys.platform=="win32" and sys.version_info[:2]==(3,12); assert str(struct.calcsize("P")*8)==sys.argv[1]', $bits) 10000
+            Write-Output "ARCH=$env:BUILD_ARCH PRODUCT_SHA256=$productHash HARNESS_SHA256=$((Get-FileHash -LiteralPath $env:P311_TEST_HARNESS -Algorithm SHA256).Hash)"
+            Invoke-Bounded $python @('-B', '-m', 'unittest', '-v', 'tests.test_byok_c1_p311_crosslanguage') 75000
+            Invoke-Bounded $python @('-B', 'scripts/p275_product_effect_entrypoint_inventory.py') 75000
+            if ((Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash -cne $productHash -or
+                (Get-FileHash -LiteralPath $adjacent -Algorithm SHA256).Hash -cne $productHash) { throw 'Product changed' }
+          } finally {
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Input hashes changed' }
+            Assert-Clean
+          }
+          Write-Output 'P311 disposable same-user denial only; approvals 0/7; full product regressions 0/3; P96 HIGH; P292 x86 SCM UNKNOWN; REAL-KEY NO-GO; PRODUCTION RELEASE HOLD; unmerged draft'
