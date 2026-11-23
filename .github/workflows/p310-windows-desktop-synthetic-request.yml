@@ -146,7 +146,20 @@ jobs:
           '@
               Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_byok_c1_p310_native_synthetic_request')
               Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_byok_c1_p308_native_status_observer')
-              Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_local_user_scope_byok', 'tests.test_byok_c1_p258_legacy_effect_containment', 'tests.test_byok_c1_p275_native_effect_retirement')
+              # Inherited mutex tests require kernel32; credential native loading stays blocked.
+              $guardInherited = @'
+          import ctypes, sys, unittest
+          from unittest.mock import patch
+          from nayeon.secrets import windows_credential as storage
+          real_win_dll = ctypes.WinDLL
+          def guard_windll(name, *args, **kwargs):
+              if type(name) is str and name == 'kernel32':
+                  return real_win_dll(name, *args, **kwargs)
+              raise AssertionError('real DLL forbidden')
+          with patch.object(storage, '_load_advapi32', side_effect=AssertionError('native credentials forbidden')), patch.object(ctypes, 'WinDLL', side_effect=guard_windll):
+              unittest.main(module=None, argv=['p310-guarded', '-v', *sys.argv[1:]])
+          '@
+              Invoke-BoundedPython $python @('-B', '-c', $guardInherited, 'tests.test_local_user_scope_byok', 'tests.test_byok_c1_p258_legacy_effect_containment', 'tests.test_byok_c1_p275_native_effect_retirement')
               Invoke-BoundedPython $python @('-m', 'compileall', '-q', 'nayeon', 'tests')
             }
           } finally {
