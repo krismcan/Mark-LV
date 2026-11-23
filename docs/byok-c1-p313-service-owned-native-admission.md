@@ -176,8 +176,8 @@ not closure of P96 or a waiver of caller denial.
 The replacement accepts precisely HostedDisposableWinCred.cs and
 HostedDisposableWinCred.P313Admission.cs. The sibling must have exactly one
 Compile entry, the exact internal sealed partial adapter and internal sealed
-ServiceOwnedAdmission declarations, no DllImport/DllImportAttribute or native
-CredWriteW/CredReadW/CredDeleteW/CredFree identifiers, and a reflected nonpublic
+ServiceOwnedAdmission declarations, no DllImport/DllImportAttribute declarations or native
+CredWriteW/CredReadW/CredDeleteW/CredFree calls, and a reflected nonpublic
 ServiceOwnedAdmission whose DeclaringType is Adapter. Every other Compile
 source remains forbidden to mention the adapter. The original actual IL graph
 guard for all non-adapter product types, exact four advapi32 imports, and every
@@ -190,13 +190,11 @@ single original source loop and compares the entire migrated file, normalizing
 CRLF/LF and requiring the final LF. Native gates, stage markers, execution,
 cleanup and the four-job matrix are unchanged.
 
-Original P312 test baseline supplied by the user:
-`3038AA0EAC52D89CD4E46B1C84637EB9A327C4C9899D80D6437B`.
-This supplied value has 50 hex characters, not a complete SHA256. Actual
-unchanged P312 Git source (UTF8, LF, final LF) and pre-edit checkout SHA256:
+Original P312 worktree test source SHA256:
 `8D2C61071787542301D242C9EFE118A37E08554FB995CA00B68757128616B0A1`.
-The source is identical between P312 base and starting HEAD; the supplied hash
-discrepancy requires CTO reconciliation, not silent replacement of evidence.
+Historic Git blob object SHA: `7103f2bcf024b03809fd2fc5d6845233a23bd48c`.
+The earlier abbreviated incorrect hash was a corrective brief discrepancy,
+not a value supplied by the user. The original P312 baseline remains unchanged.
 
 Disposition: bounded source migration only; independent final review and hosted
 green PENDING. P96 original revocation/effect flaw HIGH OPEN; P292 x86 SCM
@@ -212,3 +210,31 @@ path (CS1504); corrected full rebuild passed all four configurations. Outputs:
 `C:\Users\krist\AppData\Local\Temp\P313-migration-rebuild-2dd233087e7848388d0471ed70a2295d`.
 Exactly three authorized worktree paths changed; UTF8 no BOM/final LF and
 git diff --check PASS. No staging, commit, push, tag, merge or workbook update.
+
+## Second red run: narrow source-guard correction (2026-11-23)
+
+CTO-reported hosted run `45247748162`: all four x64/x86 Debug/Release
+jobs passed MSBUILD, CSC_P313 and CSC_P312, then failed at
+P312_READONLY_START before P313_NATIVE_START. No actual native P313 WinCred
+effect occurred; no local test EXE was run for this correction.
+
+Root cause is a test false-positive, not a product code defect. The broad
+whole-word regex scanned all sibling source text and rejected its sole textual
+CredWriteW mention, the harmless line 189 comment:
+`vault.Add(); // Actual P312 ALPHA CredWriteW + readback, still INSIDE gate.`
+The sibling contains no DllImport or actual CredRead/Write/Delete/Free
+declarations or calls. Native imports remain in the original P312 adapter.
+
+Only the P313 sibling migration branch now checks line-start DllImport
+attributes and callable native method names followed by an opening parenthesis.
+The comment is allowed; actual import declarations and native calls are refused.
+The reflected ServiceOwnedAdmission additionally must declare no method bearing
+DllImportAttribute, covering static/instance, public/nonpublic, declared-only
+methods. The all-other-product-file ban, original IL caller graph guard,
+explicit nested-type identity check and original four native imports remain.
+The workflow's exact full-file migration reconstruction uses identical checks.
+
+Disposition: independent review and hosted rerun PENDING; no native P313 effect
+yet proven. P96 HIGH OPEN; P292 UNKNOWN; approvals 0/7; full regressions 0/3;
+real keys NO-GO; production HOLD. No staging, commit, push, tag, merge, adapter
+or other product change, workbook update, or local native execution.

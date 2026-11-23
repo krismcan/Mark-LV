@@ -121,9 +121,14 @@ jobs:
                           Check(text.Contains("internal sealed partial class HostedDisposableWinCred"));
                           Check(text.Contains("internal sealed class ServiceOwnedAdmission"));
                           Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
-                              @"\b(DllImport|DllImportAttribute|CredWriteW|CredReadW|CredDeleteW|CredFree)\b"));
+                              @"(?m)^\s*\[\s*DllImport(?:Attribute)?\s*\("));
+                          Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                              @"\b(?:CredWriteW|CredReadW|CredDeleteW|CredFree)\s*\("));
                           Type admission = Adapter.GetNestedType("ServiceOwnedAdmission", BindingFlags.NonPublic);
                           Check(admission != null && admission.DeclaringType == Adapter);
+                          Check(!admission.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public |
+                              BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                              .Any(m => m.IsDefined(typeof(DllImportAttribute), false)));
                       }
                       else if (name != "HostedDisposableWinCred.cs")
                           Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
