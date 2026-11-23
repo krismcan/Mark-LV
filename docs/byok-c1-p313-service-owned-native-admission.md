@@ -11,7 +11,7 @@ P312 hosted run `45232721811`, draft PR #231, x86/x64 Debug/Release 4/4 PASS
 is user-supplied inherited evidence, not a P313 result. The inherited P312
 review still says pending; its frozen bytes are intentionally not rewritten.
 The cross-branch `.codex/CURRENT_STATE.md` is stale; Git is authoritative and
-the explicit six-path scope excludes updating that historical handoff.
+the explicit seven-path scope excludes updating that historical handoff.
 
 ## Bounded composition and linearization
 
@@ -86,7 +86,7 @@ or signing authentication. Nonhosted/missing flags refuse. P312's old gate and
 constructor caller identity remain unchanged.
 
 The Windows-2022 hosted workflow uses pinned checkout of exact PR head, an exact
-six-path delta, regular-file/source SHA256 receipts, frozen P312 source/test
+seven-path delta, regular-file/source SHA256 receipts, frozen P312 source/test
 witnesses, exact allowed adapter/project transformations, and clean Git before
 and after execution. Installed MSBuild builds actual .NET 4.8 product with
 warnings as errors for x64/x86 Debug/Release. Matching installed CSC compiles
@@ -96,8 +96,8 @@ requests, real keys, user credentials or AppControl bypass.
 
 Each native friend run is capped at 90 seconds with 8192-byte per-stream capture.
 Nonzero exit, unexpected stderr/output, timeout, dirty source or changed binaries
-fails. P312.ProductVault.Tests.exe --readonly runs unmodified without any P312
-hosted flag and must pass its original topology. Only the P313 friend performs
+fails. P312.ProductVault.Tests.exe --readonly runs with the exact source-loop migration below, without any P312
+hosted flag and must pass its migrated source topology and unchanged IL/native guards. Only the P313 friend performs
 new native effects. Neither friend nor service Main is executed locally.
 
 The P313 friend covers environment/event/ID/repository negatives; all three
@@ -141,9 +141,9 @@ Debug/Release. No EXE was launched. Workflow PowerShell blocks receive AST parse
 checks only; this is not YAML-engine or GitHub runtime proof. Final receipts and
 bounded static results are recorded after the final source build below.
 
-Next: independent Nayeon reviews the six final paths and compile/static receipts,
+Next: independent Nayeon reviews the seven final paths and compile/static receipts,
 then publishes the exact draft through its separately authorized process.
-Hosted P313 matrix and original P312 --readonly result remain PENDING.
+Hosted green for the migrated P312 --readonly and P313 native matrix remains PENDING.
 No security closure, milestone seal, full-product regression or workbook update.
 
 Final local receipts (compile-only, 2026-11-23):
@@ -158,3 +158,57 @@ Final local receipts (compile-only, 2026-11-23):
   regression, local service launch or GitHub workflow was executed by Codex.
 - The first duplicate-helper compile failure remains disclosed above; no test or
   P312 validation was weakened to repair it. All final C# combinations rebuilt.
+## Versioned P312 test-contract migration (2026-11-23)
+
+User/CTO-reported red hosted runs `45245200409` and `45245998520` each
+completed MSBUILD, CSC_P313 and CSC_P312 in all four x64/x86 Debug/Release
+jobs, reached P312_READONLY_START, never reached P312_READONLY_PASS, and
+exited nonzero through the host wrapper. No job reached P313_NATIVE_START;
+P313 native effect was not attempted. These are reported hosted receipts,
+not locally rerun evidence. Hosted green and native cleanup remain unproven.
+
+CTO independently identified the original source loop's one-file assumption:
+all Compile files except literal HostedDisposableWinCred.cs were forbidden to
+mention HostedDisposableWinCred. The legitimate explicit P313 partial sibling
+therefore fails before native execution. This is a test-contract migration,
+not closure of P96 or a waiver of caller denial.
+
+The replacement accepts precisely HostedDisposableWinCred.cs and
+HostedDisposableWinCred.P313Admission.cs. The sibling must have exactly one
+Compile entry, the exact internal sealed partial adapter and internal sealed
+ServiceOwnedAdmission declarations, no DllImport/DllImportAttribute or native
+CredWriteW/CredReadW/CredDeleteW/CredFree identifiers, and a reflected nonpublic
+ServiceOwnedAdmission whose DeclaringType is Adapter. Every other Compile
+source remains forbidden to mention the adapter. The original actual IL graph
+guard for all non-adapter product types, exact four advapi32 imports, and every
+other assertion/native test remain unchanged. No generic allow-list or skip.
+
+The workflow now admits exactly seven paths versus P312: four added and three
+modified. Only this test source leaves the prior frozen list; all other prior
+witnesses remain hashed. A strict git-show P312 witness reconstructs only the
+single original source loop and compares the entire migrated file, normalizing
+CRLF/LF and requiring the final LF. Native gates, stage markers, execution,
+cleanup and the four-job matrix are unchanged.
+
+Original P312 test baseline supplied by the user:
+`3038AA0EAC52D89CD4E46B1C84637EB9A327C4C9899D80D6437B`.
+This supplied value has 50 hex characters, not a complete SHA256. Actual
+unchanged P312 Git source (UTF8, LF, final LF) and pre-edit checkout SHA256:
+`8D2C61071787542301D242C9EFE118A37E08554FB995CA00B68757128616B0A1`.
+The source is identical between P312 base and starting HEAD; the supplied hash
+discrepancy requires CTO reconciliation, not silent replacement of evidence.
+
+Disposition: bounded source migration only; independent final review and hosted
+green PENDING. P96 original revocation/effect flaw HIGH OPEN; P292 x86 SCM
+UNKNOWN; independent approvals 0/7; whole-product regressions 0/3;
+real keys NO-GO; production HOLD. Earlier six-path compile receipts above are
+historical and do not qualify this migrated seven-path candidate.
+
+Migration validation: exact loop-only transform PASS; extracted workflow migration
+witness PASS; PowerShell AST 2/2 PASS. Installed CSC actual project source/reference
+list plus both friends: x64/x86 Debug/Release /warn:4 /warnaserror+ PASS.
+No test EXE executed. Initial local compiler invocation mispassed a friend source
+path (CS1504); corrected full rebuild passed all four configurations. Outputs:
+`C:\Users\krist\AppData\Local\Temp\P313-migration-rebuild-2dd233087e7848388d0471ed70a2295d`.
+Exactly three authorized worktree paths changed; UTF8 no BOM/final LF and
+git diff --check PASS. No staging, commit, push, tag, merge or workbook update.

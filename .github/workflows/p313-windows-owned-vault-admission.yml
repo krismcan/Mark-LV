@@ -75,15 +75,16 @@ jobs:
             'src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
             'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.P313Admission.cs',
             'tests/p313_product_admission/P313ProductAdmissionTests.cs',
+            'tests/p312_product_vault/P312ProductVaultTests.cs',
             '.github/workflows/p313-windows-owned-vault-admission.yml',
             'docs/byok-c1-p313-service-owned-native-admission.md')
-          $expected = @($inputs | ForEach-Object { if ($_ -like '*.csproj' -or $_ -ceq 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs') { "M`t$_" } else { "A`t$_" } })
+          $expected = @($inputs | ForEach-Object { if ($_ -like '*.csproj' -or $_ -ceq 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs' -or $_ -ceq 'tests/p312_product_vault/P312ProductVaultTests.cs') { "M`t$_" } else { "A`t$_" } })
           $delta = @(git diff --no-renames --name-status $base $head)
-          if ($LASTEXITCODE -ne 0 -or $delta.Count -ne 6 -or
-              (Compare-Object ($expected | Sort-Object) ($delta | Sort-Object) -CaseSensitive)) { throw 'Exact six-path scope HOLD' }
+          if ($LASTEXITCODE -ne 0 -or $delta.Count -ne 7 -or
+              (Compare-Object ($expected | Sort-Object) ($delta | Sort-Object) -CaseSensitive)) { throw 'Exact seven-path scope HOLD' }
           $frozen = @(git ls-tree -r --name-only $base -- src/Nayeon.ByokC1.Service tests/p312_product_vault .github/workflows/p312-windows-hosted-disposable-vault.yml docs/byok-c1-p312-hosted-disposable-vault.md)
           if ($LASTEXITCODE -ne 0 -or $frozen.Count -lt 10) { throw 'Witness inventory HOLD' }
-          $frozen = @($frozen | Where-Object { $_ -cnotin @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj', 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs') })
+          $frozen = @($frozen | Where-Object { $_ -cnotin @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj', 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs', 'tests/p312_product_vault/P312ProductVaultTests.cs') })
           git diff --exit-code $base $head -- $frozen
           if ($LASTEXITCODE -ne 0) { throw 'Frozen P312 witness changed' }
           # Exact authorized transformation, preserving native bodies and P312 host validation.
@@ -97,6 +98,43 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'P312 project witness missing' }
           $project = $project.Replace('<Compile Include="HostedDisposableWinCred.cs" />', "<Compile Include=`"HostedDisposableWinCred.cs`" />`n    <Compile Include=`"HostedDisposableWinCred.P313Admission.cs`" />")
           if ($project -cne ([IO.File]::ReadAllText((Join-Path $root $projectPath)).Replace("`r`n", "`n").TrimEnd("`n"))) { throw 'Project scope drift HOLD' }
+          # Exact versioned test-contract migration; only the original source loop changes.
+          $testPath = 'tests/p312_product_vault/P312ProductVaultTests.cs'
+          $originalTest = (git show "${base}:$testPath") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'P312 test witness missing' }
+          $oldLoop = @'
+                  foreach (XmlNode source in project.SelectNodes("//m:Compile", ns))
+                  {
+                      string name = source.Attributes["Include"].Value;
+                      if (name != "HostedDisposableWinCred.cs")
+                          Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
+                  }
+          '@
+          $newLoop = @'
+                  Check(project.SelectNodes("//m:Compile[@Include='HostedDisposableWinCred.P313Admission.cs']", ns).Count == 1);
+                  foreach (XmlNode source in project.SelectNodes("//m:Compile", ns))
+                  {
+                      string name = source.Attributes["Include"].Value;
+                      if (name == "HostedDisposableWinCred.P313Admission.cs")
+                      {
+                          string text = File.ReadAllText(Path.Combine(service, name));
+                          Check(text.Contains("internal sealed partial class HostedDisposableWinCred"));
+                          Check(text.Contains("internal sealed class ServiceOwnedAdmission"));
+                          Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                              @"\b(DllImport|DllImportAttribute|CredWriteW|CredReadW|CredDeleteW|CredFree)\b"));
+                          Type admission = Adapter.GetNestedType("ServiceOwnedAdmission", BindingFlags.NonPublic);
+                          Check(admission != null && admission.DeclaringType == Adapter);
+                      }
+                      else if (name != "HostedDisposableWinCred.cs")
+                          Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
+                  }
+          '@
+          $oldLoop = $oldLoop.Replace("`r`n", "`n")
+          $newLoop = $newLoop.Replace("`r`n", "`n")
+          if (($originalTest.Split(@($oldLoop), [StringSplitOptions]::None)).Count -ne 2) { throw 'P312 original loop shape HOLD' }
+          $migratedTest = $originalTest.Replace($oldLoop, $newLoop) + "`n"
+          $actualTest = [IO.File]::ReadAllText((Join-Path $root $testPath)).Replace("`r`n", "`n")
+          if ($actualTest -cne $migratedTest) { throw 'P312 exact test migration HOLD' }
           $witnesses = @($inputs + $frozen | Sort-Object -Unique)
           foreach ($path in $witnesses) {
             $entry = @(git ls-tree $head -- $path)
