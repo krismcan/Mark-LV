@@ -1,0 +1,142 @@
+name: P307 service-owned synthetic denial
+on:
+  pull_request:
+    branches: ['byok-c1-p306-synthetic-service-transaction-20261122']
+    paths:
+      - 'src/Nayeon.ByokC1.Service/**'
+      - 'tests/p307_service_denial/**'
+      - 'tests/p306_service_transaction/**'
+      - '.github/workflows/p307-windows-service-denial.yml'
+      - 'docs/byok-c1-p307-service-denial.md'
+permissions:
+  contents: read
+jobs:
+  build-service-denial:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+        configuration: [Debug, Release]
+    env:
+      P307_SYNTHETIC_ONLY: '1'
+      BUILD_ARCH: ${{ matrix.arch }}
+      BUILD_CONFIGURATION: ${{ matrix.configuration }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate same-repository draft source event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:GITHUB_ACTIONS -cne 'true' -or $env:P307_SYNTHETIC_ONLY -cne '1') { throw 'P307_HOLD hosted synthetic-only guard' }
+          $e = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $p = $e.pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or $p.draft -ne $true -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p306-synthetic-service-transaction-20261122' -or
+              $p.base.sha -cne 'bb55b1facb9f5d6e4f068c57165f3059e181af81' -or
+              $p.head.ref -cne 'byok-c1-p307-service-owned-denial-port-20261123' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P307_HOLD source event' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Build actual product and test P307 plus unchanged P306 P305 P304
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:GITHUB_ACTIONS -cne 'true' -or $env:P307_SYNTHETIC_ONLY -cne '1') { throw 'P307_HOLD hosted synthetic-only guard' }
+          $root = (Get-Location).Path
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read source SHA' }
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          if ($head -cne $p.head.sha) { throw 'P307_HOLD checkout is not exact PR head SHA' }
+          git merge-base --is-ancestor 'bb55b1facb9f5d6e4f068c57165f3059e181af81' HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'P307_HOLD P306 base is not an ancestor' }
+          $allowed = @('src/Nayeon.ByokC1.Service/CustodyService.cs',
+            'src/Nayeon.ByokC1.Service/SyntheticTransactionOwner.cs',
+            'tests/p307_service_denial/P307ServiceDenialTests.cs',
+            '.github/workflows/p307-windows-service-denial.yml',
+            'docs/byok-c1-p307-service-denial.md')
+          $changed = @(git diff --name-only $p.base.sha HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 5 -or
+              @($changed | Where-Object { $_ -cnotin $allowed }).Count -ne 0) { throw 'P307_HOLD five-path scope' }
+          Write-Output "P307 SOURCE_SHA=$head CONFIGURATION=$env:BUILD_CONFIGURATION ARCH=$env:BUILD_ARCH"
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked worktree dirty before build' }
+          git diff --cached --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked index dirty before build' }
+          $inputs = @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
+            'src/Nayeon.ByokC1.Service/CustodyService.cs',
+            'src/Nayeon.ByokC1.Service/LifecycleCoordinator.cs',
+            'src/Nayeon.ByokC1.Service/StatusPipeServer.cs',
+            'src/Nayeon.ByokC1.Service/StatusPipeClient.cs',
+            'src/Nayeon.ByokC1.Service/SyntheticTransactionOwner.cs',
+            'tests/p307_service_denial/P307ServiceDenialTests.cs',
+            'tests/p306_service_transaction/P306ServiceTransactionTests.cs',
+            'tests/p305_product_status/P305StatusPipeTests.cs',
+            'tests/p304_product_service/P304ProductServiceTests.cs',
+            '.github/workflows/p307-windows-service-denial.yml',
+            'docs/byok-c1-p307-service-denial.md')
+          $before = @($inputs | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $inputs.Count; $i++) { Write-Output "$($before[$i]) $($inputs[$i])" }
+          $out = Join-Path $env:RUNNER_TEMP "p307-$env:BUILD_ARCH-$env:BUILD_CONFIGURATION"
+          New-Item -ItemType Directory -Path $out -ErrorAction Stop | Out-Null
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (!$msbuild) { throw 'Installed MSBuild required; no downloads' }
+          & $msbuild 'src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj' /nologo /verbosity:minimal /t:Build /p:TreatWarningsAsErrors=true "/p:Configuration=$env:BUILD_CONFIGURATION" "/p:Platform=$env:BUILD_ARCH" "/p:OutputPath=$out\" "/p:IntermediateOutputPath=$out\obj\"
+          if ($LASTEXITCODE -ne 0) { throw 'Product compile failed' }
+          $framework = if ($env:BUILD_ARCH -eq 'x64') { 'Framework64' } else { 'Framework' }
+          $csc = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319/csc.exe"
+          $product = Join-Path $out 'Nayeon.ByokC1.Service.exe'
+          $bits = if ($env:BUILD_ARCH -eq 'x64') { '64' } else { '32' }
+          $productHash = (Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash
+          Write-Output "PRODUCT_SHA256=$productHash"
+          $tests = @(
+            @{ Assembly = 'P307.ProductService.Tests'; Source = 'tests/p307_service_denial/P307ServiceDenialTests.cs' },
+            @{ Assembly = 'P306.ProductService.Tests'; Source = 'tests/p306_service_transaction/P306ServiceTransactionTests.cs' },
+            @{ Assembly = 'P305.ProductService.Tests'; Source = 'tests/p305_product_status/P305StatusPipeTests.cs' },
+            @{ Assembly = 'P304.ProductService.Tests'; Source = 'tests/p304_product_service/P304ProductServiceTests.cs' }
+          )
+          foreach ($case in $tests) {
+            $test = Join-Path $out ($case.Assembly + '.exe')
+            $testSource = (Resolve-Path -LiteralPath $case.Source).ProviderPath
+            & $csc /nologo /noconfig /warn:4 /warnaserror+ /target:exe "/platform:$env:BUILD_ARCH" "/out:$test" "/reference:$product" /reference:System.dll /reference:System.Core.dll /reference:System.ServiceProcess.dll $testSource
+            if ($LASTEXITCODE -ne 0) { throw 'Test compile failed' }
+            # No SCM actions, installed service execution or real-key operations.
+            # Only test executables run. P307/P306 are synthetic; P305 uses random pipes;
+            # inherited P304 first proves the negative OS context before Main refusal.
+            if ((Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash -cne $productHash) { throw 'Product bytes changed before test' }
+            $start = [Diagnostics.ProcessStartInfo]::new($test, $bits)
+            $start.UseShellExecute = $false
+            $start.WorkingDirectory = $root
+            $process = [Diagnostics.Process]::Start($start)
+            try {
+              if (!$process.WaitForExit(30000)) {
+                $process.Kill()
+                if (!$process.WaitForExit(5000)) { throw 'Test cleanup failed; HOLD' }
+                throw 'Test deadline exceeded; HOLD'
+              }
+              Write-Output "P307 TEST=$($case.Assembly) EXIT=$($process.ExitCode) SOURCE_SHA=$head CONFIGURATION=$env:BUILD_CONFIGURATION ARCH=$env:BUILD_ARCH"
+              if ($process.ExitCode -ne 0) { throw "Test failed: $($process.ExitCode)" }
+            } finally { $process.Dispose() }
+          }
+          if ((Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash -cne $productHash) { throw 'Product bytes changed after tests' }
+          $after = @($inputs | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          if (($before -join ',') -cne ($after -join ',')) { throw 'Source bytes changed' }
+          $afterHead = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $afterHead -cne $head) { throw 'Source HEAD changed' }
+          Write-Output "P307 AFTER_SOURCE_SHA=$afterHead"
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked worktree changed' }
+          git diff --cached --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked index changed' }
+          Write-Output 'P307 service denial + unchanged P306/P305/P304 only; full regression 0/3; independent approval 0/7; release HOLD'

@@ -152,6 +152,29 @@ namespace Nayeon.ByokC1.Service
             }
         }
 
+        internal SyntheticTransactionResult RefuseSyntheticRequest(SyntheticTransactionRequest request)
+        {
+            lock (lifecycle)
+            {
+                if (!terminal && coordinator.Observe().State == LifecycleState.ActiveDenied && transactions != null)
+                    return transactions.Deny(request);
+                // No owner access or sequence reservation when the service gate refuses.
+                return new SyntheticTransactionResult(request, Guid.Empty, 0,
+                    TransactionOwnerState.Stopped, TransactionDisposition.OwnerTerminated);
+            }
+        }
+
+        internal SyntheticTransactionResult CancelSyntheticRequest(SyntheticTransactionRequest request)
+        {
+            lock (lifecycle)
+            {
+                if (!terminal && coordinator.Observe().State == LifecycleState.ActiveDenied && transactions != null)
+                    return transactions.Cancel(request);
+                return new SyntheticTransactionResult(request, Guid.Empty, 0,
+                    TransactionOwnerState.Stopped, TransactionDisposition.OwnerTerminated);
+            }
+        }
+
         private void Close(bool disposing, bool shutdown)
         {
             lock (lifecycle)
