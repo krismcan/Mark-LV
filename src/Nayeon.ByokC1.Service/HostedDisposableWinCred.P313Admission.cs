@@ -9,6 +9,7 @@ using System.Threading;
 using System.Web.Script.Serialization;
 
 [assembly: InternalsVisibleTo("P313.ProductAdmission.Tests")]
+[assembly: InternalsVisibleTo("P314.DurableIntent.Tests")]
 
 namespace Nayeon.ByokC1.Service
 {
@@ -105,12 +106,105 @@ namespace Nayeon.ByokC1.Service
             Identity(); // Process SID and no-impersonation validation before any WinCred access.
         }
 
+        private const string P314HeadRef = "byok-c1-p314-hosted-durable-native-intent-20261123";
+        private const string P314BaseRef = "byok-c1-p313-service-owned-vault-admission-20261123";
+        private const string P314BaseSha = "4fcf75666f8bd055f940eb5bbee01d154bf43c6b";
+        private sealed class P314Marker { }
+
+        // Only the nested owner calls this overload. No caller-supplied environment authorizes it.
+        private HostedDisposableWinCred(string id, P314Marker marker)
+        {
+            ValidateId(id); // Before all OS calls.
+            Need(marker != null);
+            RequireHostedP314();
+            p314Session = true;
+            target = Prefix + id;
+            owner = Identity();
+            Need(Marshal.SizeOf(typeof(Credential)) == (IntPtr.Size == 8 ? 80 : 52));
+            lock (Writer) { Need(!Read(null)); }
+        }
+        // Pure predicate only. No injected environment reaches a native-effect constructor.
+        internal static void ValidateContextP314(IDictionary<string, string> env, string json, string checkout)
+        {
+            Need(env != null && Sha(checkout) && checkout != P314BaseSha);
+            foreach (var pair in new Dictionary<string, string> {
+                {"GITHUB_ACTIONS", "true"}, {"RUNNER_OS", "Windows"},
+                {"RUNNER_ENVIRONMENT", "github-hosted"}, {"GITHUB_EVENT_NAME", "pull_request"},
+                {"GITHUB_REPOSITORY", Repo}, {"GITHUB_HEAD_REF", P314HeadRef},
+                {"GITHUB_BASE_REF", P314BaseRef}, {"P314_SYNTHETIC_HOSTED_ONLY", "1"} })
+                Need(Env(env, pair.Key) == pair.Value);
+            Need(json != null && json.Length > 0 && json.Length < 65536);
+            var parser = new JavaScriptSerializer { MaxJsonLength = 65535, RecursionLimit = 32 };
+            var root = Map(parser.DeserializeObject(json));
+            var pr = Map(Field(root, "pull_request"));
+            Need(Object.Equals(Field(pr, "draft"), true));
+            var repository = Map(Field(root, "repository"));
+            Need((string)Field(repository, "full_name") == Repo);
+            Need(Object.Equals(Field(repository, "id"), 1402212689));
+            var rootFork = Field(repository, "fork");
+            Need(rootFork is bool && (bool)rootFork);
+            foreach (string side in new[] { "head", "base" })
+            {
+                var endpoint = Map(Field(pr, side));
+                var repo = Map(Field(endpoint, "repo"));
+                Need((string)Field(repo, "full_name") == Repo);
+                Need(Object.Equals(Field(repo, "fork"), rootFork));
+                Need(Object.Equals(Field(repo, "id"), Field(repository, "id")));
+                Need((string)Field(endpoint, "ref") == (side == "head" ? P314HeadRef : P314BaseRef));
+                Need((string)Field(endpoint, "sha") == (side == "head" ? checkout : P314BaseSha));
+            }
+        }
+
+        internal static void RequireHostedP314()
+        {
+            // All cheap environment checks precede file, process, identity and native access.
+            var env = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in new Dictionary<string, string> {
+                {"GITHUB_ACTIONS", "true"}, {"RUNNER_OS", "Windows"},
+                {"RUNNER_ENVIRONMENT", "github-hosted"}, {"GITHUB_EVENT_NAME", "pull_request"},
+                {"GITHUB_REPOSITORY", Repo}, {"GITHUB_HEAD_REF", P314HeadRef},
+                {"GITHUB_BASE_REF", P314BaseRef}, {"P314_SYNTHETIC_HOSTED_ONLY", "1"} })
+            {
+                string value = Environment.GetEnvironmentVariable(pair.Key);
+                Need(value == pair.Value); env.Add(pair.Key, value);
+            }
+            Need(Environment.OSVersion.Platform == PlatformID.Win32NT);
+            string temp = Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? "");
+            string path = Path.GetFullPath(Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH") ?? "");
+            RegularPath(path, temp);
+            Need((File.GetAttributes(path) & FileAttributes.Directory) == 0);
+            string json;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Need(stream.Length > 0 && stream.Length < 65536);
+                using (var reader = new StreamReader(stream, new UTF8Encoding(false, true), true)) json = reader.ReadToEnd();
+            }
+            // Read-only local Git witness; no remotes, shell, network or caller-injected executor.
+            var start = new ProcessStartInfo("git.exe", "rev-parse --verify HEAD") {
+                WorkingDirectory = Path.GetFullPath(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? ""),
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+                RedirectStandardError = true };
+            string checkout;
+            using (var process = Process.Start(start))
+            {
+                if (!process.WaitForExit(5000)) { process.Kill(); Need(process.WaitForExit(5000)); Need(false); }
+                Need(process.ExitCode == 0);
+                char[] buffer = new char[43];
+                int count = process.StandardOutput.ReadBlock(buffer, 0, buffer.Length);
+                Need(count < buffer.Length); checkout = new string(buffer, 0, count).TrimEnd('\r', '\n');
+            }
+            ValidateContextP314(env, json, checkout);
+            Identity(); // Process SID and no-impersonation validation before any WinCred access.
+        }
+
         // This owner is test-only composition, never trusted human consent or durable admission.
         internal sealed class ServiceOwnedAdmission : IDisposable
         {
             internal enum ControlResult { Revoked, Stopped, Faulted, TooLate, HoldUnknown }
             private readonly object gate = new object();
             private readonly HostedDisposableWinCred vault;
+            private readonly DurableIntentJournal journal;
+            private readonly bool simulateCrash;
             private readonly ManualResetEvent beforeNative;
             private readonly ManualResetEvent releaseNative;
             private readonly bool pauseBeforeNative;
@@ -129,6 +223,39 @@ namespace Nayeon.ByokC1.Service
                 releaseNative = new ManualResetEvent(false);
             }
 
+            // P314 only: no file creation until dispatch wins the existing monitor.
+            internal ServiceOwnedAdmission(string id, bool pause, bool crash, bool reopen)
+            {
+                ValidateId(id);
+                Need(!crash || pause);
+                RequireHostedP314();
+                pauseBeforeNative = pause;
+                simulateCrash = crash;
+                journal = new DurableIntentJournal(id, reopen);
+                try
+                {
+                    if (reopen)
+                    {
+                        terminal = true;
+                        recoveryRequired = true;
+                        Need(journal.RecoveryRequired);
+                    }
+                    else vault = new HostedDisposableWinCred(id, new P314Marker());
+                    beforeNative = new ManualResetEvent(false);
+                    releaseNative = new ManualResetEvent(false);
+                }
+                catch
+                {
+                    try { if (vault != null) vault.Dispose(); }
+                    finally
+                    {
+                        journal.Dispose();
+                        if (beforeNative != null) beforeNative.Dispose();
+                        if (releaseNative != null) releaseNative.Dispose();
+                    }
+                    throw;
+                }
+            }
             // Monitor itself permits recursion. Explicitly reject it and latch a terminal fault.
             private bool Enter()
             {
@@ -180,12 +307,14 @@ namespace Nayeon.ByokC1.Service
                     terminal = true; approval = null;
                     // Linearization: all controls use this same monitor. Sticky BEFORE native entry.
                     mayHaveEffect = true; recoveryRequired = true;
+                    if (journal != null) journal.RecordInFlightAndFlushVerify();
                     if (pauseBeforeNative)
                     {
                         beforeNative.Set();
                         Need(releaseNative.WaitOne(5000)); // Fixed test rendezvous, no arbitrary callback.
                     }
                     Need(Volatile.Read(ref faultRequested) == 0);
+                    Need(!simulateCrash); // Fixed pre-native crash simulation; never a callback.
                     vault.Add(); // Actual P312 ALPHA CredWriteW + readback, still INSIDE gate.
                     vault.Verify();
                 }
@@ -209,7 +338,8 @@ namespace Nayeon.ByokC1.Service
                 {
                     if (disposed) return;
                     terminal = true; approval = null;
-                    vault.Dispose(); // Verified deletion/absence, same owner monitor.
+                    try { if (vault != null) vault.Dispose(); } // Verified deletion/absence.
+                    finally { if (journal != null) journal.Dispose(); } // Retain durable evidence.
                     disposed = true;
                     beforeNative.Dispose(); releaseNative.Dispose();
                 }

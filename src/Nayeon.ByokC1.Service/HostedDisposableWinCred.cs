@@ -32,6 +32,7 @@ namespace Nayeon.ByokC1.Service
         private readonly SecurityIdentifier owner;
         private bool attempted;
         private readonly bool p313Session;
+        private readonly bool p314Session;
 
         private static void Need(bool condition)
         { if (!condition) throw new InvalidOperationException("P312 refused; HOLD."); }
@@ -159,7 +160,7 @@ namespace Nayeon.ByokC1.Service
             Need(sid != null && !sid.IsWellKnown(WellKnownSidType.LocalSystemSid)); return sid;
         }
         private void Gate()
-        { if (p313Session) RequireHostedP313(); else RequireHosted(); Need(owner.Equals(Identity())); }
+        { if (p314Session) RequireHostedP314(); else if (p313Session) RequireHostedP313(); else RequireHosted(); Need(owner.Equals(Identity())); }
         internal VaultState State { get { lock (Writer) return state; } }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
