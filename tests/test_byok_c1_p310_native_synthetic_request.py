@@ -588,7 +588,7 @@ def disposable_pipe_child(endpoint, scenario):
                 return  # Actual server handle closure before any reply.
             if scenario != "stalled":
                 if scenario == "delayed":
-                    assert not client_done.wait(0.15), "client must wait for delayed response"
+                    assert not client_done.wait(0.25), "client must wait for delayed response"
                 reply = {"exact": EXPECTED, "counterfeit": EXPECTED,
                          "delayed": EXPECTED, "extra": EXPECTED, "malformed": b"READY",
                          "partial": EXPECTED[:-1], "oversize": EXPECTED + b"x" * 200}[scenario]

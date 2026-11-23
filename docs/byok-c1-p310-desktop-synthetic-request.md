@@ -128,7 +128,7 @@ first-instance message pipe under the test user's token must receive one
 13-byte `C1T1`/positive-ID/Add message. Cases are exact denial, counterfeit
 exact denial, malformed, truncated, oversized, extra message, absent endpoint,
 delayed response, stalled read and disconnect. The delayed response waits
-0.15 seconds and remains untrusted; the stalled case leaves a real pending read
+0.25 seconds and remains untrusted; the stalled case leaves a real pending read
 and requires at least 0.65 seconds elapsed. Client completion/cleanup must
 finish within two seconds. Parent timeout kills/waits for a stuck child and
 fails. Extra-message scheduling waits until both actual OS writes complete
@@ -211,6 +211,30 @@ No full `unittest` discovery or full-product regression was run. Independent
 qualified source/security reviews remain required; any failure is a STOP requiring diagnosis, repair and fresh
 review. All **0/7 approvals, 0/3 full product regressions, P96 HIGH, P292 x86 SCM
 UNKNOWN, REAL-KEY NO-GO and PRODUCTION HOLD** remain unchanged.
+
+## Hosted timing defect and bounded test strengthening — 2026-11-23
+
+User-reported GitHub hosted workflow run `45182600992` for draft PR #229
+on the source before this timing change: Windows x64 Python 3.12 passed
+**P310 45/45, P308 34/34 and inherited 77/77**; the kernel32 guard fix passed.
+Windows x86 Python 3.12 passed **P310 44/45**. The sole failure was
+`test_os_delayed_response_within_budget_is_still_only_untrusted_hold`:
+the delayed child elapsed assertion at line 661 required `elapsed >= 0.14`,
+but measured `0.13999999999998636` with the 0.15-second server event wait.
+This is the reported Windows x86 timer-resolution/rounding flake. The client
+returned the correct `UNTRUSTED_HOLD`; no permission or credential effects
+were reported. This timing failure does not establish P292 SCM closure.
+
+The only test-source change strengthens the intentional delayed-case server
+wait from `client_done.wait(0.15)` to `client_done.wait(0.25)` (250 ms),
+increasing scheduling margin while still asserting no early client completion.
+The existing `elapsed >= 0.14` assertion, 0.75-second total request deadline,
+45 tests, fixed Add frame and all other expectations remain unchanged.
+No plain sleep, skip, assertion relaxation or product-code change is used.
+The latest source is **pending hosted rerun** and CTO local validation outside
+the sandbox; prior passes do not verify this revised source. Qualified
+approvals **0/7**, full product regressions **0/3**, **P96 HIGH**, **P292 x86 SCM
+UNKNOWN**, **REAL-KEY NO-GO** and **PRODUCTION HOLD** remain unchanged.
 
 ## Next bounded restart point
 
