@@ -18,6 +18,9 @@ import tkinter as tk
 from nayeon.desktop_alpha.byok_native_service_observer import (
     NativeServiceObserver, NativeStatus,
 )
+from nayeon.desktop_alpha.byok_native_synthetic_request import (
+    NativeSyntheticRequester, SyntheticRequestStatus,
+)
 
 from nayeon.brain.local_byok_user_scope import (
     LocalByokController, LocalByokOperation, LocalByokOutcome,
@@ -83,6 +86,12 @@ class LocalByokWindow:
         self._observation_deadline = 0.0
         self._observation_after = None
         self._observation_results = queue.Queue(maxsize=1)
+        self._synthetic_attempted = False
+        self._synthetic_pending = False
+        self._synthetic_worker = None
+        self._synthetic_deadline = 0.0
+        self._synthetic_after = None
+        self._synthetic_results = None
 
         root.title("Nayeon | Local Windows BYOK (" + (
             "offline setup" if controller.mutation_available else "read-only status"
@@ -124,6 +133,16 @@ class LocalByokWindow:
             fg="#f2d5a2", wraplength=640, justify="left",
         )
         self._native_status.pack(anchor="w", padx=22, pady=(0, 9))
+        self._synthetic = tk.Button(
+            root, text="Test synthetic service denial (no key)",
+            command=self.synthetic_request_from_button,
+        )
+        self._synthetic.pack(anchor="w", padx=22, pady=(0, 5))
+        self._synthetic_status = tk.Label(
+            root, text="not requested; release HOLD", bg="#101827",
+            fg="#f2d5a2", wraplength=640, justify="left",
+        )
+        self._synthetic_status.pack(anchor="w", padx=22, pady=(0, 9))
         self._choices = []
         for operation, title in _CHOICES:
             button = tk.Button(
@@ -284,6 +303,54 @@ class LocalByokWindow:
         ))
         self._observe.configure(state="disabled" if self._observer_disabled else "normal")
 
+    def synthetic_request_from_button(self) -> None:
+        if not self._live() or self._synthetic_attempted:
+            return
+        # The service accepts one connection per lifetime. Never retry in this
+        # window, including unavailable, start failure, timeout or late cleanup.
+        self._synthetic_attempted = True
+        self._synthetic_pending = True
+        self._synthetic_deadline = time.monotonic() + 1.5
+        self._synthetic_results = queue.Queue(maxsize=1)
+        self._synthetic.configure(state="disabled")
+        self._synthetic_status.configure(text="Testing synthetic denial; release HOLD; no keys or approval.")
+        results = self._synthetic_results
+
+        def worker():
+            try:
+                result = NativeSyntheticRequester().request()
+            except Exception:
+                result = SyntheticRequestStatus.UNAVAILABLE
+            results.put_nowait(result)
+
+        try:
+            self._synthetic_worker = threading.Thread(target=worker, daemon=True)
+            self._synthetic_worker.start()
+        except Exception:
+            results.put_nowait(SyntheticRequestStatus.UNAVAILABLE)
+        self._synthetic_after = self._root.after(25, self._poll_synthetic_request)
+
+    def _poll_synthetic_request(self) -> None:
+        self._synthetic_after = None
+        if not self._live() or not self._synthetic_pending:
+            return
+        result = SyntheticRequestStatus.UNAVAILABLE
+        if time.monotonic() < self._synthetic_deadline:
+            try:
+                result = self._synthetic_results.get_nowait()
+            except queue.Empty:
+                self._synthetic_after = self._root.after(25, self._poll_synthetic_request)
+                return
+        self._synthetic_pending = False
+        self._synthetic_results = None  # Late worker retains only its old queue.
+        self._synthetic_status.configure(text=(
+            "UNTRUSTED_HOLD: synthetic denial received; peer is not attested. "
+            "Release HOLD; no keys or approval."
+            if result is SyntheticRequestStatus.UNTRUSTED_HOLD else
+            "Synthetic request UNAVAILABLE (expected under service-only ACL). "
+            "Release HOLD; no keys or approval."
+        ))
+
     def review_from_button(self, operation: LocalByokOperation) -> None:
         if not self._controller.mutation_available:
             return
@@ -386,6 +453,11 @@ class LocalByokWindow:
             return
         self.reject_from_button()
         self._closed = True
+        self._synthetic_pending = False
+        self._synthetic_results = None
+        if self._synthetic_after is not None:
+            self._root.after_cancel(self._synthetic_after)
+            self._synthetic_after = None
         self._observing = False
         if self._observation_after is not None:
             self._root.after_cancel(self._observation_after)

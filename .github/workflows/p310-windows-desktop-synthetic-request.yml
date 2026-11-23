@@ -1,0 +1,160 @@
+name: P310 desktop synthetic no-key denial request
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p309-native-synthetic-request-ingress-20261123]
+    paths:
+      - 'nayeon/desktop_alpha/byok_native_synthetic_request.py'
+      - 'nayeon/desktop_alpha/local_byok_window.py'
+      - 'tests/test_byok_c1_p310_native_synthetic_request.py'
+      - '.github/workflows/p310-windows-desktop-synthetic-request.yml'
+      - 'docs/byok-c1-p310-desktop-synthetic-request.md'
+permissions:
+  contents: read
+jobs:
+  synthetic-request:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Require exact same-repository draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          if ($env:GITHUB_EVENT_NAME -cne 'pull_request' -or $p.draft -ne $true -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.ref -cne 'byok-c1-p309-native-synthetic-request-ingress-20261123' -or
+              $p.base.sha -cne 'adff32e2978c7dd21fb3c10f9a8805e555d5c41f' -or
+              $p.head.ref -cne 'byok-c1-p310-desktop-synthetic-request-20261123' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z') { throw 'P310 HOLD: source event' }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Bounded synthetic, disposable OS and inherited regression checks
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Wrong input HEAD' }
+          git merge-base --is-ancestor $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Base is not an ancestor' }
+          $inputs = @('nayeon/desktop_alpha/byok_native_synthetic_request.py',
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'tests/test_byok_c1_p310_native_synthetic_request.py',
+            '.github/workflows/p310-windows-desktop-synthetic-request.yml',
+            'docs/byok-c1-p310-desktop-synthetic-request.md')
+          $changed = @(git diff --name-only $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 5 -or
+              (Compare-Object ($inputs | Sort-Object) ($changed | Sort-Object))) {
+            throw 'Wrong five-path scope'
+          }
+          $expectedStatus = @($inputs | ForEach-Object {
+            $(if ($_ -ceq 'nayeon/desktop_alpha/local_byok_window.py') { 'M' } else { 'A' }) + "`t" + $_
+          })
+          $actualStatus = @(git diff --name-status --no-renames $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or (Compare-Object ($expectedStatus | Sort-Object) ($actualStatus | Sort-Object))) {
+            throw 'Expected four additions and one modification'
+          }
+          git diff --check $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Source whitespace failure' }
+          function Assert-Clean {
+            $status = @(git status --porcelain=v1 --untracked-files=all)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Index/worktree not clean' }
+            git diff --cached --exit-code
+            if ($LASTEXITCODE -ne 0) { throw 'Index changed' }
+            git diff --exit-code
+            if ($LASTEXITCODE -ne 0) { throw 'Worktree changed' }
+            Write-Output 'INDEX=CLEAN WORKTREE=CLEAN'
+          }
+          function Invoke-BoundedPython([string]$python, [string[]]$arguments) {
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = $python
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.WorkingDirectory = (Get-Location).Path
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            Write-Output ('PYTHON_START=' + $python + ' ARGS=' + ($arguments -join ' '))
+            $process = [Diagnostics.Process]::Start($start)
+            $outTask = $process.StandardOutput.ReadToEndAsync()
+            $errTask = $process.StandardError.ReadToEndAsync()
+            $timedOut = $false
+            try {
+              if (!$process.WaitForExit(75000)) {
+                $timedOut = $true
+                Write-Output ('PYTHON_TIMEOUT PID=' + $process.Id + ' LIMIT_MS=75000')
+                $process.Kill($true)
+                if (!$process.WaitForExit(5000)) { throw 'Python cleanup incomplete; HOLD' }
+              }
+              if (![Threading.Tasks.Task]::WaitAll(@($outTask, $errTask), 5000)) { throw 'Output drain timeout; HOLD' }
+              Write-Output 'PYTHON_STDOUT_BEGIN'
+              Write-Output $outTask.Result
+              Write-Output 'PYTHON_STDOUT_END; STDERR_BEGIN'
+              Write-Output $errTask.Result
+              Write-Output ('PYTHON_STDERR_END; EXIT=' + $process.ExitCode)
+              if ($timedOut -or $process.ExitCode -ne 0) { throw 'Python check failed; HOLD' }
+            } finally { $process.Dispose() }
+          }
+          Assert-Clean
+          Write-Output "BASE_SHA=$($p.base.sha) INPUT_HEAD_SHA=$head"
+          $witnesses = $inputs + @('nayeon/desktop_alpha/byok_native_service_observer.py',
+            'tests/test_byok_c1_p308_native_status_observer.py',
+            'tests/test_local_user_scope_byok.py', 'tests/test_byok_c1_p258_legacy_effect_containment.py',
+            'tests/test_byok_c1_p275_native_effect_retirement.py',
+            'scripts/p275_product_effect_entrypoint_inventory.py',
+            'nayeon/brain/local_byok_user_scope.py', 'nayeon/secrets/windows_credential.py',
+            'nayeon/desktop_alpha/local_byok_launch_bridge.py',
+            'src/Nayeon.ByokC1.Service/SyntheticIngressServer.cs')
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "INPUT_SHA256=$($before[$i]) PATH=$($witnesses[$i])" }
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          $env:PYTHONPYCACHEPREFIX = Join-Path $env:RUNNER_TEMP 'p310-pycache'
+          try {
+            $cache = Join-Path $env:RUNNER_TOOL_CACHE 'Python'
+            $versions = @(Get-ChildItem -LiteralPath $cache -Directory | Where-Object Name -Like '3.12.*' | Sort-Object { [version]$_.Name } -Descending)
+            foreach ($arch in @('x64', 'x86')) {
+              $python = $null
+              foreach ($version in $versions) {
+                $candidate = Join-Path $version.FullName "$arch/python.exe"
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { $python = $candidate; break }
+              }
+              if (!$python) {
+                if ($arch -eq 'x64') { throw 'Installed Python 3.12 x64 required; no downloads' }
+                Write-Output 'X86_PYTHON=ABSENT; X86_NOT_TESTED'
+                continue
+              }
+              $bits = $(if ($arch -eq 'x64') { '64' } else { '32' })
+              Write-Output "ARCH=$arch PYTHON=$python EXPECTED_BITS=$bits"
+              Invoke-BoundedPython $python @('-B', '-c', 'import struct,sys; print(sys.version); print(sys.executable); assert sys.platform=="win32" and sys.version_info[:2]==(3,12); assert str(struct.calcsize("P")*8)==sys.argv[1]', $bits)
+              Invoke-BoundedPython $python @('-B', 'scripts/p275_product_effect_entrypoint_inventory.py')
+              # The suite uses only deterministic fakes or child-validated UUID
+              # disposable pipes. Block missed native credential patches globally.
+              $guard = @'
+          import ctypes, sys, unittest
+          from unittest.mock import patch
+          from nayeon.secrets import windows_credential as storage
+          with patch.object(storage, '_load_advapi32', side_effect=AssertionError('native credentials forbidden')), patch.object(ctypes, 'WinDLL', side_effect=AssertionError('real DLL forbidden'), create=True):
+              unittest.main(module=None, argv=['p310-guarded', '-v', *sys.argv[1:]])
+          '@
+              Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_byok_c1_p310_native_synthetic_request')
+              Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_byok_c1_p308_native_status_observer')
+              Invoke-BoundedPython $python @('-B', '-c', $guard, 'tests.test_local_user_scope_byok', 'tests.test_byok_c1_p258_legacy_effect_containment', 'tests.test_byok_c1_p275_native_effect_retirement')
+              Invoke-BoundedPython $python @('-m', 'compileall', '-q', 'nayeon', 'tests')
+            }
+          } finally {
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Input hashes changed' }
+            $afterHead = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $afterHead -cne $head) { throw 'Input HEAD changed' }
+            Write-Output "AFTER_INPUT_HEAD_SHA=$afterHead INPUT_SHA256_WITNESSES=UNCHANGED"
+            Assert-Clean
+          }
+          Write-Output 'P310 focused development only; unmerged draft; approvals 0/7; full product regressions 0/3; P96 HIGH/P292 x86 SCM UNKNOWN; REAL-KEY NO-GO; PRODUCTION HOLD'
