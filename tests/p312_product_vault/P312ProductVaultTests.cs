@@ -79,10 +79,26 @@ internal static class P312ProductVaultTests
         Check(project.SelectNodes("//m:Compile[@Include='HostedDisposableWinCred.cs']", ns).Count == 1);
         Check(project.SelectNodes("//m:Reference[@Include='System.Web.Extensions']", ns).Count == 1);
         Check(project.SelectSingleNode("//m:TargetFrameworkVersion", ns).InnerText == "v4.8");
+        Check(project.SelectNodes("//m:Compile[@Include='HostedDisposableWinCred.P313Admission.cs']", ns).Count == 1);
         foreach (XmlNode source in project.SelectNodes("//m:Compile", ns))
         {
             string name = source.Attributes["Include"].Value;
-            if (name != "HostedDisposableWinCred.cs")
+            if (name == "HostedDisposableWinCred.P313Admission.cs")
+            {
+                string text = File.ReadAllText(Path.Combine(service, name));
+                Check(text.Contains("internal sealed partial class HostedDisposableWinCred"));
+                Check(text.Contains("internal sealed class ServiceOwnedAdmission"));
+                Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                    @"(?m)^\s*\[\s*DllImport(?:Attribute)?\s*\("));
+                Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                    @"\b(?:CredWriteW|CredReadW|CredDeleteW|CredFree)\s*\("));
+                Type admission = Adapter.GetNestedType("ServiceOwnedAdmission", BindingFlags.NonPublic);
+                Check(admission != null && admission.DeclaringType == Adapter);
+                Check(!admission.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public |
+                    BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                    .Any(m => m.IsDefined(typeof(DllImportAttribute), false)));
+            }
+            else if (name != "HostedDisposableWinCred.cs")
                 Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
         }
         var imports = Adapter.GetMethods(BindingFlags.NonPublic | BindingFlags.Static)

@@ -1,0 +1,271 @@
+name: P313 service-owned native synthetic admission
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p312-service-hosted-windows-vault-20261123]
+permissions:
+  contents: read
+jobs:
+  vault:
+    if: github.event.pull_request.draft == true && github.repository == 'krismcan/Mark-LV' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+        configuration: [Debug, Release]
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      BUILD_CONFIGURATION: ${{ matrix.configuration }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate exact draft before checkout
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+          $eventPath = [IO.Path]::GetFullPath($env:GITHUB_EVENT_PATH)
+          if (!$eventPath.StartsWith($temp + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Event location HOLD' }
+          for ($path = $eventPath; $path; $path = [IO.Path]::GetDirectoryName($path)) {
+            $item = Get-Item -LiteralPath $path -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse event HOLD' }
+            if ($path.TrimEnd('\') -ieq $temp) { break }
+          }
+          $file = Get-Item -LiteralPath $eventPath -Force
+          if ($file.PSIsContainer -or $file.Length -le 0 -or $file.Length -ge 65536) { throw 'Event file HOLD' }
+          $eventData = Get-Content -Raw -LiteralPath $eventPath | ConvertFrom-Json
+          $p = $eventData.pull_request
+          # A forked root is allowed only with the same exact repository ID/name.
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $env:GITHUB_HEAD_REF -cne 'byok-c1-p313-service-owned-vault-admission-20261123' -or
+              $env:GITHUB_BASE_REF -cne 'byok-c1-p312-service-hosted-windows-vault-20261123' -or
+              $p.draft -cne $true -or $eventData.repository.full_name -cne 'krismcan/Mark-LV' -or
+              ($eventData.repository.fork -isnot [bool]) -or ($p.head.repo.fork -isnot [bool]) -or ($p.base.repo.fork -isnot [bool]) -or $p.head.repo.fork -cne $eventData.repository.fork -or $p.base.repo.fork -cne $eventData.repository.fork -or
+              $p.head.repo.full_name -cne 'krismcan/Mark-LV' -or $p.base.repo.full_name -cne 'krismcan/Mark-LV' -or
+              $eventData.repository.id -ne 1402212689 -or $p.head.repo.id -ne $eventData.repository.id -or $p.base.repo.id -ne $eventData.repository.id -or
+              $p.head.ref -cne 'byok-c1-p313-service-owned-vault-admission-20261123' -or
+              $p.base.ref -cne 'byok-c1-p312-service-hosted-windows-vault-20261123' -or
+              $p.base.sha -cne 'd980c4ef7de118a685c245e4dd915d1d9fe8ca1a' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z' -or $p.head.sha -ceq $p.base.sha) { throw 'P313 draft event HOLD' }
+          # Test brake only, never authentication or production authority.
+          'P313_SYNTHETIC_HOSTED_ONLY=1' >> $env:GITHUB_ENV
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Prove source, compile actual assembly and run isolated friend tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Get-Location).Path
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Checkout HOLD' }
+          $base = 'd980c4ef7de118a685c245e4dd915d1d9fe8ca1a'
+          git merge-base --is-ancestor $base $head
+          if ($LASTEXITCODE -ne 0) { throw 'Ancestry HOLD' }
+          if ($env:BUILD_ARCH -cnotin @('x64', 'x86') -or $env:BUILD_CONFIGURATION -cnotin @('Debug', 'Release')) { throw 'Build shape HOLD' }
+          $inputs = @('src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs',
+            'src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
+            'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.P313Admission.cs',
+            'tests/p313_product_admission/P313ProductAdmissionTests.cs',
+            'tests/p312_product_vault/P312ProductVaultTests.cs',
+            '.github/workflows/p313-windows-owned-vault-admission.yml',
+            'docs/byok-c1-p313-service-owned-native-admission.md')
+          $expected = @($inputs | ForEach-Object { if ($_ -like '*.csproj' -or $_ -ceq 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs' -or $_ -ceq 'tests/p312_product_vault/P312ProductVaultTests.cs') { "M`t$_" } else { "A`t$_" } })
+          $delta = @(git diff --no-renames --name-status $base $head)
+          if ($LASTEXITCODE -ne 0 -or $delta.Count -ne 7 -or
+              (Compare-Object ($expected | Sort-Object) ($delta | Sort-Object) -CaseSensitive)) { throw 'Exact seven-path scope HOLD' }
+          $frozen = @(git ls-tree -r --name-only $base -- src/Nayeon.ByokC1.Service tests/p312_product_vault .github/workflows/p312-windows-hosted-disposable-vault.yml docs/byok-c1-p312-hosted-disposable-vault.md)
+          if ($LASTEXITCODE -ne 0 -or $frozen.Count -lt 10) { throw 'Witness inventory HOLD' }
+          $frozen = @($frozen | Where-Object { $_ -cnotin @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj', 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs', 'tests/p312_product_vault/P312ProductVaultTests.cs') })
+          git diff --exit-code $base $head -- $frozen
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen P312 witness changed' }
+          # Exact authorized transformation, preserving native bodies and P312 host validation.
+          $adapterPath = 'src/Nayeon.ByokC1.Service/HostedDisposableWinCred.cs'
+          $adapter = (git show "${base}:$adapterPath") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'P312 adapter witness missing' }
+          $adapter = $adapter.Replace('internal sealed class HostedDisposableWinCred', 'internal sealed partial class HostedDisposableWinCred').Replace('private bool attempted;', "private bool attempted;`n        private readonly bool p313Session;").Replace('{ RequireHosted(); Need(owner.Equals(Identity())); }', '{ if (p313Session) RequireHostedP313(); else RequireHosted(); Need(owner.Equals(Identity())); }')
+          if ($adapter -cne ([IO.File]::ReadAllText((Join-Path $root $adapterPath)).Replace("`r`n", "`n").TrimEnd("`n"))) { throw 'P312 adapter drift HOLD' }
+          $projectPath = 'src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj'
+          $project = (git show "${base}:$projectPath") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'P312 project witness missing' }
+          $project = $project.Replace('<Compile Include="HostedDisposableWinCred.cs" />', "<Compile Include=`"HostedDisposableWinCred.cs`" />`n    <Compile Include=`"HostedDisposableWinCred.P313Admission.cs`" />")
+          if ($project -cne ([IO.File]::ReadAllText((Join-Path $root $projectPath)).Replace("`r`n", "`n").TrimEnd("`n"))) { throw 'Project scope drift HOLD' }
+          # Exact versioned test-contract migration; only the original source loop changes.
+          $testPath = 'tests/p312_product_vault/P312ProductVaultTests.cs'
+          $originalTest = (git show "${base}:$testPath") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'P312 test witness missing' }
+          $oldLoop = @'
+                  foreach (XmlNode source in project.SelectNodes("//m:Compile", ns))
+                  {
+                      string name = source.Attributes["Include"].Value;
+                      if (name != "HostedDisposableWinCred.cs")
+                          Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
+                  }
+          '@
+          $newLoop = @'
+                  Check(project.SelectNodes("//m:Compile[@Include='HostedDisposableWinCred.P313Admission.cs']", ns).Count == 1);
+                  foreach (XmlNode source in project.SelectNodes("//m:Compile", ns))
+                  {
+                      string name = source.Attributes["Include"].Value;
+                      if (name == "HostedDisposableWinCred.P313Admission.cs")
+                      {
+                          string text = File.ReadAllText(Path.Combine(service, name));
+                          Check(text.Contains("internal sealed partial class HostedDisposableWinCred"));
+                          Check(text.Contains("internal sealed class ServiceOwnedAdmission"));
+                          Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                              @"(?m)^\s*\[\s*DllImport(?:Attribute)?\s*\("));
+                          Check(!System.Text.RegularExpressions.Regex.IsMatch(text,
+                              @"\b(?:CredWriteW|CredReadW|CredDeleteW|CredFree)\s*\("));
+                          Type admission = Adapter.GetNestedType("ServiceOwnedAdmission", BindingFlags.NonPublic);
+                          Check(admission != null && admission.DeclaringType == Adapter);
+                          Check(!admission.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public |
+                              BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                              .Any(m => m.IsDefined(typeof(DllImportAttribute), false)));
+                      }
+                      else if (name != "HostedDisposableWinCred.cs")
+                          Check(!File.ReadAllText(Path.Combine(service, name)).Contains("HostedDisposableWinCred"));
+                  }
+          '@
+          $oldLoop = $oldLoop.Replace("`r`n", "`n")
+          $newLoop = $newLoop.Replace("`r`n", "`n")
+          if (($originalTest.Split(@($oldLoop), [StringSplitOptions]::None)).Count -ne 2) { throw 'P312 original loop shape HOLD' }
+          $migratedTest = $originalTest.Replace($oldLoop, $newLoop) + "`n"
+          $actualTest = [IO.File]::ReadAllText((Join-Path $root $testPath)).Replace("`r`n", "`n")
+          if ($actualTest -cne $migratedTest) { throw 'P312 exact test migration HOLD' }
+          $witnesses = @($inputs + $frozen | Sort-Object -Unique)
+          foreach ($path in $witnesses) {
+            $entry = @(git ls-tree $head -- $path)
+            if ($LASTEXITCODE -ne 0 -or $entry.Count -ne 1 -or $entry[0] -cnotmatch '\A100644 blob [0-9a-f]{40}\t') { throw 'Git regular file HOLD' }
+            $full = [IO.Path]::GetFullPath((Join-Path $root $path))
+            for ($current = $full; $current -cne $root; $current = [IO.Path]::GetDirectoryName($current)) {
+              if (!$current.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Witness outside checkout' }
+              if ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Witness reparse HOLD' }
+            }
+            if ((Get-Item -LiteralPath $full -Force).PSIsContainer) { throw 'Witness directory HOLD' }
+          }
+          git diff --check $base $head
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace HOLD' }
+          function Assert-Clean {
+            $now = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $now -cne $head) { throw 'HEAD changed' }
+            $status = @(git status --porcelain=v1 --untracked-files=all)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Dirty checkout HOLD' }
+          }
+          Assert-Clean
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "SOURCE_WITNESS_SHA256=$($before[$i]) PATH=$($witnesses[$i])" }
+          function Invoke-Bounded([string]$program, [string[]]$arguments, [int]$deadline) {
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = $program
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.WorkingDirectory = $root
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+            $process = $null
+            $captures = @()
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            try {
+              $process = [Diagnostics.Process]::Start($start)
+              foreach ($source in @($process.StandardOutput.BaseStream, $process.StandardError.BaseStream)) {
+                $capture = @{ Source = $source; Buffer = [byte[]]::new(1024); Bytes = [IO.MemoryStream]::new(); Pending = $null }
+                $capture.Pending = $source.ReadAsync($capture.Buffer, 0, 1024)
+                $captures += $capture
+              }
+              while ($true) {
+                if ($watch.ElapsedMilliseconds -gt $deadline) { throw 'Process watchdog expired; cleanup unproven; HOLD' }
+                foreach ($capture in $captures) {
+                  if ($null -ne $capture.Pending -and $capture.Pending.IsCompleted) {
+                    $n = $capture.Pending.GetAwaiter().GetResult()
+                    $capture.Pending = $null
+                    if ($n -gt 0) {
+                      if ($capture.Bytes.Length + $n -gt 8192) { throw 'Bounded output exceeded; HOLD' }
+                      $capture.Bytes.Write($capture.Buffer, 0, $n)
+                      $capture.Pending = $capture.Source.ReadAsync($capture.Buffer, 0, 1024)
+                    }
+                  }
+                }
+                if ($process.HasExited -and @($captures | Where-Object { $null -ne $_.Pending }).Count -eq 0) { break }
+                Start-Sleep -Milliseconds 20
+              }
+              if ($process.ExitCode -ne 0) { throw 'Build/test process failed; cleanup must be reviewed; HOLD' }
+              $stdout = [Text.Encoding]::UTF8.GetString($captures[0].Bytes.ToArray())
+              if ($captures[1].Bytes.Length -ne 0) { throw 'Unexpected stderr; HOLD' }
+              return $stdout
+            } finally {
+              if ($null -ne $process) {
+                try {
+                  if (!$process.HasExited) { $process.Kill($true); if (!$process.WaitForExit(5000)) { throw 'Process cleanup incomplete; HOLD' } }
+                } finally {
+                  foreach ($capture in $captures) { $capture.Source.Dispose(); $capture.Bytes.Dispose() }
+                  $process.Dispose()
+                }
+              }
+            }
+          }
+          try {
+            $out = Join-Path $env:RUNNER_TEMP ('p313-' + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $out | Out-Null
+            $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+            $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0 -or !$msbuild) { throw 'Installed MSBuild required; no downloads' }
+            Write-Output 'P313_STAGE=MSBUILD_START'
+            $null = Invoke-Bounded $msbuild @('src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj',
+              '/nologo', '/verbosity:minimal', '/t:Build', '/warnaserror', '/p:TreatWarningsAsErrors=true',
+              "/p:Platform=$env:BUILD_ARCH", "/p:Configuration=$env:BUILD_CONFIGURATION",
+              "/p:OutputPath=$out\", "/p:IntermediateOutputPath=$out\obj\") 90000
+            Write-Output 'P313_STAGE=MSBUILD_PASS'
+            $framework = if ($env:BUILD_ARCH -ceq 'x64') { 'Framework64' } else { 'Framework' }
+            $csc = Join-Path $env:WINDIR "Microsoft.NET/$framework/v4.0.30319/csc.exe"
+            if (!(Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'Installed compiler required' }
+            $product = Join-Path $out 'Nayeon.ByokC1.Service.exe'
+            $test = Join-Path $out 'P313.ProductAdmission.Tests.exe'
+            Write-Output 'P313_STAGE=CSC_P313_START'
+            $null = Invoke-Bounded $csc @('/nologo', '/noconfig', '/warn:4', '/warnaserror+', '/target:exe',
+              "/platform:$env:BUILD_ARCH", "/out:$test", "/reference:$product", '/reference:System.dll',
+              '/reference:System.Core.dll', '/reference:System.ServiceProcess.dll', '/reference:System.Web.Extensions.dll',
+              '/reference:System.Xml.dll', (Resolve-Path -LiteralPath 'tests/p313_product_admission/P313ProductAdmissionTests.cs').ProviderPath) 90000
+            Write-Output 'P313_STAGE=CSC_P313_PASS'
+            if (Test-Path Env:P312_SYNTHETIC_HOSTED_ONLY) { throw 'P312 effect flag forbidden' }
+            $historical = Join-Path $out 'P312.ProductVault.Tests.exe'
+            Write-Output 'P313_STAGE=CSC_P312_START'
+            $null = Invoke-Bounded $csc @('/nologo', '/noconfig', '/warn:4', '/warnaserror+', '/target:exe',
+              "/platform:$env:BUILD_ARCH", "/out:$historical", "/reference:$product", '/reference:System.dll',
+              '/reference:System.Core.dll', '/reference:System.ServiceProcess.dll', '/reference:System.Web.Extensions.dll',
+              '/reference:System.Xml.dll', (Resolve-Path -LiteralPath 'tests/p312_product_vault/P312ProductVaultTests.cs').ProviderPath) 90000
+            Write-Output 'P313_STAGE=CSC_P312_PASS'
+            $historicalHash = (Get-FileHash -LiteralPath $historical -Algorithm SHA256).Hash
+            Write-Output 'P313_STAGE=P312_READONLY_START'
+            $historicalResult = Invoke-Bounded $historical @('--readonly') 90000
+            Write-Output 'P313_STAGE=P312_READONLY_PASS'
+            if ($historicalResult -cnotmatch '\AP312 PRODUCT VAULT TESTS PASS count=[1-9][0-9]*\r?\n\z') { throw 'Frozen P312 readonly failed' }
+            Write-Output $historicalResult.TrimEnd()
+            Write-Output "P312_READONLY_SHA256=$historicalHash"
+            $productHash = (Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash
+            $testHash = (Get-FileHash -LiteralPath $test -Algorithm SHA256).Hash
+            Write-Output "ARCH=$env:BUILD_ARCH CONFIGURATION=$env:BUILD_CONFIGURATION PRODUCT_SHA256=$productHash TEST_SHA256=$testHash"
+            # Only this friend EXE executes; never product Main, SCM or a service install.
+            Write-Output 'P313_STAGE=P313_NATIVE_START'
+            $result = Invoke-Bounded $test @() 90000
+            Write-Output 'P313_STAGE=P313_NATIVE_PASS'
+            if ($result -cnotmatch '\AP313 PRODUCT ADMISSION TESTS PASS cleanup=verified count=[1-9][0-9]*\r?\n\z') { throw 'Unexpected test output; HOLD' }
+            Write-Output $result.TrimEnd()
+            if ((Get-FileHash -LiteralPath $historical -Algorithm SHA256).Hash -cne $historicalHash -or
+                (Get-FileHash -LiteralPath $product -Algorithm SHA256).Hash -cne $productHash -or
+                (Get-FileHash -LiteralPath $test -Algorithm SHA256).Hash -cne $testHash) { throw 'Binary changed' }
+          } finally {
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Source/witness hashes changed' }
+            for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "POST_SHA256=$($after[$i]) PATH=$($witnesses[$i])" }
+            Assert-Clean
+          }
+          Write-Output 'P313 synthetic deletion verified before success; approvals 0/7; full regressions 0/3; P96 HIGH; P292 UNKNOWN; PRODUCTION HOLD'
