@@ -52,6 +52,17 @@ internal static class P309ServiceIngressTests
     }
     private static void Write(NamedPipeClientStream client, byte[] bytes)
     { Done(Bounded(client.WriteAsync(bytes, 0, bytes.Length), client)); }
+    private static void WriteRefusedRequest(NamedPipeClientStream client, byte[] bytes)
+    {
+        // Immediate remote refusal may close the pipe before the negative write completes.
+        // Keep the bounded write strict for timeouts and every other exception shape.
+        try { Write(client, bytes); }
+        catch (IOException) { }
+        catch (AggregateException error)
+        {
+            if (error.InnerExceptions.Count != 1 || !(error.InnerExceptions[0] is IOException)) throw;
+        }
+    }
     private static async Task Bounded(Task operation, IDisposable pipe)
     {
         using (var timer = new CancellationTokenSource())
@@ -171,7 +182,7 @@ internal static class P309ServiceIngressTests
         {
             using (var client = Client(name))
             {
-                Write(client, frame);
+                WriteRefusedRequest(client, frame);
                 Done(server.Completion); Check(server.Refused);
                 Check(HighWater(owner) == 0 && owner.Observe().State == TransactionOwnerState.Faulted);
                 NoReply(client);
@@ -197,7 +208,7 @@ internal static class P309ServiceIngressTests
             using (var server = new SyntheticIngressServer(owner, name))
             using (var client = Client(name))
             {
-                Write(client, Frame(9, 2)); Done(server.Completion);
+                WriteRefusedRequest(client, Frame(9, 2)); Done(server.Completion);
                 Check(server.Refused && HighWater(owner) == 9);
                 Check(owner.Observe().State == TransactionOwnerState.Faulted); NoReply(client);
             }
