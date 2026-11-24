@@ -295,11 +295,13 @@ class LocalByokWindow:
             self._observer_disabled = True
         self._observing = False
         self._native_status.configure(text=(
-            "UNTRUSTED_HOLD: fixed denial observed; peer is not attested. "
-            "Release HOLD; no keys or approval."
+            "UNTRUSTED_HOLD: fixed denial observed; response is untrusted; peer is not attested. "
+            "No recovery state is verified. Release HOLD; no keys or approval. "
+            "Do not enter or retry credentials. Seek qualified service recovery review."
             if result is NativeStatus.UNTRUSTED_HOLD else
-            "Native status unavailable (expected for desktop access under service-only ACL). "
-            "Release HOLD; no keys or approval."
+            "Native status unavailable; cause unknown. No recovery state is verified. "
+            "Release HOLD; no keys or approval. Do not enter or retry credentials. "
+            "Seek qualified service recovery review."
         ))
         self._observe.configure(state="disabled" if self._observer_disabled else "normal")
 
@@ -344,11 +346,13 @@ class LocalByokWindow:
         self._synthetic_pending = False
         self._synthetic_results = None  # Late worker retains only its old queue.
         self._synthetic_status.configure(text=(
-            "UNTRUSTED_HOLD: synthetic denial received; peer is not attested. "
-            "Release HOLD; no keys or approval."
+            "UNTRUSTED_HOLD: synthetic denial received; response is untrusted; peer is not attested. "
+            "No recovery state is verified. Release HOLD; no keys or approval. "
+            "Do not enter or retry credentials. Seek qualified service recovery review."
             if result is SyntheticRequestStatus.UNTRUSTED_HOLD else
-            "Synthetic request UNAVAILABLE (expected under service-only ACL). "
-            "Release HOLD; no keys or approval."
+            "Synthetic request UNAVAILABLE; cause unknown. No recovery state is verified. "
+            "Release HOLD; no keys or approval. Do not enter or retry credentials. "
+            "Seek qualified service recovery review."
         ))
 
     def review_from_button(self, operation: LocalByokOperation) -> None:
