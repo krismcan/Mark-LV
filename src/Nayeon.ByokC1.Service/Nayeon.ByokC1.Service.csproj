@@ -40,6 +40,8 @@
     <Compile Include="StatusPipeServer.cs" />
     <Compile Include="StatusPipeClient.cs" />
     <Compile Include="SyntheticTransactionOwner.cs" />
+    <!-- P320 core/codec/fixtures compile only in tests/p320_transaction_core;
+         keep the production denial-only Compile set identical to P319. -->
     <Compile Include="SyntheticIngressServer.cs" />
     <Compile Include="HostedDisposableWinCred.cs" />
     <Compile Include="HostedDisposableWinCred.P313Admission.cs" />
