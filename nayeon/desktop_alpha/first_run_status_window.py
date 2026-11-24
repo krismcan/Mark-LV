@@ -14,15 +14,21 @@ from nayeon.brain.first_run_refresh import (
 class FirstRunStatusWindow:
     """Small Tk first-run status panel; all effects require a human Refresh click."""
 
-    def __init__(self, root: tk.Tk, *, controller: FirstRunReadOnlyController):
+    def __init__(self, root: tk.Tk, *, controller: FirstRunReadOnlyController,
+                 embedded=False, is_current=None):
         if type(controller) is not FirstRunReadOnlyController:
             raise TypeError("Exact read-only first-run controller required")
+        if is_current is not None and not callable(is_current):
+            raise TypeError("A trusted lifecycle predicate is required")
         self._controller = controller
         self._root = root
-        root.title("Nayeon | First-run connection review")
-        root.geometry("620x360")
-        root.minsize(480, 290)
-        root.configure(bg="#101827")
+        self._is_current = is_current if is_current is not None else lambda: True
+        self._refreshing = False
+        if not embedded:
+            root.title("Nayeon | First-run connection review")
+            root.geometry("620x360")
+            root.minsize(480, 290)
+            root.configure(bg="#101827")
         tk.Label(root, text="Nayeon · Connection review",
                  bg="#101827", fg="#f1f4fb",
                  font=("Segoe UI", 18, "bold")).pack(padx=20, pady=(20, 8), anchor="w")
@@ -51,36 +57,54 @@ class FirstRunStatusWindow:
 
     def refresh_from_button(self):
         """The sole UI callback. Never forwards arbitrary text to a capability."""
-        self._refresh.configure(state="disabled")
+        if not self._is_current() or self._refreshing:
+            return
+        self._refreshing = True
         try:
+            self._refresh.configure(state="disabled")
+            if not self._is_current():
+                return
             result = self._controller.refresh()
-            self._show(result)
+            if self._is_current():
+                self._show(result)
         except Exception:
-            self._show_unavailable()
+            if self._is_current():
+                self._show_unavailable()
         finally:
-            self._refresh.configure(state="normal")
+            self._refreshing = False
+            if self._is_current():
+                self._refresh.configure(state="normal")
 
     def _show_unavailable(self):
+        if not self._is_current():
+            return
         self._status.configure(text="Status unavailable")
         message = ("Manual unknown-state review required. Recovery is unverified. "
                    "No credential operation is suggested. No current status is verified."
                    if self._controller.uses_paired_synthetic_observation else
                    "No current status is verified. Try a new explicit refresh.")
-        self._details.configure(text=message)
+        if self._is_current():
+            self._details.configure(text=message)
 
     def _show(self, result: FirstRunRefresh):
+        if not self._is_current():
+            return
         if type(result) is not FirstRunRefresh or result.status is not FirstRunRefreshStatus.OBSERVED:
             self._show_unavailable()
             return
         summary = result.summary
         if self._controller.uses_paired_synthetic_observation:
             self._status.configure(text="Manual unknown-state review required")
+            if not self._is_current():
+                return
             self._details.configure(text=(
                 "Synthetic paired observation only. Recovery is unverified. "
                 "No credential operation is suggested. No readiness, validation "
                 "or authorization is established."))
             return
         self._status.configure(text="Observed state: " + " ".join(summary.state.value.split("_")))
+        if not self._is_current():
+            return
         suggested = ", ".join(" ".join(op.value.split("_")) for op in summary.suggested_operations)
         message = ("Suggested next steps: " + suggested if suggested
                    else "No credential operation is suggested for this state.")
