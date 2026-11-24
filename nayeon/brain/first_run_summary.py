@@ -15,6 +15,7 @@ from nayeon.brain.onboarding_operation_advice import (
 from nayeon.brain.onboarding_status_view import (
     OnboardingDisplayState, present_onboarding_status,
 )
+from nayeon.brain.pending_custody_status_view import PendingCustodyStatusView
 
 
 _ACTIONS = (
@@ -58,3 +59,25 @@ def summarize_first_run(observation: ConnectionObservation) -> FirstRunSummary:
                      if advise_onboarding_operation(observation, op).eligibility
                      is OperationEligibility.SUGGESTED)
     return FirstRunSummary(projection.state, projection.step, eligible)
+
+
+def summarize_pending_custody_first_run(
+    observation: ConnectionObservation,
+    pending_custody: PendingCustodyStatusView,
+) -> FirstRunSummary:
+    """Compose pending-custody advice into a conservative first-run summary.
+
+    All pending views are unverified claims, including claimed absence. They
+    cannot establish recovered state, suggest credential operations or justify
+    retry/replay. Require an explicit matching view; never fall back to legacy
+    operation suggestions when custody input is missing or inconsistent.
+    This pure seam observes nothing and does not decode journal evidence.
+    """
+    if type(pending_custody) is not PendingCustodyStatusView:
+        raise TypeError("Exact pending custody status view required")
+    legacy = summarize_first_run(observation)
+    if pending_custody.legacy_status is not legacy.state:
+        raise ValueError("Pending custody view does not match first-run status")
+    return FirstRunSummary(
+        legacy.state, ConnectionRecoveryStep.REVIEW_UNKNOWN_STATE, (),
+    )
