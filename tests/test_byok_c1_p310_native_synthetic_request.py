@@ -818,7 +818,23 @@ class SourceBoundaryTests(unittest.TestCase):
             encoding="utf-8", errors="strict", timeout=5, check=True,
         ).stdout
         current = Path(window.__file__).read_text(encoding="utf-8")
-        before, after = ast.parse(parent), ast.parse(current)
+        # P317 explicitly amends only the display-text successor contract.
+        # Keep the original P309 -> P310 AST witness on immutable source.
+        historical = subprocess.run(
+            ["git", "show", "97e1f57d0e5dbd1f96228615d13598a3de775409:"
+             "nayeon/desktop_alpha/local_byok_window.py"],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+            encoding="utf-8", errors="strict", timeout=5, check=True,
+        ).stdout
+        baseline = subprocess.run(
+            ["git", "show", "ed769a2f472cbaecc2c2df3fff9deea606c36036:"
+             "nayeon/desktop_alpha/local_byok_window.py"],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+            encoding="utf-8", errors="strict", timeout=5, check=True,
+        ).stdout
+        from tests.test_byok_c1_p317_desktop_recovery_status import check_ui_successor
+        check_ui_successor(current, baseline)
+        before, after = ast.parse(parent), ast.parse(historical)
         def functions(tree):
             nodes = list(tree.body)
             for node in tree.body:

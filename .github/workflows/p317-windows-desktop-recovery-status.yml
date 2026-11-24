@@ -1,0 +1,161 @@
+name: P317 draft fake-only desktop recovery status
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p316-service-recovery-boundary-20261124]
+    paths:
+      - 'nayeon/desktop_alpha/local_byok_window.py'
+      - 'tests/test_byok_c1_p310_native_synthetic_request.py'
+      - 'tests/test_byok_c1_p317_desktop_recovery_status.py'
+      - '.github/workflows/p317-windows-desktop-recovery-status.yml'
+      - 'docs/byok-c1-p317-desktop-recovery-status.md'
+permissions:
+  contents: read
+jobs:
+  fake-only:
+    if: github.event.pull_request.draft == true && github.repository == 'krismcan/Mark-LV' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository && github.head_ref == 'byok-c1-p317-desktop-recovery-status-20261124' && github.base_ref == 'byok-c1-p316-service-recovery-boundary-20261124' && github.event.pull_request.base.sha == 'ed769a2f472cbaecc2c2df3fff9deea606c36036'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Require hosted same-repository exact draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $eventData = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $p = $eventData.pull_request
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $eventData.repository.full_name -cne $env:GITHUB_REPOSITORY -or
+              $eventData.repository.id -ne 1402212689 -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.head.repo.id -ne $eventData.repository.id -or $p.base.repo.id -ne $eventData.repository.id -or
+              ($p.draft -isnot [bool]) -or $p.draft -cne $true -or
+              $env:GITHUB_HEAD_REF -cne 'byok-c1-p317-desktop-recovery-status-20261124' -or
+              $env:GITHUB_BASE_REF -cne 'byok-c1-p316-service-recovery-boundary-20261124' -or
+              $p.head.ref -cne $env:GITHUB_HEAD_REF -or $p.base.ref -cne $env:GITHUB_BASE_REF -or
+              $p.base.sha -cne 'ed769a2f472cbaecc2c2df3fff9deea606c36036' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z' -or $p.head.sha -ceq $p.base.sha) {
+            throw 'P317 draft event HOLD'
+          }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify exact five-path delta and run only safe fake classes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Input HEAD HOLD' }
+          git merge-base --is-ancestor $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Base ancestry HOLD' }
+          $inputs = @(
+            'nayeon/desktop_alpha/local_byok_window.py',
+            'tests/test_byok_c1_p310_native_synthetic_request.py',
+            'tests/test_byok_c1_p317_desktop_recovery_status.py',
+            '.github/workflows/p317-windows-desktop-recovery-status.yml',
+            'docs/byok-c1-p317-desktop-recovery-status.md')
+          $expected = @($inputs | ForEach-Object {
+            $(if ($_ -cin @('nayeon/desktop_alpha/local_byok_window.py',
+                'tests/test_byok_c1_p310_native_synthetic_request.py')) { 'M' } else { 'A' }) + "`t" + $_
+          })
+          $actual = @(git diff --name-status --no-renames $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 5 -or
+              (Compare-Object -CaseSensitive ($expected | Sort-Object) ($actual | Sort-Object))) {
+            throw 'P317 exact two modifications / three additions HOLD'
+          }
+          git diff --check $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace HOLD' }
+          function Assert-Clean {
+            $status = @(git status --porcelain=v1 --untracked-files=all --ignored)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Index/worktree HOLD' }
+          }
+          Assert-Clean
+          $witnesses = $inputs + @(
+            'nayeon/desktop_alpha/byok_native_service_observer.py',
+            'nayeon/desktop_alpha/byok_native_synthetic_request.py',
+            'tests/test_byok_c1_p308_native_status_observer.py',
+            'nayeon/brain/local_byok_user_scope.py', 'nayeon/secrets/windows_credential.py')
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          Write-Output "BASE_SHA=$($p.base.sha) INPUT_HEAD_SHA=$head"
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "INPUT_SHA256=$($before[$i]) PATH=$($witnesses[$i])" }
+          $cache = Join-Path $env:RUNNER_TOOL_CACHE 'Python'
+          $versions = @(Get-ChildItem -LiteralPath $cache -Directory |
+            Where-Object Name -Like '3.12.*' | Sort-Object { [version]$_.Name } -Descending)
+          $python = $null
+          foreach ($version in $versions) {
+            $candidate = Join-Path $version.FullName 'x64/python.exe'
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $python = $candidate; break }
+          }
+          if (!$python) { throw 'Installed Python 3.12 x64 required; no downloads' }
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          $guard = @'
+          import ctypes, struct, subprocess, sys, unittest
+          from contextlib import ExitStack
+          from unittest.mock import patch
+          assert sys.platform == 'win32' and sys.version_info[:2] == (3, 12)
+          assert struct.calcsize('P') == 8
+          print('INSTALLED_PYTHON=' + sys.version + ' PATH=' + sys.executable, flush=True)
+          names = [
+              'tests.test_byok_c1_p317_desktop_recovery_status',
+              'tests.test_byok_c1_p308_native_status_observer.ObserverTests',
+              'tests.test_byok_c1_p308_native_status_observer.UIRoutingTests',
+              'tests.test_byok_c1_p308_native_status_observer.SourceBoundaryTests',
+              'tests.test_byok_c1_p310_native_synthetic_request.RequesterTests',
+              'tests.test_byok_c1_p310_native_synthetic_request.SyntheticUITests',
+              'tests.test_byok_c1_p310_native_synthetic_request.SourceBoundaryTests',
+          ]
+          # No discovery or DisposableWindowsPipeTests. Fixtures temporarily
+          # replace this blocked transport with their inert PipeAPI objects.
+          with ExitStack() as guards:
+              guards.enter_context(patch.dict(sys.modules, {'_winapi': None}))
+              for name in ('WinDLL', 'OleDLL', 'CDLL', 'PyDLL'):
+                  guards.enter_context(patch.object(ctypes, name, side_effect=AssertionError('native DLL forbidden'), create=True))
+              from nayeon.secrets import windows_credential as storage
+              guards.enter_context(patch.object(storage, '_load_advapi32', side_effect=AssertionError('native credentials forbidden')))
+              suite = unittest.defaultTestLoader.loadTestsFromNames(names)
+              result = unittest.TextTestRunner(verbosity=2).run(suite)
+              if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
+                  raise SystemExit('P317 fake-only checks HOLD')
+          '@
+          $start = [Diagnostics.ProcessStartInfo]::new()
+          $start.FileName = $python
+          $start.UseShellExecute = $false
+          $start.CreateNoWindow = $true
+          $start.WorkingDirectory = (Get-Location).Path
+          $start.RedirectStandardOutput = $true
+          $start.RedirectStandardError = $true
+          foreach ($argument in @('-B', '-c', $guard)) { $start.ArgumentList.Add($argument) }
+          $process = $null
+          try {
+            $process = [Diagnostics.Process]::Start($start)
+            $outTask = $process.StandardOutput.ReadToEndAsync()
+            $errTask = $process.StandardError.ReadToEndAsync()
+            if (!$process.WaitForExit(90000)) {
+              $process.Kill($true)
+              if (!$process.WaitForExit(5000)) { throw 'Child cleanup incomplete HOLD' }
+              throw 'P317 child exceeded 90 seconds HOLD'
+            }
+            if (![Threading.Tasks.Task]::WaitAll(@($outTask, $errTask), 5000)) { throw 'Output drain HOLD' }
+            Write-Output $outTask.Result
+            Write-Output $errTask.Result
+            if ($process.ExitCode -ne 0) { throw 'P317 fake-only checks HOLD' }
+          } finally {
+            if ($null -ne $process) {
+              if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit(5000) | Out-Null }
+              $process.Dispose()
+            }
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Input source changed HOLD' }
+            $afterHead = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $afterHead -cne $head) { throw 'HEAD changed HOLD' }
+            Assert-Clean
+          }
+          Write-Output 'P317 DRAFT FAKE-ONLY; P96 HIGH OPEN; P292 UNKNOWN; REAL KEYS NO-GO; PRODUCTION HOLD; NO SECURITY OR RELEASE APPROVAL'
