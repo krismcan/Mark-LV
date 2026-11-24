@@ -26,6 +26,8 @@ class FirstRunConnectionWindow:
         self._retiring = self._busy = False
         self._retired = None
         self._enabled = False
+        self._recovery_panel = None
+        self._recovery_opening = False
 
     def _thread(self):
         if threading.get_ident() != self._creator:
@@ -91,6 +93,10 @@ class FirstRunConnectionWindow:
                        self.confirm_button, self.cancel_button):
             button.pack(padx=20, pady=4)
         ttk.Button(self.child, text="Close", command=self.retire).pack(pady=12)
+        self.recovery_button = ttk.Button(
+            self.child, text="Review offline recovery status",
+            command=self.review_recovery_status)
+        self.recovery_button.pack(padx=20, pady=4)
         harness, coordinator = self.app._connection_test_harness, self.app._connection_coordinator
         if harness is None or coordinator is None:
             return
@@ -111,6 +117,43 @@ class FirstRunConnectionWindow:
             return
         self._enabled = True
         self._publish("Fake-only harness ready. Review and confirm are separate actions.")
+
+    def review_recovery_status(self):
+        """Explicit read-only review, inside this exact existing child lifetime."""
+        self._thread()
+        if self._busy or self._recovery_opening or not self.is_current():
+            return
+        self._recovery_opening = True
+        try:
+            if self._recovery_panel is None:
+                # Lazy imports preserve the default offline/fake-harness graph.
+                # P318 paired mode fails unavailable on missing evidence. There
+                # is no qualified product observer: do not manufacture a pair,
+                # infer absence, or connect the test harness to recovery status.
+                from nayeon.brain.first_run_refresh import FirstRunReadOnlyController
+                from nayeon.desktop_alpha.first_run_status_window import FirstRunStatusWindow
+                frame = tk.Frame(self.child, bg="#101827")
+                if not self.is_current():
+                    return
+                frame.pack(fill="both", expand=True)
+                if not self.is_current():
+                    return
+                panel = FirstRunStatusWindow(
+                    frame, controller=FirstRunReadOnlyController(
+                        observe_paired_synthetic=lambda: None),
+                    embedded=True, is_current=self.is_current)
+                if not self.is_current():
+                    return
+                self._recovery_panel = panel
+            # This call belongs to the explicit review click, never open/startup.
+            if self.is_current():
+                self._recovery_panel.refresh_from_button()
+        except Exception:
+            # Reuse existing exact-child retirement/quarantine on partial UI
+            # failure. Do not retry construction or print exception contents.
+            self.retire()
+        finally:
+            self._recovery_opening = False
 
     def _publish(self, text):
         self._thread()
