@@ -36,6 +36,7 @@
     <Reference Include="System.ServiceProcess" />
     <Compile Include="CustodyService.cs" />
     <Compile Include="LifecycleCoordinator.cs" />
+    <Compile Include="ServiceRecoveryBoundary.cs" />
     <Compile Include="StatusPipeServer.cs" />
     <Compile Include="StatusPipeClient.cs" />
     <Compile Include="SyntheticTransactionOwner.cs" />
