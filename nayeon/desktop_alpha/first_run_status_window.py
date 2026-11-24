@@ -56,17 +56,30 @@ class FirstRunStatusWindow:
             result = self._controller.refresh()
             self._show(result)
         except Exception:
-            self._status.configure(text="Status unavailable")
-            self._details.configure(text="No current status is verified. Try a new explicit refresh.")
+            self._show_unavailable()
         finally:
             self._refresh.configure(state="normal")
 
+    def _show_unavailable(self):
+        self._status.configure(text="Status unavailable")
+        message = ("Manual unknown-state review required. Recovery is unverified. "
+                   "No credential operation is suggested. No current status is verified."
+                   if self._controller.uses_paired_synthetic_observation else
+                   "No current status is verified. Try a new explicit refresh.")
+        self._details.configure(text=message)
+
     def _show(self, result: FirstRunRefresh):
         if type(result) is not FirstRunRefresh or result.status is not FirstRunRefreshStatus.OBSERVED:
-            self._status.configure(text="Status unavailable")
-            self._details.configure(text="No current status is verified. Try a new explicit refresh.")
+            self._show_unavailable()
             return
         summary = result.summary
+        if self._controller.uses_paired_synthetic_observation:
+            self._status.configure(text="Manual unknown-state review required")
+            self._details.configure(text=(
+                "Synthetic paired observation only. Recovery is unverified. "
+                "No credential operation is suggested. No readiness, validation "
+                "or authorization is established."))
+            return
         self._status.configure(text="Observed state: " + " ".join(summary.state.value.split("_")))
         suggested = ", ".join(" ".join(op.value.split("_")) for op in summary.suggested_operations)
         message = ("Suggested next steps: " + suggested if suggested

@@ -72,7 +72,10 @@ class FirstRunRefreshTests(unittest.TestCase):
         imports={x.module for x in ast.walk(ast.parse(inspect.getsource(m)))
                  if isinstance(x,ast.ImportFrom)}
         self.assertEqual(imports,{"collections.abc","dataclasses","enum",
-            "nayeon.brain.connection_reconciliation","nayeon.brain.first_run_summary"})
+            "nayeon.brain.connection_reconciliation","nayeon.brain.first_run_summary",
+            # P318: exact non-authoritative model for the paired synthetic seam;
+            # no observation, host, credential or transport dependency added.
+            "nayeon.brain.pending_custody_status_view"})
         tree=ast.parse(inspect.getsource(m))
         forbidden={"get","put","delete","save","validate","connect","reveal",
                    "test_stored","test_candidate","approve","request"}

@@ -61,7 +61,9 @@ class FirstRunSummaryTests(unittest.TestCase):
             "nayeon.brain.connection_reconciliation",
             "nayeon.brain.connection_recovery_advice",
             "nayeon.brain.onboarding_operation_advice",
-            "nayeon.brain.onboarding_status_view"})
+            "nayeon.brain.onboarding_status_view",
+            # P318 pure advisory model only; legacy behavioral checks retained.
+            "nayeon.brain.pending_custody_status_view"})
         self.assertFalse(hasattr(result, "__dict__"))
         for blocked in ("nayeon.secrets", "providers", "connection_persistence"):
             self.assertFalse(any(blocked in n for n in imports))

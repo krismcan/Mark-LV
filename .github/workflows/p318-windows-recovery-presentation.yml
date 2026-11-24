@@ -1,0 +1,194 @@
+name: P318 draft paired synthetic recovery presentation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p317-desktop-recovery-status-20261124]
+    paths:
+      - 'nayeon/brain/first_run_summary.py'
+      - 'nayeon/brain/first_run_refresh.py'
+      - 'nayeon/desktop_alpha/first_run_status_window.py'
+      - 'tests/test_first_run_summary.py'
+      - 'tests/test_first_run_refresh.py'
+      - 'tests/test_byok_c1_p318_recovery_composition.py'
+      - 'docs/byok-c1-p318-recovery-composition.md'
+      - '.github/workflows/p318-windows-recovery-presentation.yml'
+permissions:
+  contents: read
+jobs:
+  fake-only:
+    if: github.event.pull_request.draft == true && github.repository == 'krismcan/Mark-LV' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository && github.head_ref == 'byok-c1-p318-recovery-presentation-20261124' && github.base_ref == 'byok-c1-p317-desktop-recovery-status-20261124' && github.event.pull_request.base.sha == '34b97a0a457d5012809daacaec5d5f289dba3569'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Require hosted same-repository exact draft event
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $eventData = Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $p = $eventData.pull_request
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_EVENT_NAME -cne 'pull_request' -or
+              $env:GITHUB_REPOSITORY -cne 'krismcan/Mark-LV' -or
+              $eventData.repository.full_name -cne $env:GITHUB_REPOSITORY -or
+              $eventData.repository.id -ne 1402212689 -or
+              $p.head.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.base.repo.full_name -cne $env:GITHUB_REPOSITORY -or
+              $p.head.repo.id -ne $eventData.repository.id -or $p.base.repo.id -ne $eventData.repository.id -or
+              ($p.draft -isnot [bool]) -or $p.draft -cne $true -or
+              $env:GITHUB_HEAD_REF -cne 'byok-c1-p318-recovery-presentation-20261124' -or
+              $env:GITHUB_BASE_REF -cne 'byok-c1-p317-desktop-recovery-status-20261124' -or
+              $p.head.ref -cne $env:GITHUB_HEAD_REF -or $p.base.ref -cne $env:GITHUB_BASE_REF -or
+              $p.base.sha -cne '34b97a0a457d5012809daacaec5d5f289dba3569' -or
+              $p.head.sha -cnotmatch '\A[0-9a-f]{40}\z' -or $p.head.sha -ceq $p.base.sha) {
+            throw 'P318 draft event HOLD'
+          }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Verify exact eight-path delta and run only pure fake classes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = (Get-Content -Raw -LiteralPath $env:GITHUB_EVENT_PATH | ConvertFrom-Json).pull_request
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $p.head.sha) { throw 'Input HEAD HOLD' }
+          git merge-base --is-ancestor $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Base ancestry HOLD' }
+          $modified = @(
+            'nayeon/brain/first_run_summary.py',
+            'nayeon/brain/first_run_refresh.py',
+            'nayeon/desktop_alpha/first_run_status_window.py',
+            'tests/test_first_run_summary.py',
+            'tests/test_first_run_refresh.py')
+          $added = @(
+            'tests/test_byok_c1_p318_recovery_composition.py',
+            'docs/byok-c1-p318-recovery-composition.md',
+            '.github/workflows/p318-windows-recovery-presentation.yml')
+          $inputs = $modified + $added
+          $expected = @($modified | ForEach-Object { "M`t" + $_ }) +
+                      @($added | ForEach-Object { "A`t" + $_ })
+          $actual = @(git diff --name-status --no-renames $p.base.sha $head)
+          if ($LASTEXITCODE -ne 0 -or $actual.Count -ne 8 -or
+              (Compare-Object -CaseSensitive ($expected | Sort-Object) ($actual | Sort-Object))) {
+            throw 'P318 exact five modifications / three additions HOLD'
+          }
+          git diff --check $p.base.sha $head
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace HOLD' }
+          function Assert-Clean {
+            $status = @(git status --porcelain=v1 --untracked-files=all --ignored)
+            if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) { throw 'Index/worktree HOLD' }
+          }
+          Assert-Clean
+          $witnesses = $inputs + @(
+            'tests/test_first_run_status_window.py',
+            'tests/test_pending_custody_status_view.py',
+            'nayeon/brain/pending_custody_status_view.py',
+            'nayeon/brain/pending_credential_policy.py',
+            'nayeon/brain/connection_reconciliation.py',
+            'nayeon/brain/connection_recovery_advice.py',
+            'nayeon/brain/onboarding_status_view.py',
+            'nayeon/brain/onboarding_operation_advice.py',
+            'nayeon/brain/connection_bootstrap.py',
+            'nayeon/brain/connection_readiness.py',
+            'nayeon/brain/connection_persistence.py',
+            'nayeon/brain/connection_service.py',
+            'nayeon/brain/connection_document.py',
+            'nayeon/brain/connection.py', 'nayeon/secrets/contracts.py')
+          $before = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+          Write-Output "BASE_SHA=$($p.base.sha) INPUT_HEAD_SHA=$head"
+          for ($i = 0; $i -lt $witnesses.Count; $i++) { Write-Output "INPUT_SHA256=$($before[$i]) PATH=$($witnesses[$i])" }
+          $cache = Join-Path $env:RUNNER_TOOL_CACHE 'Python'
+          $versions = @(Get-ChildItem -LiteralPath $cache -Directory |
+            Where-Object Name -Like '3.12.*' | Sort-Object { [version]$_.Name } -Descending)
+          $python = $null
+          foreach ($version in $versions) {
+            $candidate = Join-Path $version.FullName 'x64/python.exe'
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $python = $candidate; break }
+          }
+          if (!$python) { throw 'Installed Python 3.12 x64 required; no downloads' }
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          $guard = @'
+          import ctypes, struct, sys, tkinter, unittest
+          from contextlib import ExitStack
+          from unittest.mock import patch
+          assert sys.platform == 'win32' and sys.version_info[:2] == (3, 12)
+          assert struct.calcsize('P') == 8
+          print('INSTALLED_PYTHON=' + sys.version + ' PATH=' + sys.executable, flush=True)
+          names = [
+              'tests.test_byok_c1_p318_recovery_composition.RecoveryCompositionTests',
+              'tests.test_byok_c1_p318_recovery_composition.PairedSyntheticPanelTests',
+              'tests.test_first_run_summary.FirstRunSummaryTests',
+              'tests.test_first_run_refresh.FirstRunRefreshTests',
+              'tests.test_first_run_status_window.FirstRunStatusWindowTests',
+              'tests.test_pending_custody_status_view.PendingCustodyProjectionTests',
+          ]
+          # Definitions/imports only; no real Tk, native, network, subprocess,
+          # metadata/profile access or credential/IPC/service implementation.
+          denied = []
+          def forbid(*args, **kwargs):
+              denied.append('forbidden operation')
+              raise AssertionError('P318 pure/fake boundary')
+          def audit(event, args):
+              if (event.startswith(('socket.', 'winreg.', 'ctypes.dlopen', 'ctypes.dlsym', 'os.spawn'))
+                      or event in ('subprocess.Popen', 'os.system', 'os.startfile', 'os.startfile/2')):
+                  forbid()
+          sys.addaudithook(audit)
+          with ExitStack() as guards:
+              guards.enter_context(patch.dict(sys.modules, {
+                  '_winapi': None,
+                  'nayeon.secrets.windows_credential': None,
+              }))
+              for name in ('WinDLL', 'OleDLL', 'CDLL', 'PyDLL'):
+                  guards.enter_context(patch.object(ctypes, name, side_effect=forbid, create=True))
+              for name in ('Tk', 'Toplevel'):
+                  guards.enter_context(patch.object(tkinter, name, side_effect=forbid))
+              guards.enter_context(patch.object(tkinter._tkinter, 'create', side_effect=forbid))
+              from nayeon.brain import connection_reconciliation as observations
+              from nayeon.brain.connection_persistence import ProviderConnectionFileStore
+              guards.enter_context(patch.object(observations, 'bootstrap_provider_connection', side_effect=forbid))
+              for name in ('load', 'save'):
+                  guards.enter_context(patch.object(ProviderConnectionFileStore, name, side_effect=forbid))
+              suite = unittest.defaultTestLoader.loadTestsFromNames(names)
+              result = unittest.TextTestRunner(verbosity=2).run(suite)
+              if not result.wasSuccessful() or result.skipped or result.testsRun != 33 or denied:
+                  raise SystemExit('P318 fake-only checks HOLD')
+          '@
+          $start = [Diagnostics.ProcessStartInfo]::new()
+          $start.FileName = $python
+          $start.UseShellExecute = $false
+          $start.CreateNoWindow = $true
+          $start.WorkingDirectory = (Get-Location).Path
+          $start.RedirectStandardOutput = $true
+          $start.RedirectStandardError = $true
+          foreach ($argument in @('-B', '-c', $guard)) { $start.ArgumentList.Add($argument) }
+          $process = $null
+          try {
+            $process = [Diagnostics.Process]::Start($start)
+            $outTask = $process.StandardOutput.ReadToEndAsync()
+            $errTask = $process.StandardError.ReadToEndAsync()
+            if (!$process.WaitForExit(90000)) {
+              $process.Kill($true)
+              if (!$process.WaitForExit(5000)) { throw 'Child cleanup incomplete HOLD' }
+              throw 'P318 child exceeded 90 seconds HOLD'
+            }
+            if (![Threading.Tasks.Task]::WaitAll(@($outTask, $errTask), 5000)) { throw 'Output drain HOLD' }
+            Write-Output $outTask.Result
+            Write-Output $errTask.Result
+            if ($process.ExitCode -ne 0) { throw 'P318 fake-only checks HOLD' }
+          } finally {
+            if ($null -ne $process) {
+              if (!$process.HasExited) { $process.Kill($true); $process.WaitForExit(5000) | Out-Null }
+              $process.Dispose()
+            }
+            $after = @($witnesses | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+            if (($before -join ',') -cne ($after -join ',')) { throw 'Input source changed HOLD' }
+            $afterHead = git rev-parse HEAD
+            if ($LASTEXITCODE -ne 0 -or $afterHead -cne $head) { throw 'HEAD changed HOLD' }
+            Assert-Clean
+          }
+          Write-Output 'P318 DRAFT FAKE-ONLY; RECOVERY UNVERIFIED; P96 HIGH OPEN; P292 UNKNOWN; FULL REGRESSIONS 0/3; PRODUCTION/RELEASE HOLD; NO AUTHORITY OR SECURITY APPROVAL'
