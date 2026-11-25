@@ -1,0 +1,37 @@
+name: Held P96 P292 draft source integration
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+    branches: [byok-c1-p320-durable-custody-core-20261124]
+permissions:
+  contents: read
+jobs:
+  compile-and-denial-only:
+    if: github.event.pull_request.draft == true && github.repository == 'krismcan/Mark-LV' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.repo.full_name == github.repository && github.head_ref == 'byok-c1-p96-p292-closure-20261125' && github.base_ref == 'byok-c1-p320-durable-custody-core-20261124' && github.event.pull_request.base.sha == '2b4a10b483ca37505d4f0b20c7121bcd0f568c57'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+        configuration: [Debug, Release]
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      BUILD_CONFIGURATION: ${{ matrix.configuration }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        env:
+          GIT_CONFIG_COUNT: '2'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+          GIT_CONFIG_KEY_1: core.eol
+          GIT_CONFIG_VALUE_1: lf
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Compile product only and test shared metadata sources
+        shell: pwsh
+        run: ./tests/held_failure_service_ordering/HostedDraftReview.ps1

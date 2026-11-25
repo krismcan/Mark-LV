@@ -13,7 +13,7 @@ namespace Nayeon.ByokC1.Service
     {
         internal const string Leaf = "NayeonV1ByokCustody.Recovery.v1";
 
-        internal static void RequireDenialOnlyStart(Action verifyExecutingIdentity)
+        internal static DenialOnlyRecoveryAdmission RequireDenialOnlyStart(Action verifyExecutingIdentity)
         {
             try
             {
@@ -23,6 +23,7 @@ namespace Nayeon.ByokC1.Service
                 RecoveryObservation observation = ObserveProfile(profile);
                 verifyExecutingIdentity();
                 if (!AllowsDenialOnlyStart(observation)) throw new InvalidOperationException();
+                return new DenialOnlyRecoveryAdmission(DurableRecoveryState.MissingLeaf);
             }
             catch (Exception) { throw new InvalidOperationException("Recovery boundary refused; HOLD."); }
         }

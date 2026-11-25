@@ -135,9 +135,9 @@ namespace Nayeon.ByokC1.Service
                         throw new InvalidOperationException("Service startup denied.");
                     VerifyExecutingIdentity();
                     VerifyExecutingIdentity(); // Reopen and verify before any domain transition.
-                    ServiceRecoveryBoundary.RequireDenialOnlyStart(VerifyExecutingIdentity);
+                    DenialOnlyRecoveryAdmission recovery = ServiceRecoveryBoundary.RequireDenialOnlyStart(VerifyExecutingIdentity);
                     coordinator.BeginStart();
-                    transactions = new SyntheticTransactionOwner(); // Identity-validated service ownership only.
+                    transactions = new SyntheticTransactionOwner(recovery); // Identity-validated denial ownership only.
                     syntheticIngress = new SyntheticIngressServer(transactions);
                     statusPipe = new StatusPipeServer(); // Only after both executing-identity checks.
                     coordinator.CompleteStart(); // IPC reports denial only, never readiness authority.
