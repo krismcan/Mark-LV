@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>P320.TransactionCore.Tests</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <StartupObject>P320TransactionCoreTests</StartupObject>
+    <PlatformTarget>$(Platform)</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\</IntermediateOutputPath>
+    <WarningLevel>4</WarningLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
+    <Compile Include="P320TransactionCoreTests.cs" />
+    <Compile Include="..\..\src\Nayeon.ByokC1.Service\CustodyTransactionCore.cs">
+      <Link>CustodyTransactionCore.cs</Link>
+    </Compile>
+    <Compile Include="..\..\src\Nayeon.ByokC1.Service\SyntheticTransactionOwner.cs">
+      <Link>SyntheticTransactionOwner.cs</Link>
+    </Compile>
+    <Compile Include="..\p95_native_custody_preflight\CustodyLedger.cs">
+      <Link>CustodyLedger.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <Target Name="ValidateBuildShape" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Platform)' != 'x64' And '$(Platform)' != 'x86'" Text="Only x64 and x86 are supported." />
+    <Error Condition="'$(Configuration)' != 'Debug' And '$(Configuration)' != 'Release'" Text="Only Debug and Release are supported." />
+  </Target>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
