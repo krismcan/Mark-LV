@@ -1,17 +1,22 @@
 # P320: synthetic custody core development checkpoint
 
-2026-11-24. Existing P320 candidate resumed for interruption remediation only;
+2026-11-25. Existing held P320 checkpoint resumed for bounded P96 remediation only;
 no new product phase, completed milestone or release. Codex sole source writer.
-Branch: `byok-c1-p320-durable-custody-core-20261124`. Git HEAD and authoritative
-P319 source baseline: `9679f4b4609f2c83ea61324ba88f023477ea564c`.
-No milestone tag points at HEAD. Intake had exactly three unstaged draft paths:
+Branch: `byok-c1-p320-durable-custody-core-20261124`. Exact intake HEAD:
+`ca5d5218478d4d165cf61e35e5b697137e703c14`, original parent/P319 baseline:
+`9679f4b4609f2c83ea61324ba88f023477ea564c`, existing draft PR239.
+Intake worktree/index clean; no milestone tag points at HEAD. The original
+November 24 interruption-remediation intake had three unstaged draft paths:
 the service project modification, new `CustodyTransactionCore.cs`, and new
-`P320TransactionCoreTests.cs`. Their source intent is preserved with the build
-isolation correction below; the existing test file is unchanged.
+`P320TransactionCoreTests.cs`. That checkpoint isolated their compilation as
+described below. This repair changes only the existing core, driver, workflow
+and this document within the same six-path envelope.
 
-**102 authored synthetic cases; runtime/compile and independent review PENDING.
-P96 HIGH OPEN; P292 UNKNOWN; five historical scope conflicts; full regressions
-0/3; REAL-KEY NO-GO; production/release/seal HOLD.**
+**142 authored synthetic cases; repaired-source runtime/compile and independent
+review PENDING. Prior hosted four shapes each 102/102 PASS are user-reported
+evidence for the intake HEAD only, not this repair. P96 HIGH OPEN for actual
+production closure; P292 OPEN; five historical scope conflicts; full regressions
+0/3; external approvals 0/7; REAL-KEY NO-GO; production/release/seal HOLD.**
 
 ## Protected context interruption and restart boundary
 
@@ -47,7 +52,7 @@ Compile set, references, startup object, build guards and configuration remain
 the same. The new `tests/p320_transaction_core/P320.Synthetic.csproj` compiles
 exactly four source files into a separate executable:
 
-- the unchanged P320 test driver;
+- the existing P320 test driver, now extended without removing an original case;
 - the draft core (including sealed memory fixture, crash image and rendezvous);
 - the unchanged P306 `SyntheticTransactionOwner.cs`, supplying its existing
   immutable request/enums in this separate assembly;
@@ -81,9 +86,45 @@ review and dispatch; an opaque owner-specific review object is consumed before
 the intent sequence. It represents synthetic review, never human consent,
 permission, policy or authenticated approval. Invalid identity/ticket or wrong
 precondition terminates without a synthetic attempt. Duplicate dispatch returns
-the existing outcome without another attempt. Control winning the gate before
-dispatch terminates without mutation; after possible effect it reports too late.
-Reentry, gate timeout or crash uncertainty becomes recovery HOLD.
+the current conservative outcome without another attempt. Control winning the
+gate before dispatch terminates without mutation; after commitment it reports
+too late only while uncertainty is absent. Reentry, gate timeout or crash
+uncertainty becomes recovery HOLD.
+
+### P96 concrete synthetic publication/commitment repair
+
+The intake core published `uncertain` outside the monitor, separately from
+`Barrier(); possible = true; attempts++`. A timeout/reentry after the barrier
+could therefore precede commitment yet fail to prevent it. `Exit` and `Observe`
+only converted outcome None; uncertainty after terminal publication could be
+hidden behind stored/removed-unverified or a successful control result. These
+are source-level counterexamples from the read-only investigation, not a
+runtime reproduction or a claim that the original production P96 is repaired.
+
+The existing core now keeps uncertainty (bit 0), possible-effect commitment
+(bit 1), and terminal outcome (higher bits) in one atomic `publication` word.
+The gate still owns request review, ledger strings, marker, stages and attempt
+count. No second owner, model, storage adapter or effect path is introduced.
+
+| Transition / observation | Linearization and consequence |
+| --- | --- |
+| Enter timeout or reentry | CAS sets the sticky Unknown bit, preserving commitment and terminal bits. It never clears, including after a terminal result. |
+| Possible-effect commitment | A single CAS from zero to Committed. Unknown winning first makes that CAS fail: no commitment, attempt or marker mutation. No separate check/mark window remains. |
+| Commitment winning first | MayHaveEffect stays true. A subsequent barrier may still suppress the attempt; commitment is permission for a possible synthetic effect, not evidence an attempt or mutation happened. Unknown arriving after that barrier cannot retract commitment or promise prevention. |
+| Terminal publication | Finish CAS preserves both flags, retains a prior terminal result absent uncertainty, and projects RecoveryRequired whenever Unknown is present. A racing uncertainty forces CAS retry or subsequently overrides the projection. |
+| Public outcome / control | Atomic publication reads determine the returned result. Unknown takes precedence over AlreadyTerminal and TooLatePossibleEffect. A control whose terminal publication races Unknown returns HoldUnknown, never Applied when Unknown precedes its final result read. |
+| Snapshot | One publication read supplies outcome/commitment. Under the gate, AttemptsKnown is true. A failed Enter cannot read the gated counter: committed means AttemptsKnown=false and Attempts=0 is only a placeholder; without commitment zero is known. |
+
+All later public outcomes after Unknown are RecoveryRequired, and later controls
+are HoldUnknown. An earlier returned immutable snapshot/result remains a
+historical observation at its own linearization point; later uncertainty may
+conservatively downgrade it. No result is a verified effect or a lasting promise
+of successful cancellation. Recovery never authorizes replay; the exact prior
+ticket, a new ticket, duplicate dispatch and controls cannot clear the state.
+The crash image does not persist this publication word: restart classification
+can still be TerminalUnverified while the live core holds uncertainty. Neither
+image classification nor terminal ledger shape verifies task success or clears
+the live HOLD, and no image can construct/resume an owner.
 
 Intent and anchor are strings verified by the existing bounded codec. The
 deterministic nonce binds metadata through SHA-256; neither hashes nor an
@@ -122,41 +163,70 @@ The existing driver counts `Run` invocations, not individual Check assertions:
 | Ten crash seams | 10 | 30 |
 | Duplicate dispatch, duplicate review and review/cancel races | 3 | 9 |
 | Malformed restart, fixture ownership/invalid construction, foreign review, reentry, timeout, invalid control | n/a | 6 |
-| **Total across Add, Replace, Delete** | **32** | **102** |
+| Six publication seams, each with control-timeout and observation-timeout | 12 | 36 |
+| Sticky reentry after returned dispatch or control terminal result | 1 | 3 |
+| Concurrent claim of the exact same memory fixture object | n/a | 1 |
+| **Total across Add, Replace, Delete** | **45** | **142** |
 
 Control-first includes pending/reviewed subchecks in each counted case; malformed
 images and invalid construction similarly have multiple assertions inside a
-case. The count remains 102, not a larger count of combinations/assertions. The
-driver requires exactly 102 and exits nonzero on assertion/worker failure. No
-runtime PASS, red-to-green proof, native crash result or independent validation
-is inferred from source review. Hosted timing and compile correctness remain
-unverified; synthetic concurrency cannot close original cross-process P96.
+case. The original 102 Run cases and their assertions remain. Terminal now also
+requires AttemptsKnown=true; its old "strict first terminal" comment is narrowed
+to stability absent new uncertainty. The reflection reader supports properties
+because outcome and possible now project the atomic word instead of separate
+mutable fields; existing dispatch-first expectations remain unchanged. The
+driver requires exactly 142 and prints that checked count; no count is a PASS.
+
+The six new fixed event rendezvous pause immediately before/after commitment,
+immediately before/after dispatch terminal publication, and before/after control
+terminal publication. The before-commit seam is AFTER the prior final barrier;
+the before-terminal seam is AFTER terminal ledger verification. Thus the tests
+target the actual unchecked windows. Each forces a real two-second Enter timeout
+via Revoke or Observe while the owner remains paused, then checks sticky HOLD,
+commitment versus exact attempts, unchanged or completed marker/ledger shape,
+all later controls, consumed-ticket replay refusal and ProductionEligible=false.
+After commitment but before attempt, the expected state is MayHaveEffect=true
+and Attempts=0; after terminal publication, outcome must downgrade to recovery.
+No original expected outcome or crash-seam count is weakened to obtain this.
+
+The three added reentry cases each include both a completed dispatch and a
+completed cancellation, preserve the earlier snapshot, then require conservative
+downgrade and no replay. Concurrent fixture claim tests the existing Claim CAS:
+exactly one constructor wins over the SAME object. Separate fixtures may each
+have owners; no global identity, shared-storage or cross-process ownership is
+claimed or added. All rendezvous are bounded events, with no injected callback.
+
+No runtime PASS, red-to-green proof, native crash result or independent validation
+is inferred from source review. Hosted timing and compile correctness for these
+bytes remain unverified; synthetic concurrency cannot close production P96.
 
 ## Open Failures & Prior-Issues Review
 
-Bounded inputs: Git intake, AGENTS.md, engineering failure gate, stale context,
-P318/P319 review, P315 limitations, existing P320 drafts, P95 codec, P306 request
-owner, actual service startup/recovery/denial entrypoints and P309/P319 workflow
-patterns. No broad scan, credential inspection or local reproduction.
+Current bounded inputs: exact Git intake, AGENTS.md, engineering failure gate,
+read-only stale context, existing P320 source/tests/workflow/review, project
+Compile sets, P95 codec and P306 request owner. Prior recorded P318/P319, P315,
+actual service entrypoint and P309 workflow analysis is retained as historical
+context, not claimed as a new architecture survey. No broad scan, credential
+inspection or local runtime reproduction.
 
 | Issue / source | Severity, root cause and affected boundary | Evidence / containment / review / disposition |
 | --- | --- | --- |
 | Context write refusal / user interruption report | Governance blocker; protected write refused; filesystem cause not investigated | No retry or workaround. Stale November 3 state read only. Separate documentation completes existing checkpoint; next formal phase HOLD. |
-| Draft service/test coupling / this source review | Unnecessary synthetic codec, fixture and reflection hook dependency in product assembly; inclusion in csproj was the source cause | Removed product Compile entries/new friend, isolated four-source synthetic executable. Build topology inspection only; hosted compile and independent review pending. Not a production security closure. |
-| P96 original race / inherited P319 record | HIGH OPEN; original last-current/control/effect ordering lacks qualified closure across processes and restarts | New memory monitor is a separate prototype, not original-route repair. No reproduced production closure; HOLD. |
-| P292 SCM teardown / inherited P319 record | UNKNOWN; x86 teardown root cause and lifecycle qualification remain unproved | No SCM or service execution here or in new tests. Compile does not qualify lifecycle; HOLD. |
+| Draft service/test coupling / November 24 source review | Unnecessary synthetic codec, fixture and reflection hook dependency in product assembly; inclusion in csproj was the source cause | Intake HEAD already removed those Compile entries/new friend and isolated four-source synthetic executable. Prior hosted compile/synthetic PASS per user; both projects unchanged here. No production security closure. |
+| P96 synthetic proof gap / current read-only investigation and user request | HIGH OPEN for actual production closure; independent uncertainty write, final commitment marker and terminal publication were not atomic | Existing synthetic core repaired with one CAS publication word; 36 timeout-boundary and 3 sticky reentry cases authored, not executed. Independent repair review and new hosted evidence pending. No original-route/cross-process closure; HOLD. |
+| P292 SCM teardown / user-supplied independent historical archive reconciliation | OPEN; historical x86 teardown remains unknown | ZIP CRC and before/after manifest 18/18 verified in separate reconciliation; lifecycle 0/6,4/6,3/6; cleanup 0/6,6/6,5/6. This historical evidence is not mutable qualification. No SCM/service execution or new qualification authorized here; HOLD. |
 | P264 historical scope conflict | Frozen live local_byok_window raw-byte expectation | Inherited P318/P319 source evidence, not rerun here. No hash/assertion change or waiver; HOLD. |
 | P133 historical scope conflict | Historical seven-path ancestry expectation | Inherited, unchanged/unwaived; no runtime reproduction here; HOLD. |
 | P134 historical scope conflict | Historical four additions and older committed-blob expectation | Inherited, unchanged/unwaived; no runtime reproduction here; HOLD. |
 | P140 historical scope conflict | Historical six-path delta and sole bridge modification expectation | Inherited, unchanged/unwaived; no runtime reproduction here; HOLD. |
 | Direct BYOK B historical scope conflict | Connection-child hash and historical exact-descendant pin; older projection delegates to that guard | Fifth inherited conflict documented in P319. No guard/pin/projection modification; successor compatibility and independent review remain required; HOLD. |
 | P315 durability precedent | Disposable hosted-user journal/pre-native termination is not service-principal storage or post-native recovery qualification | No DPAPI, ACL, file, process-death or native fixture executes in P320. No durability/replay assurance promoted. |
-| Regression and review gaps | Compile/runtime pending; full regressions 0/3; independent security approval not obtained | Only sole-writer source review and whitespace check in this task. Relevant focused/affected/cross-phase and full evidence remain pending; HOLD. |
+| Regression and review gaps | Repair compile/runtime pending; full regressions 0/3; external approvals 0/7 | Prior four hosted shapes 102/102 each PASS apply only to intake HEAD per user. Only sole-writer source review and whitespace check here; independent repair approval and relevant regression evidence remain pending; HOLD. |
 
-Disposition: source checkpoint prepared within the explicit interruption-remediation
-authorization. The original three drafts are retained, with synthetic compilation
-isolation and separate workflow/review additions. No material finding is waived,
-downgraded or closed by a green source count. Production, real-key, seal and next
+Disposition: source repair prepared within the explicit existing-P320 remediation
+authorization, preserving its compilation isolation and six-path envelope.
+No material finding is waived, downgraded or closed by a green source count.
+Production, real-key, seal and next
 formal product phase remain **HOLD / NO-GO**.
 
 ## Exact source envelope and proposed hosted workflow
@@ -167,8 +237,8 @@ five additions**. No historical test/workflow or guard is changed.
 | Status | Path | Purpose |
 | --- | --- | --- |
 | M | `src/Nayeon.ByokC1.Service/Nayeon.ByokC1.Service.csproj` | Exclusion comment only; P319 production build semantics retained |
-| A | `src/Nayeon.ByokC1.Service/CustodyTransactionCore.cs` | Existing draft, synthetic-only; remove new friend and correct compilation comments |
-| A | `tests/p320_transaction_core/P320TransactionCoreTests.cs` | Existing unchanged 102-case driver |
+| A | `src/Nayeon.ByokC1.Service/CustodyTransactionCore.cs` | Existing synthetic-only core; atomic uncertainty/commitment/terminal repair |
+| A | `tests/p320_transaction_core/P320TransactionCoreTests.cs` | Original 102 cases retained; 40 added, exact total 142 |
 | A | `tests/p320_transaction_core/P320.Synthetic.csproj` | Dedicated four-source test compilation |
 | A | `.github/workflows/p320-windows-synthetic-custody-core.yml` | Separate draft hosted compile/synthetic workflow |
 | A | `docs/byok-c1-p320-synthetic-custody-core.md` | This source review, incident and pending-evidence record |
@@ -190,14 +260,17 @@ Only installed Visual Studio MSBuild/framework targeting tools are used; missing
 tools fail HOLD, with no install/download/restore or local interpreter fallback.
 The actual service project is compile-only. The separate synthetic project
 links the four explicit sources without a product reference. Only its test
-executable is run, with no arguments, expecting the driver's 102 cases per shape
-(408 invocations if all four later pass, still 102 distinct authored cases).
+executable is run, with no arguments, expecting the driver's 142 cases per shape
+(568 invocations if all four later pass, still 142 distinct authored cases).
 No original service/native/IPC/Tk tests or full discovery run is selected.
 
-Each build has a 90-second deadline, the synthetic child 60 seconds, bounded
+Each build has a 90-second deadline, the synthetic child 120 seconds, bounded
 kill/wait and output draining, 24 KiB per-stream diagnostics and an eight-minute
-job limit. The P309 process pattern is retained with truncation now failing
-HOLD. Build/log files are confined to hosted RUNNER_TEMP; source remains clean.
+job limit. The child limit increased from 60 seconds because 36 new cases each
+exercise the unchanged two-second Enter timeout (72 seconds before other work).
+No wait/deadline expiry is accepted as a PASS. The P309 pattern retains failure
+on diagnostic truncation. Build/log files are confined to hosted RUNNER_TEMP;
+source remains clean.
 Normal future checkout uses network; this task performs no network operation.
 No service binary execution, storage/profile/secret operation, native credential
 operation, IPC, provider access or enabling effect is part of the new test route.
@@ -205,23 +278,27 @@ This is a source-reviewed fixed composition, not a general runtime sandbox.
 
 ## Local verification and pending handoff
 
-Local validation is **git diff --check only**, including new-file no-index
-whitespace checks against `/dev/null`; source/Git reads and authorized edits are
-not runtime evidence. No compiler, parser, interpreter, tests or product code
-was accessed/executed locally. Workflow syntax/build/runtime correctness is
+Local validation for this repair is **source review and git diff --check only**;
+source/Git reads and authorized edits are not runtime evidence. No compiler,
+interpreter, build, tests or product runtime was executed locally.
+Workflow syntax/build/runtime correctness for the repair is
 pending hosted execution. No tooling was downloaded/installed, no permission
 or sandbox changed, and no protected context write was attempted. No staging,
 commit, tag, push, merge, hosted dispatch, workbook or dashboard update occurred.
 
-Whitespace outcome: tracked `git diff --check` exited 0 without diagnostics.
-All five added files were checked separately with
-`git diff --no-index --check -- /dev/null <path>`; each exited 1 for the
-new-file difference without whitespace diagnostics. This is source hygiene
-only, with no runtime or independent-review approval.
+The November 24 preparation recorded clean tracked and new-file whitespace
+checks; that is historical source hygiene only. On November 25, repair source
+review traced CAS order, result projections, commitment/attempt separation,
+sticky uncertainty, replay refusal, fixed rendezvous ordering and the exact
+142-case Run expansion. `git diff --check` exited 0 without diagnostics.
+Exactly four paths differ from intake HEAD, all inside the existing six-path
+envelope; both project files and `.codex/CURRENT_STATE.md` have no diff. No
+runtime, red-to-green or independent-review approval is inferred. Disposition
+remains HOLD pending those missing forms of evidence; no formal-phase GO.
 
-The next action is human source review of this exact six-path checkpoint and,
-if separately published through the authorized process, hosted compile and
-synthetic evidence on the exact event head. No publication is performed here.
+The next action is human source review of these unstaged changes within the
+existing checkpoint. Any later publication and hosted execution require their
+own authorized process; no network, dispatch or publication is performed here.
 Independent source/security review, affected/cross-phase assurance, all three
 full regressions, resolution of the five historical conflicts and the context
 blocker remain outstanding. Real-key NO-GO and production/release HOLD persist.

@@ -238,7 +238,8 @@ jobs:
             Write-Output "COMPILE_ONLY_SERVICE_SHA256=$serviceHash SYNTHETIC_EXE_SHA256=$syntheticHash"
             # No product reference, service entrypoint, SCM, IPC, journal files or native test.
             # The sole executable under test contains four explicitly selected memory-only sources.
-            Invoke-Bounded $synthetic @() 60000
+            # 36 fixed-rendezvous cases exercise the real 2-second Enter timeout.
+            Invoke-Bounded $synthetic @() 120000
             if ((Get-FileHash -LiteralPath $service -Algorithm SHA256).Hash -cne $serviceHash -or
                 (Get-FileHash -LiteralPath $synthetic -Algorithm SHA256).Hash -cne $syntheticHash) {
               throw 'Build artifacts changed HOLD'
@@ -248,4 +249,4 @@ jobs:
             if (($before -join ',') -cne ($after -join ',')) { throw 'Input source changed HOLD' }
             Assert-Clean
           }
-          Write-Output 'P320 DRAFT SYNTHETIC ONLY; AUTHORED CASES 102 PER SHAPE; P96 HIGH OPEN; P292 UNKNOWN; FIVE HISTORICAL SCOPE CONFLICTS; FULL REGRESSIONS 0/3; REAL-KEY NO-GO; PRODUCTION/RELEASE HOLD'
+          Write-Output 'P320 DRAFT SYNTHETIC ONLY; AUTHORED CASES 142 PER SHAPE; P96 HIGH OPEN; P292 OPEN HISTORICAL X86 TEARDOWN UNKNOWN; FIVE HISTORICAL SCOPE CONFLICTS; FULL REGRESSIONS 0/3; EXTERNAL APPROVALS 0/7; REAL-KEY NO-GO; PRODUCTION/RELEASE HOLD'

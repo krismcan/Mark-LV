@@ -29,11 +29,12 @@ namespace Nayeon.ByokC1.Service
         internal readonly CoreOutcome Outcome;
         internal readonly bool MayHaveEffect, RecoveryRequired;
         internal readonly int Attempts;
+        internal readonly bool AttemptsKnown;
         internal bool ProductionEligible { get { return false; } }
         internal CoreSnapshot(SyntheticTransactionRequest request, CustodyStage stage, CoreOutcome outcome,
-            bool possible, bool recovery, int attempts)
+            bool possible, bool recovery, int attempts, bool attemptsKnown = true)
         { Request = request; Stage = stage; Outcome = outcome; MayHaveEffect = possible;
-            RecoveryRequired = recovery; Attempts = attempts; }
+            RecoveryRequired = recovery; Attempts = attempts; AttemptsKnown = attemptsKnown; }
     }
 
     // Untrusted immutable crash image. Neither a hash chain nor these fields authenticate storage.
@@ -82,15 +83,25 @@ namespace Nayeon.ByokC1.Service
         private readonly SyntheticTransactionRequest request;
         private readonly SyntheticCrash crash;
         private CustodyStage stage = CustodyStage.ReviewPending;
-        private CoreOutcome outcome;
-        private bool possible, recovery;
-        private int attempts, uncertain;
+        // A single CAS word orders uncertainty, commitment and terminal publication.
+        // Uncertainty is sticky, including after a previously published terminal result.
+        private const int Unknown = 1, Committed = 2, OutcomeShift = 2;
+        private int publication;
+        private CoreOutcome outcome { get { return Outcome(Volatile.Read(ref publication)); } }
+        private bool possible { get { return (Volatile.Read(ref publication) & Committed) != 0; } }
+        private bool recovery;
+        private int attempts;
         private object review;
         // Fixed test rendezvous, installed through reflection within the synthetic assembly only.
         // No callback can run inside the owner gate. The pause itself is bounded.
         private ManualResetEventSlim dispatchEntered = null;
         private ManualResetEventSlim dispatchContinue = null;
         private ManualResetEventSlim controlWaiting = null;
+        // 1/2: before/after commitment; 3/4: before/after dispatch terminal;
+        // 5/6: before/after control terminal. Fixed events only, never delegates.
+        private int pauseAt = 0;
+        private ManualResetEventSlim transitionEntered = null;
+        private ManualResetEventSlim transitionContinue = null;
 
         internal CustodyTransactionCore(InMemoryCustodyFixture state, SyntheticTransactionRequest identity,
             SyntheticCrash crashPoint)
@@ -148,30 +159,71 @@ namespace Nayeon.ByokC1.Service
         private bool Enter()
         {
             if (Monitor.IsEntered(gate))
-            { Interlocked.Exchange(ref uncertain, 1); return false; }
+            { PublishUnknown(); return false; }
             if (Monitor.TryEnter(gate, 2000)) return true;
-            Interlocked.Exchange(ref uncertain, 1); return false;
+            PublishUnknown(); return false;
+        }
+        private static CoreOutcome Outcome(int state)
+        { return (state & Unknown) != 0 ? CoreOutcome.RecoveryRequired : (CoreOutcome)(state >> OutcomeShift); }
+        private void PublishUnknown()
+        {
+            int seen;
+            do { seen = Volatile.Read(ref publication); }
+            while (Interlocked.CompareExchange(ref publication, seen | Unknown, seen) != seen);
         }
         private void Barrier()
-        { if (Volatile.Read(ref uncertain) != 0) throw new LedgerBlocked(); }
-        private void Exit()
+        { if ((Volatile.Read(ref publication) & Unknown) != 0) throw new LedgerBlocked(); }
+        private void Exit() { Monitor.Exit(gate); }
+        private void Pause(int point)
         {
-            try { if (Volatile.Read(ref uncertain) != 0 && outcome == CoreOutcome.None) Hold(); }
-            finally { Monitor.Exit(gate); }
+            if (pauseAt != point) return;
+            if (transitionEntered != null) transitionEntered.Set();
+            if (transitionContinue != null && !transitionContinue.Wait(5000)) throw new LedgerBlocked();
+        }
+        private void CommitPossibleEffect()
+        {
+            // If uncertainty wins this CAS, no commitment or attempt can follow.
+            // If commitment wins, MayHaveEffect stays true even if the next barrier
+            // prevents an attempt. Uncertainty after that barrier cannot retract commitment.
+            if (Interlocked.CompareExchange(ref publication, Committed, 0) != 0) throw new LedgerBlocked();
+            stage = CustodyStage.PossibleEffect;
         }
         private void Finish(CoreOutcome value)
-        { stage = CustodyStage.Terminal; outcome = value; review = null; }
+        {
+            int seen, next;
+            do
+            {
+                seen = Volatile.Read(ref publication);
+                CoreOutcome terminal = Outcome(seen);
+                if (value == CoreOutcome.RecoveryRequired) terminal = value;
+                else if (terminal == CoreOutcome.None) terminal = value;
+                next = (seen & (Unknown | Committed)) | ((int)terminal << OutcomeShift);
+            } while (Interlocked.CompareExchange(ref publication, next, seen) != seen);
+            stage = CustodyStage.Terminal; review = null;
+        }
         private void Hold() { recovery = true; Finish(CoreOutcome.RecoveryRequired); }
         private void CrashAt(SyntheticCrash point)
         { Barrier(); if (crash == point) throw new LedgerBlocked(); }
         private CoreSnapshot Snapshot()
-        { return new CoreSnapshot(request, stage, outcome, possible, recovery, attempts); }
+        {
+            int state = Volatile.Read(ref publication);
+            CoreOutcome result = Outcome(state);
+            return new CoreSnapshot(request, result == CoreOutcome.None ? stage : CustodyStage.Terminal,
+                result, (state & Committed) != 0, recovery || (state & Unknown) != 0, attempts);
+        }
 
         internal CoreSnapshot Observe()
         {
-            if (!Enter()) return new CoreSnapshot(request, CustodyStage.Terminal,
-                CoreOutcome.RecoveryRequired, true, true, 0);
-            try { if (Volatile.Read(ref uncertain) != 0 && outcome == CoreOutcome.None) Hold(); return Snapshot(); }
+            if (!Enter())
+            {
+                int state = Volatile.Read(ref publication);
+                bool committed = (state & Committed) != 0;
+                // Gate failure cannot read the gate-owned attempt counter. Zero is
+                // known only if commitment was prevented; otherwise it is unknown.
+                return new CoreSnapshot(request, CustodyStage.Terminal,
+                    CoreOutcome.RecoveryRequired, committed, true, 0, !committed);
+            }
+            try { return Snapshot(); }
             finally { Exit(); }
         }
 
@@ -187,7 +239,7 @@ namespace Nayeon.ByokC1.Service
                 if (!Same(request, offered)) { Finish(CoreOutcome.Denied); return null; }
                 review = new object(); stage = CustodyStage.Reviewed; return review;
             }
-            catch (LedgerBlocked) { if (outcome == CoreOutcome.None) Hold(); return null; }
+            catch (LedgerBlocked) { Hold(); return null; }
             finally { Exit(); }
         }
 
@@ -197,14 +249,19 @@ namespace Nayeon.ByokC1.Service
             if (!Enter()) return CoreControlResult.HoldUnknown;
             try
             {
-                if (possible) return CoreControlResult.TooLatePossibleEffect;
-                if (outcome != CoreOutcome.None) return CoreControlResult.AlreadyTerminal;
-                if (Volatile.Read(ref uncertain) != 0 || !Enum.IsDefined(typeof(CoreControl), control))
+                int state = Volatile.Read(ref publication);
+                if ((state & Unknown) != 0) return CoreControlResult.HoldUnknown;
+                if ((state & Committed) != 0) return CoreControlResult.TooLatePossibleEffect;
+                if (Outcome(state) != CoreOutcome.None) return CoreControlResult.AlreadyTerminal;
+                if (!Enum.IsDefined(typeof(CoreControl), control))
                 { Hold(); return CoreControlResult.HoldUnknown; }
+                Pause(5);
                 Finish(control == CoreControl.Cancel ? CoreOutcome.Cancelled : control == CoreControl.Revoke ?
                     CoreOutcome.Revoked : control == CoreControl.Stop ? CoreOutcome.Stopped : CoreOutcome.Faulted);
-                return CoreControlResult.Applied;
+                Pause(6);
+                return outcome == CoreOutcome.RecoveryRequired ? CoreControlResult.HoldUnknown : CoreControlResult.Applied;
             }
+            catch (LedgerBlocked) { Hold(); return CoreControlResult.HoldUnknown; }
             finally { Exit(); }
         }
 
@@ -238,7 +295,11 @@ namespace Nayeon.ByokC1.Service
                 if (dispatchEntered != null) dispatchEntered.Set();
                 if (dispatchContinue != null && !dispatchContinue.Wait(5000)) throw new LedgerBlocked();
                 CrashAt(SyntheticCrash.BeforeEffect);
-                possible = true; stage = CustodyStage.PossibleEffect; attempts++;
+                Pause(1);
+                CommitPossibleEffect();
+                Pause(2);
+                Barrier();
+                attempts++;
                 CrashAt(SyntheticCrash.AfterAttempt);
                 marker = request.Operation == SyntheticOperation.Delete ? 0 : 1;
                 CrashAt(SyntheticCrash.AfterMutation);
@@ -253,7 +314,9 @@ namespace Nayeon.ByokC1.Service
                     marker != (request.Operation == SyntheticOperation.Delete ? 0 : 1) ||
                     !Same(persistedRequest, request)) throw new LedgerBlocked();
                 CrashAt(SyntheticCrash.AfterTerminalVerify);
+                Pause(3);
                 Finish(request.Operation == SyntheticOperation.Delete ? CoreOutcome.RemovedUnverified : CoreOutcome.StoredUnverified);
+                Pause(4);
             }
             catch (Exception) { Hold(); }
             finally { Exit(); }

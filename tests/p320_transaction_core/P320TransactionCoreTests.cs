@@ -28,10 +28,10 @@ internal static class P320TransactionCoreTests
     {
         CoreSnapshot snapshot = owner.Observe();
         Check(snapshot.Stage == CustodyStage.Terminal && snapshot.Outcome == outcome &&
-            snapshot.Attempts == attempts && !snapshot.ProductionEligible);
+            snapshot.AttemptsKnown && snapshot.Attempts == attempts && !snapshot.ProductionEligible);
         Check(owner.ReviewSynthetic(snapshot.Request) == null);
         Check(owner.DispatchSynthetic(null, null) == outcome && owner.Observe().Attempts == attempts);
-        Check(owner.Observe().Outcome == outcome); // strict first terminal result; no replay
+        Check(owner.Observe().Outcome == outcome); // stable absent new uncertainty; no replay
     }
     private static void Lifecycle(SyntheticOperation op)
     {
@@ -128,7 +128,11 @@ internal static class P320TransactionCoreTests
     private static void Set(CustodyTransactionCore owner, string name, object value)
     { typeof(CustodyTransactionCore).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(owner, value); }
     private static object Get(CustodyTransactionCore owner, string name)
-    { return typeof(CustodyTransactionCore).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(owner); }
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        FieldInfo field = typeof(CustodyTransactionCore).GetField(name, flags);
+        return field != null ? field.GetValue(owner) : typeof(CustodyTransactionCore).GetProperty(name, flags).GetValue(owner, null);
+    }
     private static void DispatchFirst(SyntheticOperation op, CoreControl control)
     {
         CustodyTransactionCore owner = Create(op, SyntheticCrash.None);
@@ -286,6 +290,126 @@ internal static class P320TransactionCoreTests
         Check(owner.Control((CoreControl)99) == CoreControlResult.HoldUnknown);
         Terminal(owner, CoreOutcome.RecoveryRequired, 0);
     }
+    private static void PublicationRace(SyntheticOperation op, int seam, bool observe)
+    {
+        var owner = Create(op, SyntheticCrash.None);
+        object ticket = Review(owner, op);
+        CoreOutcome dispatchResult = CoreOutcome.None;
+        CoreControlResult controlResult = CoreControlResult.Applied;
+        bool controlOwner = seam >= 5;
+        bool committed = seam >= 2 && seam <= 4;
+        int attempts = seam == 3 || seam == 4 ? 1 : 0;
+        SyntheticCustodyImage before = owner.CaptureSyntheticCrashImage();
+        using (var entered = new ManualResetEventSlim())
+        using (var release = new ManualResetEventSlim())
+        {
+            Set(owner, "pauseAt", seam); Set(owner, "transitionEntered", entered); Set(owner, "transitionContinue", release);
+            var worker = new Worker(() =>
+            {
+                if (controlOwner) controlResult = owner.Control(CoreControl.Cancel);
+                else dispatchResult = owner.DispatchSynthetic(ticket, Request(op));
+            });
+            try
+            {
+                Check(entered.Wait(1500));
+                // Inspect only at the fixed rendezvous, with no sleeping or scheduler guess.
+                Check((bool)Get(owner, "possible") == committed && (int)Get(owner, "attempts") == attempts);
+                CoreOutcome published = seam == 4 ? Success(op) : seam == 6 ? CoreOutcome.Cancelled : CoreOutcome.None;
+                Check((CoreOutcome)Get(owner, "outcome") == published);
+                if (observe)
+                {
+                    // Real Enter timeout publishes uncertainty while the owner holds the gate.
+                    CoreSnapshot unknown = owner.Observe();
+                    Check(unknown.Stage == CustodyStage.Terminal && unknown.Outcome == CoreOutcome.RecoveryRequired &&
+                        unknown.RecoveryRequired && !unknown.ProductionEligible && unknown.MayHaveEffect == committed &&
+                        unknown.AttemptsKnown == !committed && unknown.Attempts == 0);
+                }
+                else Check(owner.Control(CoreControl.Revoke) == CoreControlResult.HoldUnknown);
+                Check((CoreOutcome)Get(owner, "outcome") == CoreOutcome.RecoveryRequired);
+            }
+            finally { release.Set(); worker.Join(); }
+        }
+        if (controlOwner) Check(controlResult == CoreControlResult.HoldUnknown);
+        else Check(dispatchResult == CoreOutcome.RecoveryRequired);
+        Terminal(owner, CoreOutcome.RecoveryRequired, attempts);
+        CoreSnapshot after = owner.Observe();
+        Check(after.MayHaveEffect == committed && after.RecoveryRequired);
+        foreach (CoreControl control in new[] { CoreControl.Cancel, CoreControl.Revoke, CoreControl.Stop, CoreControl.Fault })
+            Check(owner.Control(control) == CoreControlResult.HoldUnknown);
+        // The exact consumed ticket cannot replay, including when no attempt began.
+        Check(owner.DispatchSynthetic(ticket, Request(op)) == CoreOutcome.RecoveryRequired);
+        Check(owner.Observe().Attempts == attempts);
+        SyntheticCustodyImage image = owner.CaptureSyntheticCrashImage();
+        if (controlOwner)
+            Check(image.Journal == before.Journal && image.Anchor == before.Anchor &&
+                image.Request == null && image.Marker == before.Marker);
+        else
+        {
+            Check(CustodyTransactionCore.AssessRestart(image) == (attempts == 0 ?
+                RestartAssessment.InFlight : RestartAssessment.TerminalUnverified));
+            Check(image.Marker == (attempts == 0 ? before.Marker : op == SyntheticOperation.Delete ? 0 : 1));
+        }
+    }
+    private static void StickyReentry(SyntheticOperation op)
+    {
+        // A result returned before later uncertainty remains a historical observation,
+        // never a promise that future observations cannot conservatively downgrade it.
+        foreach (bool completed in new[] { false, true })
+        {
+            var owner = Create(op, SyntheticCrash.None);
+            object ticket = Review(owner, op);
+            CoreSnapshot earlier;
+            if (completed)
+            {
+                Check(owner.DispatchSynthetic(ticket, Request(op)) == Success(op));
+                earlier = owner.Observe();
+            }
+            else
+            {
+                Check(owner.Control(CoreControl.Cancel) == CoreControlResult.Applied);
+                earlier = owner.Observe();
+            }
+            lock (Get(owner, "gate"))
+            {
+                CoreSnapshot unknown = owner.Observe();
+                Check(unknown.Outcome == CoreOutcome.RecoveryRequired && unknown.RecoveryRequired &&
+                    unknown.MayHaveEffect == completed && unknown.AttemptsKnown == !completed);
+                Check(owner.Control(CoreControl.Stop) == CoreControlResult.HoldUnknown);
+                Check(owner.DispatchSynthetic(ticket, Request(op)) == CoreOutcome.RecoveryRequired);
+            }
+            Terminal(owner, CoreOutcome.RecoveryRequired, completed ? 1 : 0);
+            Check(earlier.Outcome == (completed ? Success(op) : CoreOutcome.Cancelled));
+            Check(owner.Observe().MayHaveEffect == completed && owner.Observe().RecoveryRequired);
+        }
+    }
+    private static void ConcurrentFixtureClaim()
+    {
+        var fixture = new InMemoryCustodyFixture(SyntheticSeed.Absent);
+        CustodyTransactionCore first = null, second = null;
+        int refused = 0;
+        using (var start = new ManualResetEventSlim())
+        {
+            var a = new Worker(() =>
+            {
+                Check(start.Wait(1500));
+                try { first = new CustodyTransactionCore(fixture, Request(SyntheticOperation.Add), SyntheticCrash.None); }
+                catch (InvalidOperationException) { Interlocked.Increment(ref refused); }
+            });
+            var b = new Worker(() =>
+            {
+                Check(start.Wait(1500));
+                try { second = new CustodyTransactionCore(fixture, Request(SyntheticOperation.Add), SyntheticCrash.None); }
+                catch (InvalidOperationException) { Interlocked.Increment(ref refused); }
+            });
+            start.Set(); a.Join(); b.Join();
+        }
+        Check(refused == 1 && (first == null) != (second == null));
+        CustodyTransactionCore winner = first ?? second;
+        object ticket = Review(winner, SyntheticOperation.Add);
+        Check(winner.DispatchSynthetic(ticket, Request(SyntheticOperation.Add)) == CoreOutcome.StoredUnverified);
+        Terminal(winner, CoreOutcome.StoredUnverified, 1);
+        // Exclusivity is only over this exact fixture object within this process.
+    }
     private static int Main(string[] args)
     {
         try
@@ -304,10 +428,18 @@ internal static class P320TransactionCoreTests
                     Run(() => Crash(op, crash));
                 Run(() => DuplicateRace(op));
                 Run(() => ReviewRace(op, false)); Run(() => ReviewRace(op, true));
+                for (int seam = 1; seam <= 6; seam++)
+                {
+                    int captured = seam;
+                    Run(() => PublicationRace(op, captured, false));
+                    Run(() => PublicationRace(op, captured, true));
+                }
+                Run(() => StickyReentry(op));
             }
             Run(MalformedRestart); Run(FixtureOwnership); Run(ForeignReview); Run(Reentry); Run(Timeout); Run(InvalidControl);
-            Check(cases == 102);
-            Console.WriteLine("P320 TRANSACTION CORE TESTS PASS count=102 synthetic-only"); return 0;
+            Run(ConcurrentFixtureClaim);
+            Check(cases == 142);
+            Console.WriteLine("P320 TRANSACTION CORE TESTS PASS count=" + cases + " synthetic-only"); return 0;
         }
         catch { Console.Error.WriteLine("P320 FAIL; HOLD"); return 1; }
     }
