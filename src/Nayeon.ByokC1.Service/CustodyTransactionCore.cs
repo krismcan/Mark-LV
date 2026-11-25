@@ -9,8 +9,6 @@ namespace Nayeon.ByokC1.Service
 {
     internal enum CustodyStage
     { ReviewPending, Reviewed, IntentWriting, IntentDurable, PossibleEffect, Terminal }
-    internal enum CoreOutcome
-    { None, Denied, Cancelled, Revoked, Stopped, Faulted, StoredUnverified, RemovedUnverified, RecoveryRequired }
     internal enum CoreControl { Cancel, Revoke, Stop, Fault }
     internal enum CoreControlResult { Applied, AlreadyTerminal, TooLatePossibleEffect, HoldUnknown }
     internal enum SyntheticSeed { Absent, Present }
@@ -85,10 +83,9 @@ namespace Nayeon.ByokC1.Service
         private CustodyStage stage = CustodyStage.ReviewPending;
         // A single CAS word orders uncertainty, commitment and terminal publication.
         // Uncertainty is sticky, including after a previously published terminal result.
-        private const int Unknown = 1, Committed = 2, OutcomeShift = 2;
-        private int publication;
-        private CoreOutcome outcome { get { return Outcome(Volatile.Read(ref publication)); } }
-        private bool possible { get { return (Volatile.Read(ref publication) & Committed) != 0; } }
+        private readonly AtomicCustodyPublication publication = new AtomicCustodyPublication();
+        private CoreOutcome outcome { get { return AtomicCustodyPublication.Outcome(publication.Read()); } }
+        private bool possible { get { return AtomicCustodyPublication.MayHaveEffect(publication.Read()); } }
         private bool recovery;
         private int attempts;
         private object review;
@@ -164,15 +161,11 @@ namespace Nayeon.ByokC1.Service
             PublishUnknown(); return false;
         }
         private static CoreOutcome Outcome(int state)
-        { return (state & Unknown) != 0 ? CoreOutcome.RecoveryRequired : (CoreOutcome)(state >> OutcomeShift); }
+        { return AtomicCustodyPublication.Outcome(state); }
         private void PublishUnknown()
-        {
-            int seen;
-            do { seen = Volatile.Read(ref publication); }
-            while (Interlocked.CompareExchange(ref publication, seen | Unknown, seen) != seen);
-        }
+        { publication.PublishUnknown(); }
         private void Barrier()
-        { if ((Volatile.Read(ref publication) & Unknown) != 0) throw new LedgerBlocked(); }
+        { if (AtomicCustodyPublication.IsUncertain(publication.Read())) throw new LedgerBlocked(); }
         private void Exit() { Monitor.Exit(gate); }
         private void Pause(int point)
         {
@@ -185,20 +178,12 @@ namespace Nayeon.ByokC1.Service
             // If uncertainty wins this CAS, no commitment or attempt can follow.
             // If commitment wins, MayHaveEffect stays true even if the next barrier
             // prevents an attempt. Uncertainty after that barrier cannot retract commitment.
-            if (Interlocked.CompareExchange(ref publication, Committed, 0) != 0) throw new LedgerBlocked();
+            if (!publication.TryCommitPossibleEffect()) throw new LedgerBlocked();
             stage = CustodyStage.PossibleEffect;
         }
         private void Finish(CoreOutcome value)
         {
-            int seen, next;
-            do
-            {
-                seen = Volatile.Read(ref publication);
-                CoreOutcome terminal = Outcome(seen);
-                if (value == CoreOutcome.RecoveryRequired) terminal = value;
-                else if (terminal == CoreOutcome.None) terminal = value;
-                next = (seen & (Unknown | Committed)) | ((int)terminal << OutcomeShift);
-            } while (Interlocked.CompareExchange(ref publication, next, seen) != seen);
+            publication.Finish(value);
             stage = CustodyStage.Terminal; review = null;
         }
         private void Hold() { recovery = true; Finish(CoreOutcome.RecoveryRequired); }
@@ -206,18 +191,18 @@ namespace Nayeon.ByokC1.Service
         { Barrier(); if (crash == point) throw new LedgerBlocked(); }
         private CoreSnapshot Snapshot()
         {
-            int state = Volatile.Read(ref publication);
+            int state = publication.Read();
             CoreOutcome result = Outcome(state);
             return new CoreSnapshot(request, result == CoreOutcome.None ? stage : CustodyStage.Terminal,
-                result, (state & Committed) != 0, recovery || (state & Unknown) != 0, attempts);
+                result, AtomicCustodyPublication.MayHaveEffect(state), recovery || AtomicCustodyPublication.IsUncertain(state), attempts);
         }
 
         internal CoreSnapshot Observe()
         {
             if (!Enter())
             {
-                int state = Volatile.Read(ref publication);
-                bool committed = (state & Committed) != 0;
+                int state = publication.Read();
+                bool committed = AtomicCustodyPublication.MayHaveEffect(state);
                 // Gate failure cannot read the gate-owned attempt counter. Zero is
                 // known only if commitment was prevented; otherwise it is unknown.
                 return new CoreSnapshot(request, CustodyStage.Terminal,
@@ -249,9 +234,9 @@ namespace Nayeon.ByokC1.Service
             if (!Enter()) return CoreControlResult.HoldUnknown;
             try
             {
-                int state = Volatile.Read(ref publication);
-                if ((state & Unknown) != 0) return CoreControlResult.HoldUnknown;
-                if ((state & Committed) != 0) return CoreControlResult.TooLatePossibleEffect;
+                int state = publication.Read();
+                if (AtomicCustodyPublication.IsUncertain(state)) return CoreControlResult.HoldUnknown;
+                if (AtomicCustodyPublication.MayHaveEffect(state)) return CoreControlResult.TooLatePossibleEffect;
                 if (Outcome(state) != CoreOutcome.None) return CoreControlResult.AlreadyTerminal;
                 if (!Enum.IsDefined(typeof(CoreControl), control))
                 { Hold(); return CoreControlResult.HoldUnknown; }

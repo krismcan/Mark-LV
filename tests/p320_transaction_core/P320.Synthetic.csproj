@@ -31,6 +31,8 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Security" />
     <Compile Include="P320TransactionCoreTests.cs" />
+    <Compile Include="..\..\src\Nayeon.ByokC1.Service\AtomicCustodyPublication.cs" />
+    <Compile Include="..\..\src\Nayeon.ByokC1.Service\DenialOnlyRecoveryAdmission.cs" />
     <Compile Include="..\..\src\Nayeon.ByokC1.Service\CustodyTransactionCore.cs">
       <Link>CustodyTransactionCore.cs</Link>
     </Compile>
